@@ -40,7 +40,7 @@ message Reply {
 
     message StartEscrow {
         bytes merchant_auxiliary_data = 1;
-        repeated bytes closing_authorization = 2;
+        bytes closing_authorization = 2;
     }
 
     message CompleteEscrow {
@@ -49,7 +49,7 @@ message Reply {
 
     message Error {
         message Initialization {
-
+            // TODO: Should we reveal why initialization failed?
         }
 
         message Escrow {

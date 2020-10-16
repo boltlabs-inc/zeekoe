@@ -1,7 +1,9 @@
 syntax = "proto3";
 package wire;
+
 import "establish.proto";
 import "activate.proto";
+import "pay.proto";
 
 service Merchant {
     rpc Establish (stream establish.Request) returns (stream establish.Reply);
