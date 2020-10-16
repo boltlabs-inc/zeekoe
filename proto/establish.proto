@@ -1,0 +1,71 @@
+syntax = "proto3";
+package wire.establish; 
+
+/*
+ * The Establish protocol is a three-step protocol that strictly follows the sequence of
+ * Initialize -> StartEscrowRequest -> CompleteEscrowRequest.
+ */
+
+message Request {
+    message Initialize {
+        bytes channel_public_key = 1;
+        bytes revocation_lock = 2;
+        bytes nonce = 3;
+        bytes customer_balance = 4;
+    }
+
+    message StartEscrow {
+        bytes customer_auxiliary_data = 1;
+    }
+
+    message CompleteEscrow {
+        bytes escrow_authorization = 1;
+        bytes expiry_authorization = 2; 
+    }
+
+    oneof request {
+        Initialize initialize = 1;
+        StartEscrow start_escrow = 2;
+        CompleteEscrow complete_escrow = 3;
+    }
+}
+
+message Reply {
+    message Initialize {
+        oneof initialize {
+            bytes merchant_balance = 1;
+            Error error = 2;
+        }
+    }
+
+    message StartEscrow {
+        bytes merchant_auxiliary_data = 1;
+        repeated bytes closing_authorization = 2;
+    }
+
+    message CompleteEscrow {
+        // TODO: Any final information to put here?
+    }
+
+    message Error {
+        message Initialization {
+
+        }
+
+        message Escrow {
+            bytes error = 1;
+        }
+
+        oneof error {
+            Initialization initialize_error = 1;
+            Escrow escrow_error = 2;
+        }
+    }
+
+    oneof reply {
+        Initialize initialize = 1;
+        StartEscrow start_escrow = 2;
+        CompleteEscrow complete_escrow = 3;
+        Error error = 4;
+    }
+}

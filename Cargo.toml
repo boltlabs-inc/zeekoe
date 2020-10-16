@@ -1,0 +1,27 @@
+[package]
+name = "zeekoe"
+version = "0.1.0"
+authors = ["Kenny Foner"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "zeekoe"
+path = "src/lib.rs"
+
+[[bin]]
+name = "zeekoe-customer"
+path = "src/customer/main.rs"
+
+[[bin]]
+name = "zeekoe-merchant"
+path = "src/merchant/main.rs"
+
+[dependencies]
+tokio = { version = "0.2.22", features = ["full"] }
+tonic = "0.3.1"
+prost = "0.6"
+
+[build-dependencies]
+tonic-build = "0.3.1"
