@@ -15,23 +15,5 @@ message Request {
 }
 
 message Reply {
-    message Error {
-        message InvalidChannel {
-            // Nothing to report here, it's just not a channel we know about.
-        }
-
-        message FundsNotEscrowed {
-            // TODO: Specific details from the underlying payment network here?
-        }
-
-        oneof error {
-            InvalidChannel invalid_channel = 1;
-            FundsNotEscrowed funds_not_escrowed = 2;
-        }
-    }
-
-    oneof reply {
-        bytes payment_tag = 1;
-        Error error = 2;
-    }
+    bytes payment_tag = 1;
 }

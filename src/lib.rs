@@ -1,1 +1,3 @@
-pub mod wire;
+mod wire;
+
+pub mod customer;
