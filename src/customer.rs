@@ -1,6 +1,6 @@
 use crate::wire::{self, activate, establish, pay};
 use futures::Future;
-use generic_array::GenericArray;
+use generic_array::{ArrayLength, GenericArray};
 use ring::rand::SecureRandom;
 use sha2::{Digest, Sha256};
 use std::convert::{TryFrom, TryInto};
@@ -8,19 +8,80 @@ use tokio::sync::mpsc;
 use tonic::transport::{self, Channel, Endpoint};
 use tonic::{Request, Response};
 
-#[derive(Debug, Clone, Copy)]
-pub struct Balance(u64); // FIXME: use a proper currency type here
+use crate::chain;
+
+pub struct Nonce<Lambda: ArrayLength<u8>>(GenericArray<u8, Lambda>);
+
+impl<Lambda> Nonce<Lambda>
+where
+    Lambda::ArrayType: ring::rand::RandomlyConstructable,
+    Lambda: ArrayLength<u8, ArrayType = [u8]>,
+{
+    /// Create a new random nonce with `Lambda` bytes of entropy.
+    pub fn new(rng: &dyn SecureRandom) -> Nonce<Lambda> {
+        let nonce: Lambda::ArrayType = ring::rand::generate(rng)
+            .expect("Random generation failed.")
+            .expose();
+        Nonce(GenericArray::from_slice(&nonce).clone())
+    }
+
+    /// Reveal the random nonce, consuming `self` to prevent accidental re-use once revealed.
+    pub fn reveal(self) -> GenericArray<u8, Lambda> {
+        self.0
+    }
+}
 
 #[derive(Debug, Clone)]
-pub struct Nonce([u8; 32]);
+pub struct RevocationLock<Hash: Digest>(GenericArray<u8, Hash::OutputSize>);
 
-impl Nonce {
-    pub fn new(rng: &dyn SecureRandom) -> Nonce {
-        Nonce(
-            ring::rand::generate(rng)
-                .expect("Random nonce generation failed.")
-                .expose(),
-        )
+impl<Hash: Digest> RevocationLock<Hash> {
+    pub fn as_slice(&self) -> &[u8] {
+        self.0.as_slice()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct RevocationSecret<Lambda: ArrayLength<u8>>(GenericArray<u8, Lambda>);
+
+impl<Lambda: ArrayLength<u8>> RevocationSecret<Lambda> {
+    pub fn as_slice(&self) -> &[u8] {
+        self.0.as_slice()
+    }
+}
+
+pub struct Revocation<Lambda: ArrayLength<u8>, Hash: Digest> {
+    lock: RevocationLock<Hash>,
+    secret: RevocationSecret<Lambda>,
+}
+
+impl<Lambda, Hash: Digest> Revocation<Lambda, Hash>
+where
+    Lambda::ArrayType: ring::rand::RandomlyConstructable,
+    Lambda: ArrayLength<u8, ArrayType = [u8]>,
+{
+    /// Create a new random revocation lock/secret pair, according to the
+    pub fn new(rng: &dyn SecureRandom) -> Revocation<Lambda, Hash> {
+        let secret: Lambda::ArrayType = ring::rand::generate(rng)
+            .expect("Random revocation secret generation failed")
+            .expose();
+        let secret: GenericArray<u8, Lambda> = GenericArray::from_slice(&secret).clone();
+        let lock: GenericArray<u8, Hash::OutputSize> = Hash::digest(&secret);
+        Revocation {
+            lock: RevocationLock(lock),
+            secret: RevocationSecret(secret),
+        }
+    }
+
+    /// Get a reference to the revocation lock. This method may be called many times, unlike
+    /// [`Revocation::secret`], which consumes `self`.
+    pub fn lock(&self) -> &RevocationLock<Hash> {
+        &self.lock
+    }
+
+    /// Reveal the revocation secret. This method consumes `self` to ensure that the caller
+    /// cannot re-use the revocation lock after revealing the secret.
+    pub fn secret(self) -> RevocationSecret<Lambda> {
+        self.secret
     }
 }
 
@@ -48,50 +109,13 @@ pub mod channel {
         }
     }
 
-    #[derive(Debug, Clone)]
-    pub struct State {
-        channel_id: Id,
-        nonce: Nonce,
-        revocation_lock: RevocationLock,
-        merchant_balance: Balance,
-        customer_balance: Balance,
+    pub struct State<Lambda: ArrayLength<u8>, Hash: Digest, Chain: chain::Chain> {
+        channel_id: Chain::ChannelId,
+        nonce: Nonce<Lambda>,
+        revocation_lock: RevocationLock<Hash>,
+        merchant_balance: Chain::Currency,
+        customer_balance: Chain::Currency,
     }
-
-    #[derive(Debug, Clone)]
-    pub struct RevocationLock; // FIXME: what is the shape of this data?
-
-    #[derive(Debug, Clone)]
-    pub struct RevocationSecret; // FIXME: what is the shape of this data?
-
-    #[derive(Debug, Clone)]
-    pub struct ClosingAuthorization; // FIXME:: what is the shape of this data?
-
-    #[derive(Debug, Clone)]
-    pub struct InvalidClosingAuthorization;
-
-    impl TryFrom<Vec<u8>> for ClosingAuthorization {
-        type Error = InvalidClosingAuthorization;
-        fn try_from(bytes: Vec<u8>) -> Result<ClosingAuthorization, InvalidClosingAuthorization> {
-            Ok(ClosingAuthorization) // FIXME: actually parse/validate closing auth here
-        }
-    }
-
-    fn revocation(rng: &dyn SecureRandom) -> (RevocationLock, RevocationSecret) {
-        (RevocationLock, RevocationSecret) // FIXME: actually generate a real lock and secret
-    }
-
-    #[derive(Debug, Clone)]
-    pub struct PublicKey; // FIXME: have this contain key data
-
-    #[derive(Debug, Clone)]
-    pub struct PrivateKey; // FIXME: have this contain key data
-
-    fn keypair(rng: &dyn SecureRandom) -> (PublicKey, PrivateKey) {
-        (PublicKey, PrivateKey) // FIXME: actually generate a real keypair
-    }
-
-    #[derive(Debug, Clone)]
-    pub struct Id(GenericArray<u8, <Sha256 as Digest>::OutputSize>);
 
     pub async fn connect<'random, D>(
         rng: &'random dyn SecureRandom,
@@ -113,156 +137,196 @@ pub mod channel {
     }
 
     impl<'random> Connected<'random> {
-        pub async fn initialize(
+        pub async fn initialize<Lambda, Hash: Digest, Chain: chain::Chain>(
             mut self,
-            customer_escrow: Balance,
-        ) -> Result<Initialized<'random>, Error> {
+            customer_escrow: Chain::Currency,
+        ) -> Result<Initialized<'random, Lambda, Hash, Chain>, Error>
+        where
+            Lambda: ArrayLength<u8, ArrayType = [u8]>,
+            Lambda::ArrayType: ring::rand::RandomlyConstructable,
+        {
             // Generate the initial cryptographic material for the channel
             let nonce = Nonce::new(self.rng);
-            let (public_key, private_key) = keypair(self.rng);
-            let (revocation_lock, revocation_secret) = revocation(self.rng);
+            let (public_key, private_key) = Chain::channel_keypair(self.rng);
+            let revocation = Revocation::new(self.rng);
 
             // Set up bidirectional channels over gRPC to the merchant for the Establish protocol
-            let (mut requests, rx) = mpsc::channel(1);
-            let mut replies = self.merchant.establish(rx).await?.into_inner();
+            let mut establish = StreamingMethod::connect(|rx| self.merchant.establish(rx)).await?;
 
             // Request an initialized channel from the merchant
-            if requests
+            establish
                 .send(establish::Request {
                     request: Some(establish::request::Request::Initialize(
                         establish::request::Initialize {
-                            channel_public_key: vec![], // FIXME: actually transcribe key data here
-                            revocation_lock: vec![],    // FIXME: actually transcribe key data here
+                            channel_public_key: public_key.clone().into(),
+                            revocation_lock: revocation.lock().as_slice().into(),
                             nonce: nonce.0.to_vec(),
-                            customer_balance: customer_escrow.0,
+                            customer_balance: customer_escrow.clone().into(),
                         },
                     )),
                 })
-                .await
-                .is_err()
-            {
-                Err(Error::ConnectionLost)?;
-            }
+                .await?;
 
             // Wait for the merchant to respond with their desired initial balance
-            let merchant_balance = Balance(match replies.message().await? {
+            let merchant_balance = match establish.recv().await? {
                 Some(establish::Reply {
                     reply:
                         Some(establish::reply::Reply::Initialize(establish::reply::Initialize {
                             merchant_balance,
                         })),
-                }) => merchant_balance,
+                }) => merchant_balance
+                    .try_into()
+                    .map_err(|_| Error::UnexpectedResponse)?,
                 Some(_) => Err(Error::UnexpectedResponse)?,
                 None => Err(Error::ConnectionLost)?,
-            });
+            };
 
             Ok(Initialized {
                 rng: self.rng,
                 merchant: self.merchant,
-                requests,
-                replies,
+                establish,
                 customer_balance: customer_escrow,
                 merchant_balance,
                 nonce,
                 public_key,
                 private_key,
-                revocation_lock,
-                revocation_secret,
+                revocation,
             })
         }
     }
 
-    pub struct Initialized<'random> {
-        rng: &'random dyn SecureRandom,
-        merchant: MerchantClient,
-        requests: tokio::sync::mpsc::Sender<establish::Request>,
-        replies: tonic::Streaming<establish::Reply>,
-        customer_balance: Balance,
-        merchant_balance: Balance,
-        nonce: Nonce,
-        public_key: PublicKey,
-        private_key: PrivateKey,
-        revocation_lock: RevocationLock,
-        revocation_secret: RevocationSecret,
+    /// An active connection to a bidirectionally streaming method. This wraps a call to a
+    /// gRPC method with an input and output stream so that one can `send` and `recv` from
+    /// it like any other bidirectional streaming connection.  
+    pub struct StreamingMethod<Request, Reply> {
+        requests: tokio::sync::mpsc::Sender<Request>,
+        replies: tonic::Streaming<Reply>,
     }
 
-    impl<'random> Initialized<'random> {
-        pub async fn escrow(mut self) -> Result<Escrowed<'random>, Error> {
-            // Request that the merchant begin the escrow protocol
-            if self
-                .requests
-                .send(establish::Request {
-                    request: Some(establish::request::Request::StartEscrow(
-                        establish::request::StartEscrow {
-                            customer_auxiliary_data: vec![], // FIXME: put actual data here
-                        },
-                    )),
-                })
-                .await
-                .is_err()
-            {
-                Err(Error::ConnectionLost)?;
+    impl<Request: Send, Reply> StreamingMethod<Request, Reply> {
+        /// Create a new streaming connection by invoking the given method and setting up
+        /// input and output streams for it.
+        pub async fn connect<M, F>(method: M) -> Result<Self, tonic::Status>
+        where
+            M: FnOnce(mpsc::Receiver<Request>) -> F,
+            F: Future<Output = Result<Response<tonic::Streaming<Reply>>, tonic::Status>>,
+        {
+            let (requests, rx) = mpsc::channel(1);
+            let replies = method(rx).await?.into_inner();
+            Ok(StreamingMethod { requests, replies })
+        }
+
+        /// Send a request to the streaming method, not waiting for a reply.
+        pub async fn send(&mut self, request: impl Into<Request>) -> Result<(), Error> {
+            if self.requests.send(request.into()).await.is_err() {
+                Err(Error::ConnectionLost)
+            } else {
+                Ok(())
             }
+        }
 
-            // Get the merchant's auxiliary data and closing authorization
-            let establish::reply::StartEscrow {
-                merchant_auxiliary_data,
-                closing_authorization,
-            } = match self.replies.message().await? {
-                Some(establish::Reply {
-                    reply: Some(establish::reply::Reply::StartEscrow(reply)),
-                }) => reply,
-                Some(_) => Err(Error::UnexpectedResponse)?,
-                None => Err(Error::ConnectionLost)?,
-            };
-
-            let closing_authorization = closing_authorization
-                .try_into()
-                .or(Err(Error::UnexpectedResponse))?;
-
-            // Send the completed escrow and expiry authorizations back to the merchant
-            if self
-                .requests
-                .send(establish::Request {
-                    request: Some(establish::request::Request::CompleteEscrow(
-                        establish::request::CompleteEscrow {
-                            escrow_authorization: vec![], // FIXME: actual cryptography here
-                            expiry_authorization: vec![], // FIXME: actual cryptography here
-                        },
-                    )),
-                })
-                .await
-                .is_err()
-            {
-                Err(Error::ConnectionLost)?;
+        /// Wait to receive a reply from the streaming method, attempting to transform
+        /// it into the given desired type.
+        pub async fn recv<T>(&mut self) -> Result<T, Error>
+        where
+            Reply: TryInto<T>,
+        {
+            match self.replies.message().await? {
+                Some(reply) => reply.try_into().map_err(|_| Error::UnexpectedResponse),
+                None => Err(Error::ConnectionLost),
             }
-
-            // Compute the initial state
-            let state = State {
-                channel_id: Id(Sha256::digest(&[])), // FIXME: compute the channel id here
-                nonce: self.nonce,
-                revocation_lock: self.revocation_lock,
-                customer_balance: self.customer_balance,
-                merchant_balance: self.merchant_balance,
-            };
-
-            Ok(Escrowed {
-                rng: self.rng,
-                merchant: self.merchant,
-                state,
-                private_key: self.private_key,
-                revocation_secret: self.revocation_secret,
-                closing_authorization,
-            })
         }
     }
 
-    pub struct Escrowed<'random> {
+    pub struct Initialized<'random, Lambda: ArrayLength<u8>, Hash: Digest, Chain: chain::Chain> {
         rng: &'random dyn SecureRandom,
         merchant: MerchantClient,
-        state: State,
-        private_key: PrivateKey,
-        revocation_secret: RevocationSecret,
-        closing_authorization: ClosingAuthorization,
+        establish: StreamingMethod<establish::Request, establish::Reply>,
+        customer_balance: Chain::Currency,
+        merchant_balance: Chain::Currency,
+        nonce: Nonce<Lambda>,
+        public_key: Chain::ChannelPublicKey,
+        private_key: Chain::ChannelPrivateKey,
+        revocation: Revocation<Lambda, Hash>,
     }
+
+    // impl<'random, Lambda, Hash, Chain: chain::Chain> Initialized<'random, Lambda, Hash, Chain> {
+    //     pub async fn escrow(mut self) -> Result<Escrowed<'random>, Error> {
+    //         // Request that the merchant begin the escrow protocol
+    //         if self
+    //             .requests
+    //             .send(establish::Request {
+    //                 request: Some(establish::request::Request::StartEscrow(
+    //                     establish::request::StartEscrow {
+    //                         customer_auxiliary_data: vec![], // FIXME: put actual data here
+    //                     },
+    //                 )),
+    //             })
+    //             .await
+    //             .is_err()
+    //         {
+    //             Err(Error::ConnectionLost)?;
+    //         }
+
+    //         // Get the merchant's auxiliary data and closing authorization
+    //         let establish::reply::StartEscrow {
+    //             merchant_auxiliary_data,
+    //             closing_authorization,
+    //         } = match self.replies.message().await? {
+    //             Some(establish::Reply {
+    //                 reply: Some(establish::reply::Reply::StartEscrow(reply)),
+    //             }) => reply,
+    //             Some(_) => Err(Error::UnexpectedResponse)?,
+    //             None => Err(Error::ConnectionLost)?,
+    //         };
+
+    //         let closing_authorization = closing_authorization
+    //             .try_into()
+    //             .or(Err(Error::UnexpectedResponse))?;
+
+    //         // Send the completed escrow and expiry authorizations back to the merchant
+    //         if self
+    //             .requests
+    //             .send(establish::Request {
+    //                 request: Some(establish::request::Request::CompleteEscrow(
+    //                     establish::request::CompleteEscrow {
+    //                         escrow_authorization: vec![], // FIXME: actual cryptography here
+    //                         expiry_authorization: vec![], // FIXME: actual cryptography here
+    //                     },
+    //                 )),
+    //             })
+    //             .await
+    //             .is_err()
+    //         {
+    //             Err(Error::ConnectionLost)?;
+    //         }
+
+    //         // Compute the initial state
+    //         let state = State {
+    //             channel_id: Id(Sha256::digest(&[])), // FIXME: compute the channel id here
+    //             nonce: self.nonce,
+    //             revocation_lock: self.revocation_lock,
+    //             customer_balance: self.customer_balance,
+    //             merchant_balance: self.merchant_balance,
+    //         };
+
+    //         Ok(Escrowed {
+    //             rng: self.rng,
+    //             merchant: self.merchant,
+    //             state,
+    //             private_key: self.private_key,
+    //             revocation_secret: self.revocation_secret,
+    //             closing_authorization,
+    //         })
+    //     }
+    // }
+
+    // pub struct Escrowed<'random> {
+    //     rng: &'random dyn SecureRandom,
+    //     merchant: MerchantClient,
+    //     state: State,
+    //     private_key: PrivateKey,
+    //     revocation_secret: RevocationSecret,
+    //     closing_authorization: ClosingAuthorization,
+    // }
 }

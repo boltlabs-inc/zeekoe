@@ -1,3 +1,5 @@
+use futures::Future;
+
 tonic::include_proto!("wire");
 
 pub(crate) mod establish {
