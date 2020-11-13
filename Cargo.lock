@@ -1316,6 +1316,7 @@ dependencies = [
 name = "zeekoe"
 version = "0.1.0"
 dependencies = [
+ "digest",
  "futures",
  "generic-array",
  "prost",

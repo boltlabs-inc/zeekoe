@@ -9,79 +9,26 @@ use tonic::transport::{self, Channel, Endpoint};
 use tonic::{Request, Response};
 
 use crate::chain;
+use crate::revocation::{Revocation, RevocationLock, RevocationSecret};
 
-pub struct Nonce<Lambda: ArrayLength<u8>>(GenericArray<u8, Lambda>);
+pub struct Nonce<SecurityParameter: ArrayLength<u8>>(GenericArray<u8, SecurityParameter>);
 
-impl<Lambda> Nonce<Lambda>
+impl<SecurityParameter> Nonce<SecurityParameter>
 where
-    Lambda::ArrayType: ring::rand::RandomlyConstructable,
-    Lambda: ArrayLength<u8, ArrayType = [u8]>,
+    SecurityParameter::ArrayType: ring::rand::RandomlyConstructable,
+    SecurityParameter: ArrayLength<u8, ArrayType = [u8]>,
 {
-    /// Create a new random nonce with `Lambda` bytes of entropy.
-    pub fn new(rng: &dyn SecureRandom) -> Nonce<Lambda> {
-        let nonce: Lambda::ArrayType = ring::rand::generate(rng)
+    /// Create a new random nonce with `SecurityParameter` bytes of entropy.
+    pub fn new(rng: &dyn SecureRandom) -> Nonce<SecurityParameter> {
+        let nonce: SecurityParameter::ArrayType = ring::rand::generate(rng)
             .expect("Random generation failed.")
             .expose();
         Nonce(GenericArray::from_slice(&nonce).clone())
     }
 
     /// Reveal the random nonce, consuming `self` to prevent accidental re-use once revealed.
-    pub fn reveal(self) -> GenericArray<u8, Lambda> {
+    pub fn reveal(self) -> GenericArray<u8, SecurityParameter> {
         self.0
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct RevocationLock<Hash: Digest>(GenericArray<u8, Hash::OutputSize>);
-
-impl<Hash: Digest> RevocationLock<Hash> {
-    pub fn as_slice(&self) -> &[u8] {
-        self.0.as_slice()
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct RevocationSecret<Lambda: ArrayLength<u8>>(GenericArray<u8, Lambda>);
-
-impl<Lambda: ArrayLength<u8>> RevocationSecret<Lambda> {
-    pub fn as_slice(&self) -> &[u8] {
-        self.0.as_slice()
-    }
-}
-
-pub struct Revocation<Lambda: ArrayLength<u8>, Hash: Digest> {
-    lock: RevocationLock<Hash>,
-    secret: RevocationSecret<Lambda>,
-}
-
-impl<Lambda, Hash: Digest> Revocation<Lambda, Hash>
-where
-    Lambda::ArrayType: ring::rand::RandomlyConstructable,
-    Lambda: ArrayLength<u8, ArrayType = [u8]>,
-{
-    /// Create a new random revocation lock/secret pair, according to the
-    pub fn new(rng: &dyn SecureRandom) -> Revocation<Lambda, Hash> {
-        let secret: Lambda::ArrayType = ring::rand::generate(rng)
-            .expect("Random revocation secret generation failed")
-            .expose();
-        let secret: GenericArray<u8, Lambda> = GenericArray::from_slice(&secret).clone();
-        let lock: GenericArray<u8, Hash::OutputSize> = Hash::digest(&secret);
-        Revocation {
-            lock: RevocationLock(lock),
-            secret: RevocationSecret(secret),
-        }
-    }
-
-    /// Get a reference to the revocation lock. This method may be called many times, unlike
-    /// [`Revocation::secret`], which consumes `self`.
-    pub fn lock(&self) -> &RevocationLock<Hash> {
-        &self.lock
-    }
-
-    /// Reveal the revocation secret. This method consumes `self` to ensure that the caller
-    /// cannot re-use the revocation lock after revealing the secret.
-    pub fn secret(self) -> RevocationSecret<Lambda> {
-        self.secret
     }
 }
 
@@ -109,9 +56,9 @@ pub mod channel {
         }
     }
 
-    pub struct State<Lambda: ArrayLength<u8>, Hash: Digest, Chain: chain::Chain> {
+    pub struct State<SecurityParameter: ArrayLength<u8>, Hash: Digest, Chain: chain::Chain> {
         channel_id: Chain::ChannelId,
-        nonce: Nonce<Lambda>,
+        nonce: Nonce<SecurityParameter>,
         revocation_lock: RevocationLock<Hash>,
         merchant_balance: Chain::Currency,
         customer_balance: Chain::Currency,
@@ -137,13 +84,13 @@ pub mod channel {
     }
 
     impl<'random> Connected<'random> {
-        pub async fn initialize<Lambda, Hash: Digest, Chain: chain::Chain>(
+        pub async fn initialize<SecurityParameter, Hash: Digest, Chain: chain::Chain>(
             mut self,
             customer_escrow: Chain::Currency,
-        ) -> Result<Initialized<'random, Lambda, Hash, Chain>, Error>
+        ) -> Result<Initialized<'random, SecurityParameter, Hash, Chain>, Error>
         where
-            Lambda: ArrayLength<u8, ArrayType = [u8]>,
-            Lambda::ArrayType: ring::rand::RandomlyConstructable,
+            SecurityParameter: ArrayLength<u8, ArrayType = [u8]>,
+            SecurityParameter::ArrayType: ring::rand::RandomlyConstructable,
         {
             // Generate the initial cryptographic material for the channel
             let nonce = Nonce::new(self.rng);
@@ -238,19 +185,24 @@ pub mod channel {
         }
     }
 
-    pub struct Initialized<'random, Lambda: ArrayLength<u8>, Hash: Digest, Chain: chain::Chain> {
+    pub struct Initialized<
+        'random,
+        SecurityParameter: ArrayLength<u8>,
+        Hash: Digest,
+        Chain: chain::Chain,
+    > {
         rng: &'random dyn SecureRandom,
         merchant: MerchantClient,
         establish: StreamingMethod<establish::Request, establish::Reply>,
         customer_balance: Chain::Currency,
         merchant_balance: Chain::Currency,
-        nonce: Nonce<Lambda>,
+        nonce: Nonce<SecurityParameter>,
         public_key: Chain::ChannelPublicKey,
         private_key: Chain::ChannelPrivateKey,
-        revocation: Revocation<Lambda, Hash>,
+        revocation: Revocation<SecurityParameter, Hash>,
     }
 
-    // impl<'random, Lambda, Hash, Chain: chain::Chain> Initialized<'random, Lambda, Hash, Chain> {
+    // impl<'random, SecurityParameter, Hash, Chain: chain::Chain> Initialized<'random, SecurityParameter, Hash, Chain> {
     //     pub async fn escrow(mut self) -> Result<Escrowed<'random>, Error> {
     //         // Request that the merchant begin the escrow protocol
     //         if self
