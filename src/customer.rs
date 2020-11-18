@@ -8,26 +8,30 @@ use tokio::sync::mpsc;
 use tonic::transport::{self, Channel, Endpoint};
 use tonic::{Request, Response};
 
-use crate::chain;
+use crate::amount::Amount;
+use crate::chain::{Arbiter, SignatureScheme};
 use crate::revocation::{Revocation, RevocationLock, RevocationSecret};
 
-pub struct Nonce<SecurityParameter: ArrayLength<u8>>(GenericArray<u8, SecurityParameter>);
+pub struct Nonce<Length: ArrayLength<u8>>(GenericArray<u8, Length>);
 
-impl<SecurityParameter> Nonce<SecurityParameter>
+impl<Length> Nonce<Length>
 where
-    SecurityParameter::ArrayType: ring::rand::RandomlyConstructable,
-    SecurityParameter: ArrayLength<u8, ArrayType = [u8]>,
+    Length: ArrayLength<u8>,
 {
     /// Create a new random nonce with `SecurityParameter` bytes of entropy.
-    pub fn new(rng: &dyn SecureRandom) -> Nonce<SecurityParameter> {
-        let nonce: SecurityParameter::ArrayType = ring::rand::generate(rng)
-            .expect("Random generation failed.")
-            .expose();
-        Nonce(GenericArray::from_slice(&nonce).clone())
+    pub fn new(rng: &dyn SecureRandom) -> Nonce<Length> {
+        // Generate a random nonce of the appropriate length (inferred from type)
+        let mut vec = vec![0; Length::to_usize()];
+        rng.fill(&mut vec)
+            .expect("Error generating randomness in Nonce::new()");
+
+        // Convert it into a generic array
+        let nonce = GenericArray::from_exact_iter(vec).expect("Length mismatch in Nonce::new()");
+        Nonce(nonce)
     }
 
     /// Reveal the random nonce, consuming `self` to prevent accidental re-use once revealed.
-    pub fn reveal(self) -> GenericArray<u8, SecurityParameter> {
+    pub fn reveal(self) -> GenericArray<u8, Length> {
         self.0
     }
 }
@@ -56,12 +60,12 @@ pub mod channel {
         }
     }
 
-    pub struct State<SecurityParameter: ArrayLength<u8>, Hash: Digest, Chain: chain::Chain> {
-        channel_id: Chain::ChannelId,
-        nonce: Nonce<SecurityParameter>,
-        revocation_lock: RevocationLock<Hash>,
-        merchant_balance: Chain::Currency,
-        customer_balance: Chain::Currency,
+    pub struct State<NonceLength: ArrayLength<u8>, J: Arbiter> {
+        channel_id: J::ChannelId,
+        nonce: Nonce<NonceLength>,
+        revocation_lock: RevocationLock<J>,
+        merchant_balance: Amount<J::TransactionCurrency>,
+        customer_balance: Amount<J::TransactionCurrency>,
     }
 
     pub async fn connect<'random, D>(
@@ -84,17 +88,13 @@ pub mod channel {
     }
 
     impl<'random> Connected<'random> {
-        pub async fn initialize<SecurityParameter, Hash: Digest, Chain: chain::Chain>(
+        pub async fn initialize<NonceLength: ArrayLength<u8>, J: Arbiter>(
             mut self,
-            customer_escrow: Chain::Currency,
-        ) -> Result<Initialized<'random, SecurityParameter, Hash, Chain>, Error>
-        where
-            SecurityParameter: ArrayLength<u8, ArrayType = [u8]>,
-            SecurityParameter::ArrayType: ring::rand::RandomlyConstructable,
-        {
+            customer_escrow: Amount<J::TransactionCurrency>,
+        ) -> Result<Initialized<'random, NonceLength, J>, Error> {
             // Generate the initial cryptographic material for the channel
             let nonce = Nonce::new(self.rng);
-            let (public_key, private_key) = Chain::channel_keypair(self.rng);
+            let (public_key, private_key) = J::TransactionSignatureScheme::key_pair(self.rng);
             let revocation = Revocation::new(self.rng);
 
             // Set up bidirectional channels over gRPC to the merchant for the Establish protocol
@@ -108,7 +108,7 @@ pub mod channel {
                             channel_public_key: public_key.clone().into(),
                             revocation_lock: revocation.lock().as_slice().into(),
                             nonce: nonce.0.to_vec(),
-                            customer_balance: customer_escrow.clone().into(),
+                            customer_balance: customer_escrow.into(),
                         },
                     )),
                 })
@@ -185,21 +185,22 @@ pub mod channel {
         }
     }
 
-    pub struct Initialized<
-        'random,
-        SecurityParameter: ArrayLength<u8>,
-        Hash: Digest,
-        Chain: chain::Chain,
-    > {
+    pub struct Initialized<'random, NonceLength: ArrayLength<u8>, J: Arbiter> {
         rng: &'random dyn SecureRandom,
         merchant: MerchantClient,
         establish: StreamingMethod<establish::Request, establish::Reply>,
-        customer_balance: Chain::Currency,
-        merchant_balance: Chain::Currency,
-        nonce: Nonce<SecurityParameter>,
-        public_key: Chain::ChannelPublicKey,
-        private_key: Chain::ChannelPrivateKey,
-        revocation: Revocation<SecurityParameter, Hash>,
+        customer_balance: Amount<J::TransactionCurrency>,
+        merchant_balance: Amount<J::TransactionCurrency>,
+        nonce: Nonce<NonceLength>,
+        public_key: <J::TransactionSignatureScheme as SignatureScheme<
+            J::SignatureSchemeSecurityParameter,
+            [u8],
+        >>::PublicKey,
+        private_key: <J::TransactionSignatureScheme as SignatureScheme<
+            J::SignatureSchemeSecurityParameter,
+            [u8],
+        >>::PrivateKey,
+        revocation: Revocation<J>,
     }
 
     // impl<'random, SecurityParameter, Hash, Chain: chain::Chain> Initialized<'random, SecurityParameter, Hash, Chain> {

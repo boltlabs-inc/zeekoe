@@ -11,11 +11,11 @@ name = "zeekoe"
 path = "src/lib.rs"
 
 [[bin]]
-name = "zeekoe-customer"
+name = "zeekoe-client"
 path = "src/bin/customer/main.rs"
 
 [[bin]]
-name = "zeekoe-merchant"
+name = "zeekoe-server"
 path = "src/bin/merchant/main.rs"
 
 [dependencies]

@@ -2,56 +2,14 @@ use crate::{customer, wire::establish};
 use ring::rand::SecureRandom;
 use std::convert::TryFrom;
 use std::fmt::Debug;
+use std::fmt::Display;
+use std::marker::PhantomData;
+use std::ops::{Add, Mul, Sub};
 
+use crate::amount::{Amount, Currency};
 use crate::revocation::RevocationLock;
 
 pub struct InvalidClosingAuthorization;
-
-pub struct InvalidCurrencyAmount(u64);
-
-/// The set of all types and operations necessary to define a backend blockchain for a zkchannels
-/// instantiation.
-pub trait Chain
-where
-    Self::ChannelId: Debug + Clone,
-    Self::ChannelPublicKey: Clone + Into<Vec<u8>>,
-    Self::ChannelPrivateKey: Clone + Into<Vec<u8>>,
-    Self::ClosingAuthorization: Clone + TryFrom<Vec<u8>, Error = InvalidClosingAuthorization>,
-    Self::EscrowAuthorization: Clone + Into<Vec<u8>>,
-    Self::ExpiryAuthorization: Clone + Into<Vec<u8>>,
-    Self::Currency: Clone + Into<u64> + TryFrom<u64, Error = InvalidCurrencyAmount>,
-{
-    /// The channel identifier for this blockchain backend.
-    type ChannelId;
-    /// The type for on-chain public keys used on this blockchain.
-    type ChannelPublicKey;
-    /// The type for on-chain private keys used on this blockchain.
-    type ChannelPrivateKey;
-    /// The type for revocation locks used on this blockchain.
-    type ClosingAuthorization;
-    /// The type of escrow authorization signatures on this blockchain.
-    type EscrowAuthorization;
-    /// The type of expiry authorization signatures (if any) on this blockchain.
-    type ExpiryAuthorization;
-    /// The type of currency on this blockchain.
-    type Currency;
-
-    /// The maximum representable amount of money on the blockchain.
-    const MAX_CURRENCY: Self::Currency;
-
-    /// A zero amount of money on the blockchain.
-    const ZERO_CURRENCY: Self::Currency;
-
-    /// Generate a fresh random channel keypair for this blockchain.
-    fn channel_keypair(rng: &dyn SecureRandom)
-        -> (Self::ChannelPublicKey, Self::ChannelPrivateKey);
-
-    fn customer_escrow(
-        &mut self,
-        // TODO: fill in the rest of the parameters here
-        establish: customer::channel::StreamingMethod<establish::Request, establish::Reply>,
-    ) -> Result<(), customer::channel::Error>;
-}
 
 pub trait Arbiter {
     /// The channel identifier for this payment network.
@@ -62,4 +20,36 @@ pub trait Arbiter {
 
     /// The security parameter used for revocation locks on this payment network.
     type RevocationSecurityParameter: generic_array::ArrayLength<u8>;
+
+    /// The security parameter used for the signature scheme.
+    type SignatureSchemeSecurityParameter: generic_array::ArrayLength<u8>;
+
+    /// The currency used on this payment network.
+    type TransactionCurrency: Currency;
+
+    /// The signature scheme used for signing transactions on this network.
+    type TransactionSignatureScheme: SignatureScheme<Self::SignatureSchemeSecurityParameter, [u8]>;
+}
+
+pub trait SignatureScheme<SecurityParameter: generic_array::ArrayLength<u8>, T>
+where
+    T: ?Sized,
+{
+    /// The public key for the signature scheme.
+    type PublicKey: Clone + Into<Vec<u8>>;
+
+    /// The private key for the signature scheme.
+    type PrivateKey: Clone;
+
+    /// The type of a signature.
+    type Signature;
+
+    /// Generate a new fresh pair of private and public keys.
+    fn key_pair(rng: &dyn SecureRandom) -> (Self::PublicKey, Self::PrivateKey);
+
+    /// Sign some data and produce a signature for it which can be verified later.
+    fn sign(private_key: &Self::PrivateKey, rng: &dyn SecureRandom, data: &T) -> Self::Signature;
+
+    /// Check that a signature matchers some given data.
+    fn verify(public_key: &Self::PublicKey, signature: &Self::Signature, data: &T) -> bool;
 }
