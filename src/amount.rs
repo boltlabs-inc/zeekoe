@@ -1,8 +1,10 @@
+use num::traits::{CheckedAdd, CheckedSub, One};
 use std::convert::TryFrom;
+use std::convert::TryInto;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::marker::PhantomData;
-use std::ops::{Add, Mul, Sub};
+use std::ops::{Add, Sub};
 
 /// A trait for defining currencies. There is no need to have a value-level object corresponding to
 /// a `Currency`, so it's intended that this trait be instantiated on an empty `enum`.
@@ -24,9 +26,9 @@ where
     /// The name of the atomic currency unit in lower-case singular form, e.g. "cent" or "satoshi".
     const UNIT_NAME: &'static str;
 
-    /// How to format an amount of the currency. By default, this has the same behavior as
-    /// `fmt_as_units`.
-    fn fmt_amount(amount: &Amount<Self>, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    /// How to format an amount of the currency. By default, this renders the currency amount as
+    /// something like "100 cents" or "1 satoshi" (handling pluralization automatically).
+    fn fmt_amount(amount: &Amount<Self, u64>, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         amount.fmt_as_units(f)
     }
 }
@@ -39,14 +41,14 @@ impl<C: Currency> Display for Amount<C> {
 
 /// An amount of some currency.
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Copy)]
-pub struct Amount<C> {
+pub struct Amount<C, T = u64> {
     /// The actual number of atomic units of currency.
-    units: u64,
+    units: T,
     /// The currency in question (represented at the type level).
     currency: PhantomData<C>,
 }
 
-impl<C: Currency> Amount<C> {
+impl<C: Currency, T: One + Eq + Display> Amount<C, T> {
     /// This renders the currency amount as something like "100 cents" or "1 satoshi" (handling
     /// pluralization automatically).
     fn fmt_as_units(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -55,57 +57,73 @@ impl<C: Currency> Amount<C> {
             "{} {}{}",
             self.units,
             C::UNIT_NAME,
-            if self.units > 1 { "s" } else { "" }
+            if self.units != T::one() { "s" } else { "" }
         )
     }
-}
 
-impl<C> std::default::Default for Amount<C> {
-    fn default() -> Amount<C> {
+    /// Cast the underlying storage type of an `Amount` so that operations (e.g. addition) will use
+    /// the new storage type. To keep the user from going up a creek without a paddle, this is
+    /// restricted to those types which can at least *try* to be cast back to a `u64`, the default
+    /// backing storage of an `Amount`.
+    pub fn cast<S: From<T> + TryInto<u64>>(self) -> Amount<C, S> {
         Amount {
-            units: 0,
+            units: self.units.into(),
             currency: PhantomData,
         }
     }
 }
 
-impl<C: Currency> Add for Amount<C> {
-    type Output = Result<Amount<C>, UnrepresentableCurrencyAmount<C>>;
+impl<C, T: std::default::Default> std::default::Default for Amount<C, T> {
+    fn default() -> Amount<C, T> {
+        Amount {
+            units: T::default(),
+            currency: PhantomData,
+        }
+    }
+}
 
-    fn add(self, other: Amount<C>) -> Self::Output {
-        let sum = match self.units.checked_add(other.units) {
-            None => Err(UnrepresentableCurrencyAmount::Overflow)?,
+impl<C: Currency, T: CheckedAdd + Ord + From<u64> + TryInto<u64>> Add for Amount<C, T> {
+    type Output = Result<Amount<C, T>, CurrencyError<C>>;
+
+    fn add(self, other: Amount<C, T>) -> Self::Output {
+        let sum = match self.units.checked_add(&other.units) {
+            None => Err(CurrencyError::Overflow)?,
             Some(sum) => sum,
         };
-        if sum <= C::MAXIMUM {
+        if sum <= C::MAXIMUM.into() {
             Ok(Amount {
                 units: sum,
                 currency: PhantomData,
             })
         } else {
-            Err(UnrepresentableCurrencyAmount::AboveMaximum {
-                units: sum,
-                currency: PhantomData,
+            Err(match sum.try_into() {
+                Ok(sum) => CurrencyError::AboveMaximum {
+                    units: sum,
+                    currency: PhantomData,
+                },
+                Err(_) => CurrencyError::Overflow,
             })
         }
     }
 }
 
-impl<C: Currency> Sub for Amount<C> {
-    type Output = Option<Amount<C>>;
+impl<C: Currency, T: CheckedSub> Sub for Amount<C, T> {
+    type Output = Result<Amount<C, T>, CurrencyError<C>>;
 
-    fn sub(self, other: Amount<C>) -> Option<Amount<C>> {
-        let diff = self.units.checked_sub(other.units)?;
-        Some(Amount {
+    fn sub(self, other: Amount<C, T>) -> Result<Amount<C, T>, CurrencyError<C>> {
+        let diff = match self.units.checked_sub(&other.units) {
+            None => Err(CurrencyError::Underflow)?,
+            Some(diff) => diff,
+        };
+        Ok(Amount {
             units: diff,
             currency: PhantomData,
         })
     }
 }
-
 #[derive(Clone, Copy)]
 /// An error indicating that an amount of currency was not representable in a given currency.
-pub enum UnrepresentableCurrencyAmount<C> {
+pub enum CurrencyError<C> {
     AboveMaximum {
         units: u64,
         currency: PhantomData<C>,
@@ -114,28 +132,24 @@ pub enum UnrepresentableCurrencyAmount<C> {
     Underflow,
 }
 
-impl<C> std::fmt::Debug for UnrepresentableCurrencyAmount<C> {
+impl<C> std::fmt::Debug for CurrencyError<C> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            UnrepresentableCurrencyAmount::AboveMaximum { units, .. } => f
-                .debug_struct("UnrepresentableCurrencyAmount::AboveMaximum")
+            CurrencyError::AboveMaximum { units, .. } => f
+                .debug_struct("CurrencyError::AboveMaximum")
                 .field("amount", &units)
                 .field("currency", &PhantomData::<C>)
                 .finish(),
-            UnrepresentableCurrencyAmount::Overflow => f
-                .debug_struct("UnrepresentableCurrencyAmount::Overflow")
-                .finish(),
-            UnrepresentableCurrencyAmount::Underflow => f
-                .debug_struct("UnrepresentableCurrencyAmount::Underflow")
-                .finish(),
+            CurrencyError::Overflow => f.debug_struct("CurrencyError::Overflow").finish(),
+            CurrencyError::Underflow => f.debug_struct("CurrencyError::Underflow").finish(),
         }
     }
 }
 
-impl<C: Currency> std::fmt::Display for UnrepresentableCurrencyAmount<C> {
+impl<C: Currency> std::fmt::Display for CurrencyError<C> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            UnrepresentableCurrencyAmount::AboveMaximum { units, .. } => {
+            CurrencyError::AboveMaximum { units, .. } => {
                 write!(
                 f,
                 "Currency amount {} is higher than the maximum representable amount for {}s ({})",
@@ -144,30 +158,27 @@ impl<C: Currency> std::fmt::Display for UnrepresentableCurrencyAmount<C> {
                 Amount { units: C::MAXIMUM, currency: PhantomData::<C> },
             )
             }
-            UnrepresentableCurrencyAmount::Overflow => {
+            CurrencyError::Overflow => {
                 write!(f, "Currency overflow: beyond bounds of u64")
             }
-            UnrepresentableCurrencyAmount::Underflow => write!(f, "Currency underflow: below zero"),
+            CurrencyError::Underflow => write!(f, "Currency underflow: below zero"),
         }
     }
 }
 
-impl<C: Currency> std::error::Error for UnrepresentableCurrencyAmount<C> where Amount<C>: Display {}
+impl<C: Currency> std::error::Error for CurrencyError<C> {}
 
-impl<C: Currency> TryFrom<u64> for Amount<C>
-where
-    Amount<C>: Display,
-{
-    type Error = UnrepresentableCurrencyAmount<C>;
+impl<C: Currency> TryFrom<u64> for Amount<C, u64> {
+    type Error = CurrencyError<C>;
 
-    fn try_from(units: u64) -> Result<Amount<C>, UnrepresentableCurrencyAmount<C>> {
+    fn try_from(units: u64) -> Result<Amount<C>, CurrencyError<C>> {
         if units <= C::MAXIMUM {
             Ok(Amount {
                 units,
                 currency: PhantomData,
             })
         } else {
-            Err(UnrepresentableCurrencyAmount::AboveMaximum {
+            Err(CurrencyError::AboveMaximum {
                 units,
                 currency: PhantomData,
             })
@@ -175,11 +186,8 @@ where
     }
 }
 
-impl<C: Currency> Into<u64> for Amount<C>
-where
-    Amount<C>: Display,
-{
+impl<C: Currency, T: Into<u64>> Into<u64> for Amount<C, T> {
     fn into(self) -> u64 {
-        self.units
+        self.units.into()
     }
 }

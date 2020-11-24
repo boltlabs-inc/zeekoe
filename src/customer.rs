@@ -12,6 +12,13 @@ use crate::amount::Amount;
 use crate::chain::{Arbiter, SignatureScheme};
 use crate::revocation::{Revocation, RevocationLock, RevocationSecret};
 
+fn random_bytes<Length: ArrayLength<u8>>(rng: &dyn SecureRandom) -> GenericArray<u8, Length> {
+    let mut vec = vec![0; Length::to_usize()];
+    rng.fill(&mut vec)
+        .expect("Error generating randomness in random_bytes()");
+    GenericArray::from_exact_iter(vec).expect("Impossible length mismatch in random_bytes()")
+}
+
 pub struct Nonce<Length: ArrayLength<u8>>(GenericArray<u8, Length>);
 
 impl<Length> Nonce<Length>
@@ -20,14 +27,7 @@ where
 {
     /// Create a new random nonce with `SecurityParameter` bytes of entropy.
     pub fn new(rng: &dyn SecureRandom) -> Nonce<Length> {
-        // Generate a random nonce of the appropriate length (inferred from type)
-        let mut vec = vec![0; Length::to_usize()];
-        rng.fill(&mut vec)
-            .expect("Error generating randomness in Nonce::new()");
-
-        // Convert it into a generic array
-        let nonce = GenericArray::from_exact_iter(vec).expect("Length mismatch in Nonce::new()");
-        Nonce(nonce)
+        Nonce(random_bytes(rng))
     }
 
     /// Reveal the random nonce, consuming `self` to prevent accidental re-use once revealed.
@@ -144,7 +144,8 @@ pub mod channel {
 
     /// An active connection to a bidirectionally streaming method. This wraps a call to a
     /// gRPC method with an input and output stream so that one can `send` and `recv` from
-    /// it like any other bidirectional streaming connection.  
+    /// it like any other bidirectional streaming connection.
+    #[derive(Debug)]
     pub struct StreamingMethod<Request, Reply> {
         requests: tokio::sync::mpsc::Sender<Request>,
         replies: tonic::Streaming<Reply>,
