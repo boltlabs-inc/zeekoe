@@ -1,9 +1,12 @@
 {
     "cSpell.words": [
         "Unrepresentable",
+        "bincode",
         "codegen",
         "keypair",
         "tezos",
+        "thiserror",
+        "typenum",
         "zcash"
     ]
 }
