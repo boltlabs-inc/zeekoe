@@ -4,6 +4,7 @@ use ring::rand::SecureRandom;
 use sha2::Digest;
 
 use crate::chain::Arbiter;
+use crate::util::*;
 
 #[derive(Debug, Clone)]
 pub struct RevocationLock<J: Arbiter>(GenericArray<u8, <J::RevocationHash as Digest>::OutputSize>);
@@ -20,7 +21,8 @@ impl<J: Arbiter> RevocationLock<J> {
     }
 }
 
-/// A revocation secret is
+/// A revocation secret is a randomly generated token used to prove that the previously-released
+/// revocation lock corresponded to it.
 #[derive(Debug, Clone)]
 pub struct RevocationSecret<J: Arbiter>(GenericArray<u8, J::RevocationSecurityParameter>);
 
@@ -47,11 +49,7 @@ impl<J: Arbiter> Revocation<J> {
     pub fn new(rng: &dyn SecureRandom) -> Revocation<J> {
         // Generate a random secret of the appropriate length (inferred from the revocation security
         // parameter defined in `J`)
-        let mut secret = vec![0; J::RevocationSecurityParameter::to_usize()];
-        rng.fill(&mut secret)
-            .expect("Error generating randomness in Revocation::new()");
-        let secret: GenericArray<u8, J::RevocationSecurityParameter> =
-            GenericArray::from_exact_iter(secret).expect("Length mismatch in Revocation::new()");
+        let secret = random_bytes(rng);
 
         // Take its hash to compute the revocation lock
         let lock = J::RevocationHash::digest(secret.as_slice());

@@ -1,4 +1,4 @@
-use crate::{customer, wire::establish};
+use crate::customer;
 use ring::rand::SecureRandom;
 use std::convert::TryFrom;
 use std::fmt::Debug;
@@ -11,6 +11,7 @@ use crate::revocation::RevocationLock;
 
 pub struct InvalidClosingAuthorization;
 
+#[tonic::async_trait]
 pub trait Arbiter {
     /// The channel identifier for this payment network.
     type ChannelId: Debug + Clone;
@@ -28,7 +29,37 @@ pub trait Arbiter {
     type TransactionCurrency: Currency;
 
     /// The signature scheme used for signing transactions on this network.
-    type TransactionSignatureScheme: SignatureScheme<Self::SignatureSchemeSecurityParameter, [u8]>;
+    type ClosingSignatureScheme: SignatureScheme<
+        Self::SignatureSchemeSecurityParameter,
+        Self::ClosingAuthorization,
+    >;
+
+    /// The type of customer-chosen auxiliary information necessary to form the (escrow, expiry,
+    /// close) transaction tuple.
+    type CustomerEscrowInfo;
+
+    /// The type of merchant-chosen auxiliary information necessary to form the (escrow, expiry,
+    /// close) transaction tuple.
+    type MerchantEscrowInfo;
+
+    /// The type of closing authorization messages, which contain the data needed by the customer to
+    /// close the channel on a particular state. This must contain at least that state (minus nonce)
+    /// in some form.
+    type ClosingAuthorization;
+
+    /// Construct an escrow transaction (this is done by the merchant, in our protocol).
+    async fn escrow_transaction(
+        merchant_public_key: &<Self::ClosingSignatureScheme as SignatureScheme<
+            Self::SignatureSchemeSecurityParameter,
+            Self::ClosingAuthorization,
+        >>::PublicKey,
+        customer_public_key: &<Self::ClosingSignatureScheme as SignatureScheme<
+            Self::SignatureSchemeSecurityParameter,
+            Self::ClosingAuthorization,
+        >>::PublicKey,
+        merchant_balance: Amount<Self::TransactionCurrency, u64>,
+        customer_balance: Amount<Self::TransactionCurrency, u64>,
+    );
 }
 
 pub trait SignatureScheme<SecurityParameter: generic_array::ArrayLength<u8>, T>
