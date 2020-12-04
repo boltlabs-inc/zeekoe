@@ -4,9 +4,11 @@
         "bincode",
         "codegen",
         "keypair",
+        "peano",
         "tezos",
         "thiserror",
         "typenum",
+        "unsplit",
         "zcash"
     ]
 }
