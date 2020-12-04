@@ -1434,6 +1434,7 @@ dependencies = [
 name = "zeekoe"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "bincode",
  "digest",
  "futures",
@@ -1447,4 +1448,5 @@ dependencies = [
  "tokio",
  "tonic",
  "tonic-build",
+ "typenum",
 ]

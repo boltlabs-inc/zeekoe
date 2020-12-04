@@ -1,13 +1,7 @@
-use crate::customer;
 use ring::rand::SecureRandom;
-use std::convert::TryFrom;
 use std::fmt::Debug;
-use std::fmt::Display;
-use std::marker::PhantomData;
-use std::ops::{Add, Mul, Sub};
 
 use crate::amount::{Amount, Currency};
-use crate::revocation::RevocationLock;
 
 pub struct InvalidClosingAuthorization;
 

@@ -1,4 +1,3 @@
-use generic_array::typenum::Unsigned;
 use generic_array::GenericArray;
 use ring::rand::SecureRandom;
 use sha2::Digest;
