@@ -2,9 +2,10 @@ use crate::wire::dynamic::raw::*;
 use futures::Future;
 use serde::{Deserialize, Serialize};
 use std::convert::TryInto;
+use std::pin::Pin;
 use thiserror::Error;
 
-use dialectic::{Receive, Transmit};
+use dialectic::{Receive, Ref, Transmit, Val};
 
 mod raw {
     tonic::include_proto!("wire");
@@ -49,23 +50,33 @@ pub mod server {
     #[derive(Debug)]
     pub struct ToClient(tokio::sync::mpsc::Sender<Result<Reply, tonic::Status>>);
 
-    #[tonic::async_trait]
-    impl<T: Serialize + Sync> Transmit<T> for ToClient {
+    impl<'a, T: Serialize + Sync + 'a> Transmit<'a, T, Ref> for ToClient {
         type Error = Error;
+        type Future = Pin<Box<dyn Future<Output = Result<(), Self::Error>> + Send + 'static>>;
 
-        async fn send(&mut self, message: &T) -> Result<(), Self::Error> {
-            if self
-                .0
-                .send(Ok(Reply {
-                    reply: bincode::serialize(message)?,
-                }))
-                .await
-                .is_err()
-            {
-                Err(Error::Disconnected)
-            } else {
-                Ok(())
+        fn send(&mut self, message: &'a T) -> Self::Future {
+            match bincode::serialize(message) {
+                Err(err) => Box::pin(async { Err(err.into()) }),
+                Ok(reply) => {
+                    let mut tx = self.0.clone();
+                    Box::pin(async move {
+                        if tx.send(Ok(Reply { reply })).await.is_err() {
+                            Err(Error::Disconnected)
+                        } else {
+                            Ok(())
+                        }
+                    })
+                }
             }
+        }
+    }
+
+    impl<'a, T: Send + Sync + Serialize + 'a> Transmit<'a, T, Val> for ToClient {
+        type Error = Error;
+        type Future = <ToClient as Transmit<'a, T, Ref>>::Future;
+
+        fn send(&mut self, message: T) -> Self::Future {
+            <ToClient as Transmit<'_, T, Ref>>::send(self, &message)
         }
     }
 
@@ -140,23 +151,33 @@ pub mod client {
         Ok((ToServer(requests), FromServer(replies)))
     }
 
-    #[tonic::async_trait]
-    impl<T: Serialize + Sync> Transmit<T> for ToServer {
+    impl<'a, T: Serialize + Sync + 'a> Transmit<'a, T, Ref> for ToServer {
         type Error = Error;
+        type Future = Pin<Box<dyn Future<Output = Result<(), Self::Error>> + Send + 'static>>;
 
-        async fn send(&mut self, message: &T) -> Result<(), Self::Error> {
-            if self
-                .0
-                .send(Request {
-                    request: bincode::serialize(&message)?,
-                })
-                .await
-                .is_err()
-            {
-                Err(Error::Disconnected)
-            } else {
-                Ok(())
+        fn send(&mut self, message: &'a T) -> Self::Future {
+            match bincode::serialize(message) {
+                Err(err) => Box::pin(async { Err(err.into()) }),
+                Ok(request) => {
+                    let mut tx = self.0.clone();
+                    Box::pin(async move {
+                        if tx.send(Request { request }).await.is_err() {
+                            Err(Error::Disconnected)
+                        } else {
+                            Ok(())
+                        }
+                    })
+                }
             }
+        }
+    }
+
+    impl<'a, T: Send + Sync + Serialize + 'a> Transmit<'a, T, Val> for ToServer {
+        type Error = Error;
+        type Future = <ToServer as Transmit<'a, T, Ref>>::Future;
+
+        fn send(&mut self, message: T) -> Self::Future {
+            <ToServer as Transmit<'_, T, Ref>>::send(self, &message)
         }
     }
 

@@ -1,4 +1,5 @@
-use dialectic::{offer, types::*, Chan};
+#![allow(unused)]
+use dialectic::{for_, loop_, offer, types::*, Chan, Ref, Val};
 use tonic::transport::Server;
 use zeekoe::wire::dynamic::{self, server};
 
@@ -9,29 +10,36 @@ use zeekoe::wire::dynamic::{self, server};
 //     }
 // }
 
-// type EchoServer = Loop<Recv<String, Send<String, Recur>>>;
+type EchoServer = Loop<Recv<String, Choose<(Send<String, Recur>, (End, ()))>>>;
 
-// async fn echo_typed(
-//     mut tx: server::ToClient,
-//     mut rx: server::FromClient,
-// ) -> Result<(), dynamic::Error> {
-//     let chan: Chan<_, _, EchoServer> = Chan::new(&mut tx, &mut rx);
-//     let mut chan = chan.enter();
-//     loop {
-//         //let x = "test".to_string();
-//         let (x, c): (String, _) = chan.recv().await?;
-//         let c = c.send(&x).await?;
-//         chan = c.recur();
-//     }
-// }
+async fn echo_server(
+    mut tx: server::ToClient,
+    mut rx: server::FromClient,
+) -> Result<(), dynamic::Error> {
+    let c: Chan<_, _, EchoServer> = Chan::new(&mut tx, &mut rx);
+    let xs: [u8; 3] = [1, 2, 3];
+    for_! { _ in &xs, c =>
+        let (x, c): (String, _) = c.recv().await?;
+        // if x == "\n" {
+        //     break;
+        // } else {
+            let c = c.choose::<Z>().await?;
+            c.send::<Val>(x).await?
+        // }
+    }
+    let (r, c) = c.recv().await?;
+    c.choose::<S<Z>>().await?.close();
+    Ok(())
+}
 
 type IntOrString = Offer<(Send<i64, End>, (Send<String, End>, ()))>;
 
 async fn int_or_string(tx: server::ToClient, rx: server::FromClient) -> Result<(), dynamic::Error> {
     let chan: Chan<_, _, IntOrString> = Chan::new(tx, rx);
     offer!(chan =>
-        chan.send(&1).await?,
-        chan.send(&"test".to_string()).await?,
+        chan.send::<Val>(1).await?,
+        chan.send::<Ref>(&"test".to_string()).await?,
+        ? => panic!(),
     )
     .close();
     Ok(())
@@ -42,7 +50,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = "[::1]:50051".parse()?;
 
     Server::builder()
-        .add_service(dynamic::server::DynamicServer::new(int_or_string))
+        .add_service(dynamic::server::DynamicServer::new(echo_server))
         .serve(addr)
         .await?;
 
