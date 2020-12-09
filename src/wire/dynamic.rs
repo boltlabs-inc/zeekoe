@@ -50,6 +50,7 @@ pub mod server {
     #[derive(Debug)]
     pub struct ToClient(tokio::sync::mpsc::Sender<Result<Reply, tonic::Status>>);
 
+    // The primary way a `ToClient` sends things is by serializing a reference.
     impl<'a, T: Serialize + Sync + 'a> Transmit<'a, T, Ref> for ToClient {
         type Error = Error;
         type Future = Pin<Box<dyn Future<Output = Result<(), Self::Error>> + Send + 'static>>;
@@ -71,6 +72,7 @@ pub mod server {
         }
     }
 
+    // Sending a value delegates to the impl for sending a reference.
     impl<'a, T: Send + Sync + Serialize + 'a> Transmit<'a, T, Val> for ToClient {
         type Error = Error;
         type Future = <ToClient as Transmit<'a, T, Ref>>::Future;
@@ -151,6 +153,7 @@ pub mod client {
         Ok((ToServer(requests), FromServer(replies)))
     }
 
+    // The primary way a `ToClient` sends things is by serializing a reference.
     impl<'a, T: Serialize + Sync + 'a> Transmit<'a, T, Ref> for ToServer {
         type Error = Error;
         type Future = Pin<Box<dyn Future<Output = Result<(), Self::Error>> + Send + 'static>>;
@@ -172,6 +175,7 @@ pub mod client {
         }
     }
 
+    // Sending a value delegates to the impl for sending a reference.
     impl<'a, T: Send + Sync + Serialize + 'a> Transmit<'a, T, Val> for ToServer {
         type Error = Error;
         type Future = <ToServer as Transmit<'a, T, Ref>>::Future;
