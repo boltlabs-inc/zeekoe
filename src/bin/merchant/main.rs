@@ -1,5 +1,5 @@
 #![allow(unused)]
-use dialectic::{for_, loop_, offer, types::*, Chan, Ref, Val};
+use dialectic::{for_, loop_, offer, types::*, Chan, NewSession, Ref, Val};
 use tonic::transport::Server;
 use zeekoe::wire::dynamic::{self, server};
 
@@ -16,9 +16,9 @@ async fn echo_server(
     mut tx: server::ToClient,
     mut rx: server::FromClient,
 ) -> Result<(), dynamic::Error> {
-    let c: Chan<_, _, EchoServer> = Chan::new(&mut tx, &mut rx);
+    let c = EchoServer::wrap(&mut tx, &mut rx);
     let xs: [u8; 3] = [1, 2, 3];
-    for_! { _ in &xs, c =>
+    let c = for_! { _ in &xs, c =>
         let (x, c): (String, _) = c.recv().await?;
         // if x == "\n" {
         //     break;
@@ -26,7 +26,7 @@ async fn echo_server(
             let c = c.choose::<Z>().await?;
             c.send::<Val>(x).await?
         // }
-    }
+    };
     let (r, c) = c.recv().await?;
     c.choose::<S<Z>>().await?.close();
     Ok(())
@@ -35,7 +35,7 @@ async fn echo_server(
 type IntOrString = Offer<(Send<i64, End>, (Send<String, End>, ()))>;
 
 async fn int_or_string(tx: server::ToClient, rx: server::FromClient) -> Result<(), dynamic::Error> {
-    let chan: Chan<_, _, IntOrString> = Chan::new(tx, rx);
+    let chan = IntOrString::wrap(tx, rx);
     offer!(chan =>
         chan.send::<Val>(1).await?,
         chan.send::<Ref>(&"test".to_string()).await?,
