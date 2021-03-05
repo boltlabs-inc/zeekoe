@@ -87,7 +87,7 @@ impl<C: Currency, T: CheckedAdd + Ord + From<u64> + TryInto<u64>> Add for Amount
 
     fn add(self, other: Amount<C, T>) -> Self::Output {
         let sum = match self.units.checked_add(&other.units) {
-            None => Err(CurrencyError::Overflow)?,
+            None => return Err(CurrencyError::Overflow),
             Some(sum) => sum,
         };
         if sum <= C::MAXIMUM.into() {
@@ -112,7 +112,7 @@ impl<C: Currency, T: CheckedSub> Sub for Amount<C, T> {
 
     fn sub(self, other: Amount<C, T>) -> Result<Amount<C, T>, CurrencyError<C>> {
         let diff = match self.units.checked_sub(&other.units) {
-            None => Err(CurrencyError::Underflow)?,
+            None => return Err(CurrencyError::Underflow),
             Some(diff) => diff,
         };
         Ok(Amount {

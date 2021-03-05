@@ -5,7 +5,7 @@ use crate::amount::{Amount, Currency};
 
 pub struct InvalidClosingAuthorization;
 
-#[tonic::async_trait]
+#[async_trait::async_trait]
 pub trait Arbiter {
     /// The channel identifier for this payment network.
     type ChannelId: Debug + Clone;
