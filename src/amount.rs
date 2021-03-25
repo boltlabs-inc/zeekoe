@@ -186,8 +186,8 @@ impl<C: Currency> TryFrom<u64> for Amount<C, u64> {
     }
 }
 
-impl<C: Currency, T: Into<u64>> Into<u64> for Amount<C, T> {
-    fn into(self) -> u64 {
-        self.units.into()
+impl<C: Currency, T: Into<u64>> From<Amount<C, T>> for u64 {
+    fn from(amount: Amount<C, T>) -> u64 {
+        amount.units.into()
     }
 }
