@@ -34,7 +34,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let chan: TlsClientChan<<Ping as Session>::Dual> = connect(config).await?;
 
     // Enact the client `Ping` protocol
-    let chan = chan.send(&"ping".to_string()).await?;
+    let chan = chan.send("ping".to_string()).await?;
     let (response, chan) = chan.recv().await?;
     chan.close();
     println!("{}", response);

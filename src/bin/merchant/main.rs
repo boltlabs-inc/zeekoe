@@ -19,7 +19,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Perform the `Ping` protocol
     let interact = |chan: TlsServerChan<Ping>, permit| async move {
         let (string, chan) = chan.recv().await?;
-        let chan = chan.send(&string).await?;
+        let chan = chan.send(string).await?;
         chan.close();
         drop(permit);
         Ok::<_, anyhow::Error>(())
