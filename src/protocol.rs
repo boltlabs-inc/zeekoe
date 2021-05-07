@@ -24,34 +24,34 @@ type ChooseAbort<Next> = Session! {
 
 pub use pay::Pay;
 
-mod pay {
+pub mod pay {
     use super::*;
 
     /// The full "pay" protocol's session type.
-    pub type Pay = CustomerInit;
+    pub type Pay = CustomerStartPayment;
 
-    type CustomerInit = Session! {
+    pub type CustomerStartPayment = Session! {
         send Nonce;
         send PayProof;
         send RevocationLockCommitment;
         send CloseStateCommitment;
         send StateCommitment;
-        OfferAbort<MerchantValidate>;
+        OfferAbort<MerchantAcceptPayment>;
     };
 
-    type MerchantValidate = Session! {
+    pub type MerchantAcceptPayment = Session! {
         recv CloseStateBlindedSignature;
-        ChooseAbort<CustomerRevoke>;
+        ChooseAbort<CustomerRevokePreviousPayToken>;
     };
 
-    type CustomerRevoke = Session! {
+    pub type CustomerRevokePreviousPayToken = Session! {
         send RevocationLock;
         send RevocationSecret;
         send RevocationLockCommitmentRandomness;
-        OfferAbort<MerchantApprove>;
+        OfferAbort<MerchantIssueNewPayToken>;
     };
 
-    type MerchantApprove = Session! {
+    pub type MerchantIssueNewPayToken = Session! {
         recv BlindedPayToken;
     };
 }
