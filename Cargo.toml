@@ -22,6 +22,7 @@ path = "src/bin/merchant/main.rs"
 allow_explicit_certificate_trust = []
 
 [dependencies]
+libzkchannels-toolkit = { path = "../libzkchannels-crypto/libzkchannels-toolkit" }
 tokio = { version = "1", features = ["full"] }
 tokio-rustls = "0.22"
 anyhow = "1"
