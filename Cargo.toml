@@ -22,7 +22,7 @@ path = "src/bin/merchant/main.rs"
 allow_explicit_certificate_trust = []
 
 [dependencies]
-libzkchannels-toolkit = { path = "../libzkchannels-crypto/libzkchannels-toolkit" }
+libzkchannels-toolkit = { git = "ssh://git@github.com/boltlabs-inc/libzkchannels-crypto.git", branch = "primitives-api" }
 tokio = { version = "1", features = ["full"] }
 tokio-rustls = "0.22"
 anyhow = "1"
