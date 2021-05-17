@@ -2,8 +2,10 @@ use futures::Future;
 use std::{convert::TryInto, pin::Pin, sync::Arc};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
+use dialectic::prelude::*;
+use libzkchannels_toolkit::states::{BlindedPayToken, CloseStateBlindedSignature};
 use zeekoe::{
-    protocol::Ping,
+    protocol::pay::Merchant,
     transport::{read_certificates, read_private_key, serve_while, ServerConfig, TlsServerChan},
 };
 
@@ -16,11 +18,33 @@ async fn main() -> Result<(), anyhow::Error> {
         max_length: 1024 * 8,
     };
 
-    // Perform the `Ping` protocol
-    let interact = |chan: TlsServerChan<Ping>, permit| async move {
-        let (string, chan) = chan.recv().await?;
-        let chan = chan.send(string).await?;
-        chan.close();
+    // Perform the server `Merchant` protocol
+    let interact = |chan: TlsServerChan<Merchant>, permit| async move {
+        let (_nonce, chan) = chan.recv().await?;
+        let (_pay_proof, chan) = chan.recv().await?;
+        let (_revlock_commitment, chan) = chan.recv().await?;
+        let (_close_state_commitment, chan) = chan.recv().await?;
+        let (_state_commitment, chan) = chan.recv().await?;
+        let chan = chan.choose::<1>().await?;
+        let chan = chan.send(CloseStateBlindedSignature).await?;
+
+        offer!(in chan {
+            0 => {
+                println!("Customer aborted pay");
+                chan.close();
+            },
+
+            1 => {
+                let (_revlock, chan) = chan.recv().await?;
+                let (_revsecret, chan) = chan.recv().await?;
+                let (_revlock_blinding_factor, chan) = chan.recv().await?;
+                let chan = chan.choose::<1>().await?;
+                let chan = chan.send(BlindedPayToken()).await?;
+                println!("Merchant completed Pay flow successfully");
+                chan.close();
+            },
+        })?;
+
         drop(permit);
         Ok::<_, anyhow::Error>(())
     };

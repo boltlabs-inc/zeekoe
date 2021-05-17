@@ -22,13 +22,12 @@ type ChooseAbort<Next> = Session! {
 
 // All protocols are from the perspective of the customer.
 
-pub use pay::Pay;
-
 pub mod pay {
     use super::*;
 
     /// The full "pay" protocol's session type.
-    pub type Pay = CustomerStartPayment;
+    pub type Customer = CustomerStartPayment;
+    pub type Merchant = <Customer as Session>::Dual;
 
     pub type CustomerStartPayment = Session! {
         send Nonce;
@@ -47,7 +46,7 @@ pub mod pay {
     pub type CustomerRevokePreviousPayToken = Session! {
         send RevocationLock;
         send RevocationSecret;
-        send RevocationLockCommitmentRandomness;
+        send RevocationLockBlindingFactor;
         OfferAbort<MerchantIssueNewPayToken>;
     };
 

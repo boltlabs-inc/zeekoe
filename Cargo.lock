@@ -387,7 +387,7 @@ checksum = "8916b1f6ca17130ec6568feccee27c156ad12037880833a3b842a823236502e7"
 [[package]]
 name = "libzkchannels-crypto"
 version = "0.1.0"
-source = "git+ssh://git@github.com/boltlabs-inc/libzkchannels-crypto.git?branch=primitives-api#6aba0082ddafed2844fc8ee8745c87261f6c3826"
+source = "git+ssh://git@github.com/boltlabs-inc/libzkchannels-crypto.git?branch=primitives-api-placeholder#6eae60e817dc4da74c0f002974945fa5f1b47e69"
 dependencies = [
  "bls12_381",
  "ff",
@@ -399,7 +399,7 @@ dependencies = [
 [[package]]
 name = "libzkchannels-toolkit"
 version = "0.1.0"
-source = "git+ssh://git@github.com/boltlabs-inc/libzkchannels-crypto.git?branch=primitives-api#6aba0082ddafed2844fc8ee8745c87261f6c3826"
+source = "git+ssh://git@github.com/boltlabs-inc/libzkchannels-crypto.git?branch=primitives-api-placeholder#6eae60e817dc4da74c0f002974945fa5f1b47e69"
 dependencies = [
  "bls12_381",
  "libzkchannels-crypto",
