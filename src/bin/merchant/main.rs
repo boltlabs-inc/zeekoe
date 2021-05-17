@@ -10,8 +10,8 @@ use zeekoe::{
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     let config = ServerConfig {
-        private_key: read_private_key("localhost.key")?,
-        certificate_chain: read_certificates("localhost.crt")?,
+        private_key: read_private_key("dev/localhost.key")?,
+        certificate_chain: read_certificates("dev/localhost.crt")?,
         address: ([127, 0, 0, 1], 8080).try_into()?,
         max_length: 1024 * 8,
     };
