@@ -5,7 +5,7 @@ use dialectic::prelude::*;
 
 use zeekoe::{
     protocol::Ping,
-    transport::{connect, read_single_certificate, ClientConfig, TlsClientChan},
+    transport::{connect, read_single_certificate, ClientChan, ClientConfig},
 };
 
 #[tokio::main]
@@ -15,6 +15,7 @@ async fn main() -> Result<(), anyhow::Error> {
         domain: DNSNameRef::try_from_ascii_str("localhost")?.to_owned(),
         port: 8080,
         max_length: 1024 * 8,
+        length_field_bytes: 4,
         #[cfg(feature = "allow_explicit_certificate_trust")]
         trust_explicit_certificate: if let Ok(path_string) =
             env::var("ZEEKOE_TRUST_EXPLICIT_CERTIFICATE")
@@ -31,7 +32,7 @@ async fn main() -> Result<(), anyhow::Error> {
     };
 
     // Connect to server
-    let chan: TlsClientChan<<Ping as Session>::Dual> = connect(config).await?;
+    let chan: ClientChan<<Ping as Session>::Dual> = connect(config).await?;
 
     // Enact the client `Ping` protocol
     let chan = chan.send("ping".to_string()).await?;

@@ -4,7 +4,7 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 use zeekoe::{
     protocol::Ping,
-    transport::{read_certificates, read_private_key, serve_while, ServerConfig, TlsServerChan},
+    transport::{read_certificates, read_private_key, serve_while, ServerChan, ServerConfig},
 };
 
 #[tokio::main]
@@ -14,10 +14,11 @@ async fn main() -> Result<(), anyhow::Error> {
         certificate_chain: read_certificates("localhost.crt")?,
         address: ([127, 0, 0, 1], 8080).try_into()?,
         max_length: 1024 * 8,
+        length_field_bytes: 4,
     };
 
     // Perform the `Ping` protocol
-    let interact = |chan: TlsServerChan<Ping>, permit| async move {
+    let interact = |chan: ServerChan<Ping>, permit| async move {
         let (string, chan) = chan.recv().await?;
         let chan = chan.send(string).await?;
         chan.close();
