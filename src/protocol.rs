@@ -47,7 +47,7 @@ pub mod pay {
     pub type CustomerRevokePreviousPayToken = Session! {
         send RevocationLock;
         send RevocationSecret;
-        send RevocationLockCommitmentRandomness;
+        send RevocationLockBlindingFactor;
         OfferAbort<MerchantIssueNewPayToken>;
     };
 
