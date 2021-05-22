@@ -414,6 +414,7 @@ pub async fn connect<Protocol: Session>(
     };
 
     let (_key, chan) = retry::Connector::new(connect, init, retry, Protocol::default())
+        // TODO: recovery strategies here
         .connect(())
         .await?;
 
