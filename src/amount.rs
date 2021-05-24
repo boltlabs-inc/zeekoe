@@ -6,28 +6,33 @@ use std::fmt::Display;
 use std::marker::PhantomData;
 use std::ops::{Add, Sub};
 
-/// A trait for defining currencies. There is no need to have a value-level object corresponding to
-/// a `Currency`, so it's intended that this trait be instantiated on an empty `enum`.
+/// A trait for defining currencies. There is no need to have a value-level
+/// object corresponding to a `Currency`, so it's intended that this trait be
+/// instantiated on an empty `enum`.
 pub trait Currency
 where
     Self: Sized + Copy,
 {
-    /// The largest representable amount of currency. By default, this is equal to the maximum value
-    /// of `u64`, but for other currencies with different maxima (i.e. most cryptocurrencies), this
+    /// The largest representable amount of currency. By default, this is equal
+    /// to the maximum value of `u64`, but for other currencies with
+    /// different maxima (i.e. most cryptocurrencies), this
     /// should be changed.
     const MAXIMUM: u64 = u64::max_value();
 
-    /// The printable name of the currency in lower-case singular form, e.g. "dollar" or "bitcoin".
+    /// The printable name of the currency in lower-case singular form, e.g.
+    /// "dollar" or "bitcoin".
     const NAME: &'static str;
 
     /// The symbol for the currency, e.g. "USD" or "BTC".
     const SYMBOL: &'static str;
 
-    /// The name of the atomic currency unit in lower-case singular form, e.g. "cent" or "satoshi".
+    /// The name of the atomic currency unit in lower-case singular form, e.g.
+    /// "cent" or "satoshi".
     const UNIT_NAME: &'static str;
 
-    /// How to format an amount of the currency. By default, this renders the currency amount as
-    /// something like "100 cents" or "1 satoshi" (handling pluralization automatically).
+    /// How to format an amount of the currency. By default, this renders the
+    /// currency amount as something like "100 cents" or "1 satoshi"
+    /// (handling pluralization automatically).
     fn fmt_amount(amount: &Amount<Self, u64>, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         amount.fmt_as_units(f)
     }
@@ -49,8 +54,8 @@ pub struct Amount<C, T = u64> {
 }
 
 impl<C: Currency, T: One + Eq + Display> Amount<C, T> {
-    /// This renders the currency amount as something like "100 cents" or "1 satoshi" (handling
-    /// pluralization automatically).
+    /// This renders the currency amount as something like "100 cents" or "1
+    /// satoshi" (handling pluralization automatically).
     fn fmt_as_units(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
             f,
@@ -61,9 +66,10 @@ impl<C: Currency, T: One + Eq + Display> Amount<C, T> {
         )
     }
 
-    /// Cast the underlying storage type of an `Amount` so that operations (e.g. addition) will use
-    /// the new storage type. To keep the user from going up a creek without a paddle, this is
-    /// restricted to those types which can at least *try* to be cast back to a `u64`, the default
+    /// Cast the underlying storage type of an `Amount` so that operations (e.g.
+    /// addition) will use the new storage type. To keep the user from going
+    /// up a creek without a paddle, this is restricted to those types which
+    /// can at least *try* to be cast back to a `u64`, the default
     /// backing storage of an `Amount`.
     pub fn cast<S: From<T> + TryInto<u64>>(self) -> Amount<C, S> {
         Amount {
@@ -122,7 +128,8 @@ impl<C: Currency, T: CheckedSub> Sub for Amount<C, T> {
     }
 }
 #[derive(Clone, Copy)]
-/// An error indicating that an amount of currency was not representable in a given currency.
+/// An error indicating that an amount of currency was not representable in a
+/// given currency.
 pub enum CurrencyError<C> {
     AboveMaximum {
         units: u64,

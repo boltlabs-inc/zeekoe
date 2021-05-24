@@ -16,8 +16,8 @@ use {
     },
 };
 
-/// A *server-side* session-typed channel over TCP using length-delimited bincode encoding for
-/// serialization.
+/// A *server-side* session-typed channel over TCP using length-delimited
+/// bincode encoding for serialization.
 pub type TlsServerChan<S> = SymmetricalChan<
     S,
     Bincode,
@@ -26,8 +26,8 @@ pub type TlsServerChan<S> = SymmetricalChan<
     ReadHalf<tokio_rustls::server::TlsStream<TcpStream>>,
 >;
 
-/// A *client-side* session-typed channel over TCP using length-delimited bincode encoding for
-/// serialization.
+/// A *client-side* session-typed channel over TCP using length-delimited
+/// bincode encoding for serialization.
 pub type TlsClientChan<S> = SymmetricalChan<
     S,
     Bincode,
@@ -93,8 +93,8 @@ pub fn read_private_key(path: impl AsRef<Path>) -> Result<PrivateKey, io::Error>
     }
 }
 
-/// Wrap a raw TCP socket in a given session type, using the length delimited bincode transport
-/// format/encoding.
+/// Wrap a raw TCP socket in a given session type, using the length delimited
+/// bincode transport format/encoding.
 fn wrap_split<S: Session, T: AsyncRead + AsyncWrite + Send>(
     stream: T,
     max_length: usize,
@@ -107,8 +107,9 @@ fn wrap_split<S: Session, T: AsyncRead + AsyncWrite + Send>(
 pub struct ServerConfig {
     /// The address on which to run the server.
     pub address: SocketAddr,
-    /// The maximum length, in bytes, of messages to permit in serialization/deserialization.
-    /// Receiving or sending any larger messages will result in an error.
+    /// The maximum length, in bytes, of messages to permit in
+    /// serialization/deserialization. Receiving or sending any larger
+    /// messages will result in an error.
     pub max_length: usize,
     /// The server's TLS certificate.
     pub certificate_chain: Vec<Certificate>,
@@ -141,8 +142,8 @@ where
         })?;
     let acceptor = TlsAcceptor::from(Arc::new(tls_config));
 
-    // Error handling task awaits the result of each spawned server task and logs any errors that
-    // occur, as they occur
+    // Error handling task awaits the result of each spawned server task and logs
+    // any errors that occur, as they occur
     let (result_tx, mut result_rx) = mpsc::channel(1024);
     let error_handler = tokio::spawn(async move {
         let mut results = FuturesUnordered::new();
@@ -209,13 +210,15 @@ pub struct ClientConfig {
     pub domain: DNSName,
     /// The port on the server to which to connect.
     pub port: u16,
-    /// The maximum length, in bytes, of messages to permit in serialization/deserialization.
-    /// Receiving or sending any larger messages will result in an error.
+    /// The maximum length, in bytes, of messages to permit in
+    /// serialization/deserialization. Receiving or sending any larger
+    /// messages will result in an error.
     pub max_length: usize,
 
-    /// Also trust this certificate (FOR TESTING ONLY!). This field is only available in test
-    /// builds, and should never be made to be available for a release build, because it adds the
-    /// possibility of client misconfiguration to trust an arbitrary certificate.
+    /// Also trust this certificate (FOR TESTING ONLY!). This field is only
+    /// available in test builds, and should never be made to be available
+    /// for a release build, because it adds the possibility of client
+    /// misconfiguration to trust an arbitrary certificate.
     #[cfg(feature = "allow_explicit_certificate_trust")]
     pub trust_explicit_certificate: Option<Certificate>,
 }
@@ -229,10 +232,10 @@ pub async fn connect<Protocol: Session>(
         .root_store
         .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
 
-    // Only non-release builds that explicitly request this capability via the feature, add the
-    // auxiliary trusted certificate to the set of trusted certificates. In release builds, it is
-    // not possible for the client to trust anyone other than the `webpki_roots::TLS_SERVER_ROOTS`
-    // above.
+    // Only non-release builds that explicitly request this capability via the
+    // feature, add the auxiliary trusted certificate to the set of trusted
+    // certificates. In release builds, it is not possible for the client to
+    // trust anyone other than the `webpki_roots::TLS_SERVER_ROOTS` above.
     #[cfg(feature = "allow_explicit_certificate_trust")]
     if let Some(certificate) = config.trust_explicit_certificate {
         tls_config.root_store.add(&certificate).map_err(|_error| {
@@ -247,7 +250,8 @@ pub async fn connect<Protocol: Session>(
     let address_str: &str = config.domain.as_ref().into();
     let mut addresses = tokio::net::lookup_host((address_str, config.port)).await?;
 
-    // Attempt to connect to any of the socket addresses, succeeding on the first to work
+    // Attempt to connect to any of the socket addresses, succeeding on the first to
+    // work
     let mut connection_error = None;
     let tcp_stream = loop {
         if let Some(address) = addresses.next() {
