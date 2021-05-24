@@ -26,6 +26,7 @@ libzkchannels-toolkit = { git = "ssh://git@github.com/boltlabs-inc/libzkchannels
 tokio = { version = "1", features = ["full"] }
 tokio-rustls = "0.22"
 anyhow = "1"
+webpki = "0.21"
 webpki-roots = "0.21"
 async-trait = "0.1"
 sha2 = "0.9"

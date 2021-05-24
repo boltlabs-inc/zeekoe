@@ -1,21 +1,19 @@
 use futures::Future;
-use std::{convert::TryInto, pin::Pin, sync::Arc};
+use std::{pin::Pin, sync::Arc};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 use zeekoe::{
     protocol::Ping,
-    transport::{read_certificates, read_private_key, serve_while, ServerChan, ServerConfig},
+    transport::{pem::read_certificates, pem::read_private_key, Server, ServerChan},
 };
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let config = ServerConfig {
-        private_key: read_private_key("localhost.key")?,
-        certificate_chain: read_certificates("localhost.crt")?,
-        address: ([127, 0, 0, 1], 8080).try_into()?,
-        max_length: 1024 * 8,
-        length_field_bytes: 4,
-    };
+    let mut server = Server::new(
+        read_certificates("localhost.crt")?,
+        read_private_key("localhost.key")?,
+    );
+    server.max_length(1024 * 8);
 
     // Perform the `Ping` protocol
     let interact = |chan: ServerChan<Ping>, permit| async move {
@@ -26,7 +24,9 @@ async fn main() -> Result<(), anyhow::Error> {
         Ok::<_, anyhow::Error>(())
     };
 
-    serve_while(config, limit_concurrency(1), interact).await?;
+    server
+        .serve_while(([127, 0, 0, 1], 8080), limit_concurrency(1), interact)
+        .await?;
     Ok(())
 }
 
