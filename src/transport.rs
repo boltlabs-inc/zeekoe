@@ -153,8 +153,15 @@ impl Server {
                                         Ok((_key, None)) => {
                                             // reconnected existing channel, nothing more to do
                                         }
-                                        Err(_err) => {
-                                            todo!("log handshake errors here")
+                                        Err(err) => {
+                                            use resume::AcceptError::*;
+                                            match err {
+                                                HandshakeError(_err) => {}
+                                                HandshakeIncomplete => {}
+                                                NoSuchSessionKey(_key) => {}
+                                                SessionKeyAlreadyExists(_key) => {}
+                                                NoCapacity => {}
+                                            }
                                         }
                                     }
                                     Ok::<_, Error>(())
