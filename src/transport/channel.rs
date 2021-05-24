@@ -15,6 +15,8 @@ use super::handshake::{Handshake, SessionKey};
 
 /// A *server-side* session-typed channel over TCP using length-delimited bincode encoding for
 /// serialization.
+///
+/// The session type parameter for this channel is the session from **the client's perspective.**
 pub type ServerChan<S> = ResumeSplitChan<
     <S as Session>::Dual,
     SessionKey,
@@ -25,6 +27,8 @@ pub type ServerChan<S> = ResumeSplitChan<
 
 /// A *client-side* session-typed channel over TCP using length-delimited bincode encoding for
 /// serialization.
+///
+/// The session type parameter for this channel is the session from **the client's perspective.**
 pub type ClientChan<S> = RetrySplitChan<
     S,
     SessionKey,
@@ -39,6 +43,15 @@ pub type ClientChan<S> = RetrySplitChan<
 
 /// An error in the underlying non-resuming transport.
 pub type TransportError = SymmetricalError<Bincode, LengthDelimitedCodec>;
+
+// This tower of type synonyms builds up a:
+//
+// - retrying/resuming,
+// - TLS-secured,
+// - TCP-transported,
+// - Dialectic channel,
+//
+// with the session type `S`:
 
 type ResumeSplitChan<S, K, F, E, T> =
     Chan<S, ResumeSplitSender<K, F, E, T>, ResumeSplitReceiver<K, F, E, T>>;

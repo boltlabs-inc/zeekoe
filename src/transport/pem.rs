@@ -1,3 +1,6 @@
+//! Utilities for reading PEM files as [`Certificate`]s and [`PrivateKey`]s, as necessary to
+//! initialize TLS.
+
 use std::{fs::File, io, io::Read, path::Path};
 use tokio_rustls::rustls::{Certificate, PrivateKey};
 

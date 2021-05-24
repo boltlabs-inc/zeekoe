@@ -1,3 +1,6 @@
+//! The definitions of the handshake protocol used when starting new connections and resuming broken
+//! ones, and implementations of both the client and server side handshakes.
+
 use {
     dialectic::prelude::*,
     dialectic_reconnect::resume,
@@ -12,7 +15,7 @@ pub struct SessionKey {
     server_key: Uuid,
 }
 
-pub type Handshake = Session! {
+pub(crate) type Handshake = Session! {
     choose {
         0 => {
             // Send a freshly generated client session ID
@@ -27,12 +30,12 @@ pub type Handshake = Session! {
     }
 };
 
-pub mod server {
+pub(crate) mod server {
     use super::*;
 
     #[Transmitter(Tx for Uuid)]
     #[Receiver(Rx for Uuid, SessionKey)]
-    pub async fn handshake<Tx, Rx, E>(
+    pub(crate) async fn handshake<Tx, Rx, E>(
         chan: Chan<<Handshake as Session>::Dual, Tx, Rx>,
     ) -> Result<(resume::ResumeKind, SessionKey), E>
     where
@@ -54,12 +57,12 @@ pub mod server {
     }
 }
 
-pub mod client {
+pub(super) mod client {
     use super::*;
 
     #[Transmitter(Tx for Uuid, SessionKey)]
     #[Receiver(Rx for Uuid)]
-    pub async fn init<Tx, Rx, E>(chan: Chan<Handshake, Tx, Rx>) -> Result<SessionKey, E>
+    pub(crate) async fn init<Tx, Rx, E>(chan: Chan<Handshake, Tx, Rx>) -> Result<SessionKey, E>
     where
         E: From<Tx::Error> + From<Rx::Error>,
     {
@@ -75,7 +78,10 @@ pub mod client {
 
     #[Transmitter(Tx for Uuid, SessionKey)]
     #[Receiver(Rx for Uuid)]
-    pub async fn retry<Tx, Rx, E>(key: SessionKey, chan: Chan<Handshake, Tx, Rx>) -> Result<(), E>
+    pub(crate) async fn retry<Tx, Rx, E>(
+        key: SessionKey,
+        chan: Chan<Handshake, Tx, Rx>,
+    ) -> Result<(), E>
     where
         E: From<Tx::Error>,
     {

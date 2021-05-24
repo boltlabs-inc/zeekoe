@@ -1,3 +1,5 @@
+//! The client side of Zeekoe's transport layer.
+
 use {
     dialectic::prelude::*,
     dialectic_reconnect::retry,
@@ -22,6 +24,8 @@ compile_error!(
     "crate cannot be built for release with the `allow_explicit_certificate_trust` feature enabled"
 );
 
+/// A client for some session-typed `Protocol` which connects over TLS with a parameterizable
+/// [`Backoff`] strategy for retrying lost connections.
 #[derive(Clone)]
 pub struct Client<Protocol> {
     /// The number of bytes used to represent the length field in the length-delimited encoding.
@@ -41,6 +45,10 @@ impl<Protocol> Client<Protocol>
 where
     Protocol: Session,
 {
+    /// Create a new [`Client`] with the specified [`Backoff`] strategy.
+    ///
+    /// There is no default backoff strategy, because there is no one-size-fits-all reasonable
+    /// default.
     pub fn new(backoff: Backoff) -> Client<Protocol> {
         let mut tls_config = rustls::ClientConfig::new();
         tls_config
@@ -68,10 +76,10 @@ where
         self
     }
 
-    // Only non-release builds that explicitly request this capability via the feature, add the
-    // auxiliary trusted certificate to the set of trusted certificates. In release builds, it
-    // is not possible for the client to trust anyone other than the
-    // `webpki_roots::TLS_SERVER_ROOTS`.
+    // Only on non-release builds that explicitly request this capability via the
+    // `allow_explicit_certificate_trust` feature, add the auxiliary trusted certificate to the set
+    // of trusted certificates. In release builds, it is not possible for the client to trust anyone
+    // other than the `webpki_roots::TLS_SERVER_ROOTS`.
     #[cfg(feature = "allow_explicit_certificate_trust")]
     pub fn trust_explicit_certificate(
         &mut self,
@@ -81,6 +89,8 @@ where
         Ok(self)
     }
 
+    /// Connect to the given [`DNSName`] and port, returning either a connected [`Chan`] or an
+    /// error if connection and all re-connection attempts failed.
     pub async fn connect(
         &self,
         domain: DNSName,

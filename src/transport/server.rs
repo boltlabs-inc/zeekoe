@@ -1,3 +1,5 @@
+//! The server side of Zeekoe's transport layer.
+
 use {
     dialectic::prelude::*,
     dialectic_reconnect::resume,
@@ -16,6 +18,7 @@ use super::handshake;
 
 pub use super::channel::ServerChan as Chan;
 
+/// A server for some `Protocol` which accepts resumable connections over TLS.
 #[derive(Debug, Clone)]
 pub struct Server<Protocol: Session> {
     /// The maximum length, in bytes, of messages to permit in serialization/deserialization.
@@ -36,6 +39,7 @@ where
     Protocol: Session,
     <Protocol as Session>::Dual: Session,
 {
+    /// Create a new server using the given certificate chain and private key.
     pub fn new(certificate_chain: Vec<Certificate>, private_key: PrivateKey) -> Self {
         Server {
             max_length: usize::MAX,
@@ -59,6 +63,12 @@ where
         self
     }
 
+    /// Accept connections on `address` in a loop, running the `initialize` function when accepting.
+    /// If `initialize` returns `None`, stop; otherwise, concurrently serve each connection with
+    /// `interact`.
+    ///
+    /// Note that `initialize` runs sequentially: it can pause the server if desired by
+    /// `.await`-ing.
     pub async fn serve_while<Input, Error, Init, InitFut, Interaction, InteractionFut>(
         &self,
         address: impl Into<SocketAddr>,
@@ -134,37 +144,43 @@ where
                         .await
                         .unwrap_or(()),
                     Ok(tls_stream) => {
+                        // Layer a length-delimmited bincode `Chan` over the TLS stream
                         let (rx, tx) = tokio::io::split(tls_stream);
                         let (tx, rx) =
                             length_delimited(tx, rx, self.length_field_bytes, self.max_length);
+
                         let acceptor = acceptor.clone();
                         let interact = interact.clone();
-                        result_tx
-                            .send(Ok((
-                                address,
-                                tokio::spawn(async move {
-                                    match acceptor.accept(tx, rx).await {
-                                        Ok((_key, Some(chan))) => {
-                                            let interaction = interact(chan, input);
-                                            interaction.await?;
-                                        }
-                                        Ok((_key, None)) => {
-                                            // reconnected existing channel, nothing more to do
-                                        }
-                                        Err(err) => {
-                                            use resume::AcceptError::*;
-                                            match err {
-                                                HandshakeError(_err) => {}
-                                                HandshakeIncomplete => {}
-                                                NoSuchSessionKey(_key) => {}
-                                                SessionKeyAlreadyExists(_key) => {}
-                                                NoCapacity => {}
-                                            }
-                                        }
+
+                        // Run the interaction concurrently, or resume it if it's resuming an
+                        // existing one
+                        let join_handle = tokio::spawn(async move {
+                            match acceptor.accept(tx, rx).await {
+                                Ok((_key, Some(chan))) => {
+                                    let interaction = interact(chan, input);
+                                    interaction.await?;
+                                }
+                                Ok((_key, None)) => {
+                                    // reconnected existing channel, nothing more to do
+                                }
+                                Err(err) => {
+                                    use resume::AcceptError::*;
+                                    // TODO: log these errors?
+                                    match err {
+                                        HandshakeError(_err) => {}
+                                        HandshakeIncomplete => {}
+                                        NoSuchSessionKey(_key) => {}
+                                        SessionKeyAlreadyExists(_key) => {}
+                                        NoCapacity => {}
                                     }
-                                    Ok::<_, Error>(())
-                                }),
-                            )))
+                                }
+                            }
+                            Ok::<_, Error>(())
+                        });
+
+                        // Keep track of pending server task
+                        result_tx
+                            .send(Ok((address, join_handle)))
                             .await
                             .unwrap_or(());
                     }
