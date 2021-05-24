@@ -14,7 +14,8 @@ async fn main() -> Result<(), anyhow::Error> {
     let mut backoff = Backoff::with_delay(Duration::from_millis(10));
     backoff
         .exponential(2.0)
-        .max_delay(Some(Duration::from_secs(1)));
+        .max_delay(Some(Duration::from_secs(5)))
+        .max_retries(10);
     let mut client = Client::new(backoff);
     client.max_length(1024 * 8);
 
@@ -33,13 +34,12 @@ async fn main() -> Result<(), anyhow::Error> {
     let port = 8080;
 
     // Connect to server
-    let chan: ClientChan<<Ping as Session>::Dual> = client.connect(domain, port).await?;
+    let mut chan: ClientChan<<Ping as Session>::Dual> = client.connect(domain, port).await?;
 
     // Enact the client `Ping` protocol
-    let chan = chan.send("ping".to_string()).await?;
-    let (response, chan) = chan.recv().await?;
-    chan.close();
-    println!("{}", response);
-
-    Ok(())
+    loop {
+        println!("ping");
+        chan = chan.send("ping".to_string()).await?.recv().await?.1;
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
 }

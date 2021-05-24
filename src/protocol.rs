@@ -2,8 +2,10 @@ use dialectic::prelude::*;
 use libzkchannels_toolkit::{nonce::Nonce, proofs::PayProof, revlock::*, states::*};
 
 pub type Ping = Session! {
-    recv String;
-    send String;
+    loop {
+        recv String;
+        send String;
+    }
 };
 
 type OfferAbort<Next> = Session! {
