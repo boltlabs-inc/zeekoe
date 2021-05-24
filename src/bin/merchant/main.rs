@@ -1,18 +1,22 @@
 use zeekoe::{
     protocol::Ping,
-    transport::{pem::read_certificates, pem::read_private_key, Server, ServerChan},
+    transport::{
+        pem::read_certificates,
+        pem::read_private_key,
+        server::{Chan, Server},
+    },
 };
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let mut server = Server::new(
+    let mut server: Server<Ping> = Server::new(
         read_certificates("./dev/localhost.crt")?,
         read_private_key("./dev/localhost.key")?,
     );
     server.max_length(1024 * 8);
 
     // Perform the `Ping` protocol
-    let interact = |mut chan: ServerChan<Ping>, ()| async move {
+    let interact = |mut chan: Chan<Ping>, ()| async move {
         #[allow(unreachable_code)]
         Ok::<_, anyhow::Error>(loop {
             chan = chan.recv().await?.1.send("pong".to_string()).await?;

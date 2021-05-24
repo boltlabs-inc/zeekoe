@@ -1,6 +1,5 @@
 use {
-    super::{Handshake, SessionKey},
-    dialectic::Chan,
+    dialectic::{Chan, Session},
     dialectic_reconnect::{resume, retry},
     dialectic_tokio_serde::{codec::LengthDelimitedCodec, Receiver, Sender, SymmetricalError},
     dialectic_tokio_serde_bincode::Bincode,
@@ -12,10 +11,12 @@ use {
     tokio_rustls::webpki::DNSName,
 };
 
+use super::handshake::{Handshake, SessionKey};
+
 /// A *server-side* session-typed channel over TCP using length-delimited bincode encoding for
 /// serialization.
 pub type ServerChan<S> = ResumeSplitChan<
-    S,
+    <S as Session>::Dual,
     SessionKey,
     Bincode,
     LengthDelimitedCodec,

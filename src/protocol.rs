@@ -3,8 +3,8 @@ use libzkchannels_toolkit::{nonce::Nonce, proofs::PayProof, revlock::*, states::
 
 pub type Ping = Session! {
     loop {
-        recv String;
         send String;
+        recv String;
     }
 };
 
