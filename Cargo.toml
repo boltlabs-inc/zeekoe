@@ -22,10 +22,11 @@ path = "src/bin/merchant/main.rs"
 allow_explicit_certificate_trust = []
 
 [dependencies]
-libzkchannels-toolkit = { git = "ssh://git@github.com/boltlabs-inc/libzkchannels-crypto.git", branch = "primitives-api" }
+libzkchannels-toolkit = { git = "ssh://git@github.com/boltlabs-inc/libzkchannels-crypto.git", branch = "main" }
 tokio = { version = "1", features = ["full"] }
 tokio-rustls = "0.22"
 anyhow = "1"
+webpki = "0.21"
 webpki-roots = "0.21"
 async-trait = "0.1"
 sha2 = "0.9"
@@ -39,7 +40,9 @@ serde = "1"
 thiserror = "1"
 typenum = "1.12"
 pem = "0.8"
+uuid = { version = "0.8", features = ["serde", "v4"] }
 zeroize = { version = "1.2", features = ["zeroize_derive"] }
 dialectic = { version = "0.4", path = "../dialectic/dialectic" }
 dialectic-tokio-serde = { version = "0.1", path = "../dialectic/dialectic-tokio-serde" }
 dialectic-tokio-serde-bincode = { version = "0.1", path = "../dialectic/dialectic-tokio-serde-bincode" }
+dialectic-reconnect = { version = "0.1", path = "../dialectic/dialectic-reconnect" }

@@ -1,43 +1,48 @@
-use std::{env, path::Path};
+use std::{env, path::Path, time::Duration};
 use tokio_rustls::webpki::DNSNameRef;
-
-use dialectic::prelude::*;
 
 use zeekoe::{
     protocol::Ping,
-    transport::{connect, read_single_certificate, ClientConfig, TlsClientChan},
+    transport::{
+        client::{Backoff, Chan, Client},
+        pem::read_single_certificate,
+    },
 };
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Configure TCP client connection
-    let config = ClientConfig {
-        domain: DNSNameRef::try_from_ascii_str("localhost")?.to_owned(),
-        port: 8080,
-        max_length: 1024 * 8,
-        #[cfg(feature = "allow_explicit_certificate_trust")]
-        trust_explicit_certificate: if let Ok(path_string) =
-            env::var("ZEEKOE_TRUST_EXPLICIT_CERTIFICATE")
-        {
-            let path = Path::new(&path_string);
-            if path.is_relative() {
-                return Err(anyhow::anyhow!("Path specified in `ZEEKOE_TRUST_EXPLICIT_CERTIFICATE` must be absolute, but the current value, \"{}\", is relative", path_string));
-            }
-            Some(read_single_certificate(path)?)
-        } else {
-            println!("no explicit cert");
-            None
-        },
-    };
+    // Configure the client
+    let mut backoff = Backoff::with_delay(Duration::from_millis(10));
+    backoff
+        .exponential(2.0)
+        .max_delay(Some(Duration::from_secs(5)));
+    let mut client: Client<Ping> = Client::new(backoff);
+    client
+        .max_length(1024 * 8)
+        .timeout(Some(Duration::from_secs(10)))
+        .max_pending_retries(10);
 
-    // Connect to server
-    let chan: TlsClientChan<<Ping as Session>::Dual> = connect(config).await?;
+    // If we've turned on explicit certificate trust, look for the trusted certificate in the
+    // environment variable, only accepting it if it's an absolute path (so as to prevent the error
+    // where you trust the wrong certificate because you're in the wrong working directory)
+    #[cfg(feature = "allow_explicit_certificate_trust")]
+    if let Ok(path_string) = env::var("ZEEKOE_TRUST_EXPLICIT_CERTIFICATE") {
+        let path = Path::new(&path_string);
+        if path.is_relative() {
+            return Err(anyhow::anyhow!("Path specified in `ZEEKOE_TRUST_EXPLICIT_CERTIFICATE` must be absolute, but the current value, \"{}\", is relative", path_string));
+        }
+        client.trust_explicit_certificate(&read_single_certificate(path)?)?;
+    }
+
+    // Connect to `localhost:8080`
+    let domain = DNSNameRef::try_from_ascii_str("localhost")?.to_owned();
+    let port = 8080;
+    let mut chan: Chan<Ping> = client.connect(domain, port).await?;
 
     // Enact the client `Ping` protocol
-    let chan = chan.send("ping".to_string()).await?;
-    let (response, chan) = chan.recv().await?;
-    chan.close();
-    println!("{}", response);
-
-    Ok(())
+    loop {
+        println!("ping");
+        chan = chan.send("ping".to_string()).await?.recv().await?.1;
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
 }

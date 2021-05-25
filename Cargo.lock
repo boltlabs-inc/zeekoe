@@ -101,9 +101,9 @@ checksum = "b700ce4376041dcd0a327fd0097c41095743c4c8af8887265942faf1100bd040"
 
 [[package]]
 name = "call-by"
-version = "0.2.2"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "320362dac9c910be39bb2ffa78efc631c56f5aafd90e8d744681dd30ef96760b"
+checksum = "006d2236168221348c30781d43299a75e9b9e62f5a3e0ff5f6d0aa162c9f3936"
 
 [[package]]
 name = "cc"
@@ -122,6 +122,16 @@ name = "cpuid-bool"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8aebca1129a03dc6dc2b127edd729435bbc4a37e1d5f4d7513165089ceb02634"
+
+[[package]]
+name = "dashmap"
+version = "4.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e77a43b28d0668df09411cb0bc9a8c2adc40f9a048afe863e05fd43251e8e39c"
+dependencies = [
+ "cfg-if",
+ "num_cpus",
+]
 
 [[package]]
 name = "derivative"
@@ -168,6 +178,21 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "dialectic-reconnect"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "call-by",
+ "dashmap",
+ "derivative",
+ "dialectic",
+ "futures",
+ "pin-project",
+ "rand",
+ "tokio",
 ]
 
 [[package]]
@@ -387,7 +412,7 @@ checksum = "8916b1f6ca17130ec6568feccee27c156ad12037880833a3b842a823236502e7"
 [[package]]
 name = "libzkchannels-crypto"
 version = "0.1.0"
-source = "git+ssh://git@github.com/boltlabs-inc/libzkchannels-crypto.git?branch=primitives-api#6aba0082ddafed2844fc8ee8745c87261f6c3826"
+source = "git+ssh://git@github.com/boltlabs-inc/libzkchannels-crypto.git?branch=main#3d529249ac9f37a77d8eba8d2bad01c7b3c46d26"
 dependencies = [
  "bls12_381",
  "ff",
@@ -399,7 +424,7 @@ dependencies = [
 [[package]]
 name = "libzkchannels-toolkit"
 version = "0.1.0"
-source = "git+ssh://git@github.com/boltlabs-inc/libzkchannels-crypto.git?branch=primitives-api#6aba0082ddafed2844fc8ee8745c87261f6c3826"
+source = "git+ssh://git@github.com/boltlabs-inc/libzkchannels-crypto.git?branch=main#3d529249ac9f37a77d8eba8d2bad01c7b3c46d26"
 dependencies = [
  "bls12_381",
  "libzkchannels-crypto",
@@ -928,9 +953,9 @@ checksum = "87b4947742c93ece24a0032141d9caa3d853752e694a57e35029dd2bd08673e0"
 
 [[package]]
 name = "tokio"
-version = "1.4.0"
+version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "134af885d758d645f0f0505c9a8b3f9bf8a348fd822e112ab5248138348f1722"
+checksum = "bd3076b5c8cc18138b8f8814895c11eb4de37114a5d127bafdc5e55798ceef37"
 dependencies = [
  "autocfg",
  "bytes",
@@ -1008,6 +1033,16 @@ name = "untrusted"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a156c684c91ea7d62626509bce3cb4e1d9ed5c4d978f7b4352658f96a4c26b4a"
+
+[[package]]
+name = "uuid"
+version = "0.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc5cf98d8186244414c848017f0e2676b3fcb46807f6668a97dfe67359a3c4b7"
+dependencies = [
+ "getrandom",
+ "serde",
+]
 
 [[package]]
 name = "version_check"
@@ -1097,9 +1132,9 @@ dependencies = [
 
 [[package]]
 name = "webpki-roots"
-version = "0.21.0"
+version = "0.21.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "82015b7e0b8bad8185994674a13a93306bea76cf5a16c5a181382fd3a5ec2376"
+checksum = "aabe153544e473b775453675851ecc86863d2a81d786d741f6b76778f2a48940"
 dependencies = [
  "webpki",
 ]
@@ -1140,6 +1175,7 @@ dependencies = [
  "async-trait",
  "bincode",
  "dialectic",
+ "dialectic-reconnect",
  "dialectic-tokio-serde",
  "dialectic-tokio-serde-bincode",
  "digest",
@@ -1155,6 +1191,8 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "typenum",
+ "uuid",
+ "webpki",
  "webpki-roots",
  "zeroize",
 ]

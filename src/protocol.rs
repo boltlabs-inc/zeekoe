@@ -2,8 +2,10 @@ use dialectic::prelude::*;
 use libzkchannels_toolkit::{nonce::Nonce, proofs::PayProof, revlock::*, states::*};
 
 pub type Ping = Session! {
-    recv String;
-    send String;
+    loop {
+        send String;
+        recv String;
+    }
 };
 
 type OfferAbort<Next> = Session! {
@@ -47,7 +49,7 @@ pub mod pay {
     pub type CustomerRevokePreviousPayToken = Session! {
         send RevocationLock;
         send RevocationSecret;
-        send RevocationLockCommitmentRandomness;
+        send RevocationLockBlindingFactor;
         OfferAbort<MerchantIssueNewPayToken>;
     };
 
