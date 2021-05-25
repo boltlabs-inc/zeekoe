@@ -4,6 +4,8 @@
 use std::{fs::File, io, io::Read, path::Path};
 use tokio_rustls::rustls::{Certificate, PrivateKey};
 
+/// Read the file at `path` into memory as a vector of PEM-encoded `CERTIFICATE`s, silently skipping
+/// any entries in the file which are not labeled `CERTIFICATE`.
 pub fn read_certificates(path: impl AsRef<Path>) -> Result<Vec<Certificate>, io::Error> {
     let mut file = File::open(&path)?;
     let mut contents = Vec::new();
@@ -19,6 +21,7 @@ pub fn read_certificates(path: impl AsRef<Path>) -> Result<Vec<Certificate>, io:
     Ok(certificates)
 }
 
+/// Read the file at `path` as a single PEM-encoded `CERTIFICATE`.
 pub fn read_single_certificate(path: impl AsRef<Path>) -> Result<Certificate, io::Error> {
     let mut file = File::open(&path)?;
     let mut contents = Vec::new();
@@ -40,6 +43,7 @@ pub fn read_single_certificate(path: impl AsRef<Path>) -> Result<Certificate, io
     }
 }
 
+/// Read the file at `path` as a single PEM-encoded `PRIVATE KEY`.
 pub fn read_private_key(path: impl AsRef<Path>) -> Result<PrivateKey, io::Error> {
     let mut file = File::open(&path)?;
     let mut contents = Vec::new();
