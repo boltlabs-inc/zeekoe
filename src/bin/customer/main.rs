@@ -15,10 +15,12 @@ async fn main() -> Result<(), anyhow::Error> {
     let mut backoff = Backoff::with_delay(Duration::from_millis(10));
     backoff
         .exponential(2.0)
-        .max_delay(Some(Duration::from_secs(5)))
-        .max_retries(10);
+        .max_delay(Some(Duration::from_secs(5)));
     let mut client: Client<Ping> = Client::new(backoff);
-    client.max_length(1024 * 8);
+    client
+        .max_length(1024 * 8)
+        .timeout(Some(Duration::from_secs(10)))
+        .max_pending_retries(10);
 
     #[cfg(feature = "allow_explicit_certificate_trust")]
     if let Ok(path_string) = env::var("ZEEKOE_TRUST_EXPLICIT_CERTIFICATE") {
