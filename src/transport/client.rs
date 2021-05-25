@@ -30,6 +30,8 @@ compile_error!(
 /// A client for some session-typed `Protocol` which connects over TLS with a parameterizable
 /// [`Backoff`] strategy for retrying lost connections.
 ///
+///
+/// The session type parameter for this type is the session from **the client's perspective.**
 /// The session type parameter for this type is the session from **the client's perspective.**
 #[derive(Clone)]
 pub struct Client<Protocol> {
@@ -99,7 +101,7 @@ where
         self
     }
 
-    /// Set a timeout for recovery within all future [`Chan`]s produced by this [`Connector`]: an
+    /// Set a timeout for recovery within all future [`Chan`]s produced by this [`Client`]: an
     /// error will be thrown if recovery from an error takes longer than the given timeout, even if
     /// the error recovery strategy specifies trying again.
     pub fn timeout(&mut self, timeout: Option<Duration>) -> &mut Self {
