@@ -22,6 +22,8 @@ pub use super::channel::ServerChan as Chan;
 pub type Error = resume::ResumeError<TransportError>;
 
 /// A server for some `Protocol` which accepts resumable connections over TLS.
+///
+/// The session type parameter for this type is the session from **the client's perspective.**
 #[derive(Debug, Clone)]
 pub struct Server<Protocol: Session> {
     /// The maximum length, in bytes, of messages to permit in serialization/deserialization.

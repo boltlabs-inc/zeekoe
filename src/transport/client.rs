@@ -29,6 +29,8 @@ compile_error!(
 
 /// A client for some session-typed `Protocol` which connects over TLS with a parameterizable
 /// [`Backoff`] strategy for retrying lost connections.
+///
+/// The session type parameter for this type is the session from **the client's perspective.**
 #[derive(Clone)]
 pub struct Client<Protocol> {
     /// The number of bytes used to represent the length field in the length-delimited encoding.
