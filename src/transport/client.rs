@@ -19,6 +19,9 @@ use super::handshake;
 pub use super::channel::ClientChan as Chan;
 pub use dialectic_reconnect::Backoff;
 
+/// The type of errors returned during sessions on a client-side channel.
+pub type Error = retry::RetryError<TransportError, io::Error, TransportError>;
+
 #[cfg(all(not(debug_assertions), feature = "allow_explicit_certificate_trust"))]
 compile_error!(
     "crate cannot be built for release with the `allow_explicit_certificate_trust` feature enabled"
@@ -91,14 +94,7 @@ where
 
     /// Connect to the given [`DNSName`] and port, returning either a connected [`Chan`] or an
     /// error if connection and all re-connection attempts failed.
-    pub async fn connect(
-        &self,
-        domain: DNSName,
-        port: u16,
-    ) -> Result<
-        Chan<Protocol>,
-        retry::RetryError<std::convert::Infallible, io::Error, TransportError>,
-    > {
+    pub async fn connect(&self, domain: DNSName, port: u16) -> Result<Chan<Protocol>, Error> {
         // Share the TLS config between all times we connect
         let tls_config = Arc::new(self.tls_config.clone());
 
@@ -152,7 +148,20 @@ where
         .recover_connect(self.backoff.build(retry::Recovery::ReconnectAfter))
         .recover_handshake(self.backoff.build(retry::Recovery::ReconnectAfter))
         .connect((domain, port))
-        .await?;
+        .await
+        .map_err(|e| {
+            // Convert error into general error type
+            use retry::RetryError::*;
+            match e {
+                OriginalError(e) => match e {},
+                ConnectError(e) => ConnectError(e),
+                ConnectTimeout => ConnectTimeout,
+                HandshakeError(e) => HandshakeError(e),
+                HandshakeTimeout => HandshakeTimeout,
+                HandshakeIncomplete => HandshakeIncomplete,
+                NoCapacity => NoCapacity,
+            }
+        })?;
 
         Ok(chan)
     }

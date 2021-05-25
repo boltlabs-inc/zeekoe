@@ -18,6 +18,9 @@ use super::handshake;
 
 pub use super::channel::ServerChan as Chan;
 
+/// The type of errors returned during sessions on a server-side channel.
+pub type Error = resume::ResumeError<TransportError>;
+
 /// A server for some `Protocol` which accepts resumable connections over TLS.
 #[derive(Debug, Clone)]
 pub struct Server<Protocol: Session> {
