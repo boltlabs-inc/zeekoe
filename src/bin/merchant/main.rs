@@ -1,9 +1,12 @@
-use zeekoe::{
-    protocol::Ping,
-    transport::{
-        pem::read_certificates,
-        pem::read_private_key,
-        server::{Chan, Server},
+use {
+    std::time::Duration,
+    zeekoe::{
+        protocol::Ping,
+        transport::{
+            pem::read_certificates,
+            pem::read_private_key,
+            server::{Chan, Server},
+        },
     },
 };
 
@@ -13,7 +16,10 @@ async fn main() -> Result<(), anyhow::Error> {
         read_certificates("./dev/localhost.crt")?,
         read_private_key("./dev/localhost.key")?,
     );
-    server.max_length(1024 * 8);
+    server
+        .max_length(1024 * 8)
+        .timeout(Some(Duration::from_secs(10)))
+        .max_pending_retries(Some(10));
 
     // Perform the `Ping` protocol
     let interact = |mut chan: Chan<Ping>, ()| async move {

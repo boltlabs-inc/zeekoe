@@ -5,7 +5,7 @@ use {
     dialectic_reconnect::resume,
     dialectic_tokio_serde_bincode::length_delimited,
     futures::{stream::FuturesUnordered, Future, StreamExt},
-    std::{fmt::Display, io, marker::PhantomData, net::SocketAddr, sync::Arc},
+    std::{fmt::Display, io, marker::PhantomData, net::SocketAddr, sync::Arc, time::Duration},
     tokio::{net::TcpListener, select, sync::mpsc},
     tokio_rustls::{
         rustls::{self, Certificate, PrivateKey},
@@ -33,6 +33,10 @@ pub struct Server<Protocol: Session> {
     certificate_chain: Vec<Certificate>,
     /// The server's TLS private key.
     private_key: PrivateKey,
+    /// The maximum permissible number of pending retries.
+    max_pending_retries: Option<usize>,
+    /// The timeout after which broken connections will be garbage-collected.
+    timeout: Option<Duration>,
     /// The session, from the *client's* perspective.
     client_session: PhantomData<fn() -> Protocol>,
 }
@@ -49,6 +53,8 @@ where
             length_field_bytes: 4,
             certificate_chain,
             private_key,
+            max_pending_retries: None,
+            timeout: None,
             client_session: PhantomData,
         }
     }
@@ -63,6 +69,26 @@ where
     /// Receiving or sending any larger messages will result in an error.
     pub fn max_length(&mut self, max_length: usize) -> &mut Self {
         self.max_length = max_length;
+        self
+    }
+
+    /// Set a timeout for recovery within all future [`Chan`]s handled by this [`Server`].
+    ///
+    /// When there is a timeout, an error will be thrown if recovery from a previous error takes
+    /// longer than the given timeout, even if the error recovery strategy specifies trying again.
+    pub fn timeout(&mut self, timeout: Option<Duration>) -> &mut Self {
+        self.timeout = timeout;
+        self
+    }
+
+    /// Set the maximum number of pending retries for all future [`Chan`]s handled by this
+    /// [`Server`].
+    ///
+    /// Restricting this limit (the default is `None`) prevents a potential unbounded memory leak in
+    /// the case where a mis-behaving client attempts to reconnect many times before either end of a
+    /// channel encounters an error and attempts to reconnect.
+    pub fn max_pending_retries(&mut self, max_pending_retries: Option<usize>) -> &mut Self {
+        self.max_pending_retries = max_pending_retries;
         self
     }
 
@@ -99,10 +125,14 @@ where
         let tls_acceptor = TlsAcceptor::from(Arc::new(tls_config));
 
         // Resume-handling acceptor to be shared between all connections
-        let acceptor = Arc::new(resume::Acceptor::new(
+        let mut acceptor = resume::Acceptor::new(
             handshake::server::handshake::<_, _, TransportError>,
             <<Protocol as Session>::Dual>::default(),
-        ));
+        );
+        acceptor
+            .timeout(self.timeout)
+            .max_pending_retries(self.max_pending_retries);
+        let acceptor = Arc::new(acceptor);
 
         // Error handling task awaits the result of each spawned server task and logs any errors
         // that occur, as they occur

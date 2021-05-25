@@ -4,7 +4,7 @@ use {
     dialectic::prelude::*,
     dialectic_reconnect::retry,
     dialectic_tokio_serde_bincode::length_delimited,
-    std::{io, marker::PhantomData, sync::Arc},
+    std::{io, marker::PhantomData, sync::Arc, time::Duration},
     tokio::net::TcpStream,
     tokio_rustls::{
         rustls::{self, Certificate},
@@ -38,6 +38,10 @@ pub struct Client<Protocol> {
     max_length: usize,
     /// The backoff strategy for reconnecting to the server in the event of a connection loss.
     backoff: Backoff,
+    /// The maximum permissible number of pending retries.
+    max_pending_retries: usize,
+    /// The timeout after which broken connections will be garbage-collected.
+    timeout: Option<Duration>,
     /// Client TLS configuration.
     tls_config: rustls::ClientConfig,
     /// Client session type.
@@ -62,6 +66,8 @@ where
             max_length: usize::MAX,
             backoff,
             tls_config,
+            max_pending_retries: usize::MAX,
+            timeout: None,
             client_session: PhantomData,
         }
     }
@@ -76,6 +82,26 @@ where
     /// Receiving or sending any larger messages will result in an error.
     pub fn max_length(&mut self, max_length: usize) -> &mut Self {
         self.max_length = max_length;
+        self
+    }
+
+    /// Set a maximum number of pending retries for all future [`Chan`]s produced by this
+    /// [`Client`]: an error will be thrown if a channel auto-retries more than this number of times
+    /// before the it is able to process the newly reconnected ends.
+    ///
+    /// Restricting this limit (the default is `usize::MAX`) prevents a potential unbounded memory
+    /// leak in the case where one a protocol only ever sends or only ever receives, and encounters
+    /// an unbounded number of errors.
+    pub fn max_pending_retries(&mut self, max_pending_retries: usize) -> &mut Self {
+        self.max_pending_retries = max_pending_retries.saturating_add(1);
+        self
+    }
+
+    /// Set a timeout for recovery within all future [`Chan`]s produced by this [`Connector`]: an
+    /// error will be thrown if recovery from an error takes longer than the given timeout, even if
+    /// the error recovery strategy specifies trying again.
+    pub fn timeout(&mut self, timeout: Option<Duration>) -> &mut Self {
+        self.timeout = timeout;
         self
     }
 
@@ -147,6 +173,8 @@ where
         .recover_tx(self.backoff.build(retry::Recovery::ReconnectAfter))
         .recover_connect(self.backoff.build(retry::Recovery::ReconnectAfter))
         .recover_handshake(self.backoff.build(retry::Recovery::ReconnectAfter))
+        .timeout(self.timeout)
+        .max_pending_retries(self.max_pending_retries)
         .connect((domain, port))
         .await
         .map_err(|e| {
