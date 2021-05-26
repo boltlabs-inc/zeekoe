@@ -35,7 +35,7 @@ pub type ClientChan<S> = RetrySplitChan<
     Handshake,
     (DNSName, u16),
     io::Error,
-    dialectic_tokio_serde::SymmetricalError<Bincode, LengthDelimitedCodec>,
+    SymmetricalError<Bincode, LengthDelimitedCodec>,
     Bincode,
     LengthDelimitedCodec,
     tokio_rustls::client::TlsStream<TcpStream>,

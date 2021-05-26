@@ -7,6 +7,7 @@ use {
 };
 
 #[derive(Debug, StructOpt)]
+#[structopt(name = "zeekoe")]
 pub enum Zeekoe {
     Customer(Customer),
     Merchant(Merchant),
@@ -14,12 +15,13 @@ pub enum Zeekoe {
 
 #[derive(Debug, StructOpt)]
 pub enum Customer {
-    Init {
-        #[structopt(long, short)]
-        interactive: bool,
-    },
     Account(Account),
     Channel(Channel),
+}
+
+#[derive(Debug, StructOpt)]
+pub enum Merchant {
+    Run {},
 }
 
 #[derive(Debug)]
@@ -85,7 +87,7 @@ impl FromStr for AccountName {
 pub enum Channel {
     List,
     New {
-        label: String,
+        label: Option<String>,
         merchant: MerchantAddress,
     },
     Fund {
@@ -114,9 +116,11 @@ pub enum Channel {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum AmountParseError {
+    #[error("Unknown currency: {0}")]
     UnknownCurrency(String),
+    #[error("Invalid format for currency amount")]
     InvalidFormat,
 }
 
@@ -144,11 +148,16 @@ pub enum Account {
     Remove { address: Option<String> },
 }
 
-#[derive(Debug, StructOpt)]
-pub enum Merchant {
-    Init {
-        #[structopt(long)]
-        interactive: bool,
-    },
-    Run {},
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn parse_merchant_address() {
+        assert!(MerchantAddress::from_str("localhost").is_ok());
+        assert!(MerchantAddress::from_str("some.random.domain.com").is_ok());
+        assert!(MerchantAddress::from_str("some.random.domain.com:8080").is_ok());
+        assert!(MerchantAddress::from_str("http://google.com").is_err());
+        assert!(MerchantAddress::from_str("localhost:100000000").is_err());
+    }
 }

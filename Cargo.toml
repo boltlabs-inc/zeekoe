@@ -41,10 +41,13 @@ thiserror = "1"
 typenum = "1.12"
 pem = "0.8"
 structopt = "0.3"
+humantime = "2.1"
+humantime-serde = "1"
+url = { version = "2.2", features = ["serde"] }
 rusty-money = { version = "0.4", features = ["crypto"] }
 uuid = { version = "0.8", features = ["serde", "v4"] }
 zeroize = { version = "1.2", features = ["zeroize_derive"] }
 dialectic = { version = "0.4", path = "../dialectic/dialectic" }
 dialectic-tokio-serde = { version = "0.1", path = "../dialectic/dialectic-tokio-serde" }
 dialectic-tokio-serde-bincode = { version = "0.1", path = "../dialectic/dialectic-tokio-serde-bincode" }
-dialectic-reconnect = { version = "0.1", path = "../dialectic/dialectic-reconnect" }
+dialectic-reconnect = { version = "0.1", features = ["serde", "humantime-serde"], path = "../dialectic/dialectic-reconnect" }
