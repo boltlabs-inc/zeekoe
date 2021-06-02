@@ -75,6 +75,8 @@ where
             client_session: PhantomData,
         }
     }
+    ///
+    /// The session type parameter for this type is the session from **the client's perspective.**
 
     /// Set the number of bytes used to represent the length field in the length-delimited encoding.
     pub fn length_field_bytes(&mut self, length_field_bytes: usize) -> &mut Self {
@@ -145,7 +147,11 @@ where
                 let tcp_stream = loop {
                     if let Some(address) = addresses.next() {
                         match TcpStream::connect(address).await {
-                            Ok(tcp_stream) => break tcp_stream,
+                            Ok(tcp_stream) => {
+                                // Session typed messages may be small; send them immediately
+                                tcp_stream.set_nodelay(true)?;
+                                break tcp_stream;
+                            }
                             Err(e) => connection_error = Some(e),
                         }
                     } else {

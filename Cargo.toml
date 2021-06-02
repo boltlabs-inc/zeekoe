@@ -43,6 +43,8 @@ pem = "0.8"
 structopt = "0.3"
 humantime = "2.1"
 humantime-serde = "1"
+http = "0.2"
+http-serde = "1"
 url = { version = "2.2", features = ["serde"] }
 rusty-money = { version = "0.4", features = ["crypto"] }
 uuid = { version = "0.8", features = ["serde", "v4"] }
