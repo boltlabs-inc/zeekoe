@@ -18,6 +18,10 @@ path = "src/bin/customer/main.rs"
 name = "zeekoe-server"
 path = "src/bin/merchant/main.rs"
 
+[[bin]]
+name = "zkchannel"
+path = "src/main.rs"
+
 [features]
 allow_explicit_certificate_trust = []
 
@@ -44,7 +48,10 @@ structopt = "0.3"
 humantime = "2.1"
 humantime-serde = "1"
 http = "0.2"
+edit = "0.1"
+directories = "3"
 http-serde = "1"
+toml = "0.5"
 url = { version = "2.2", features = ["serde"] }
 rusty-money = { version = "0.4", features = ["crypto"] }
 uuid = { version = "0.8", features = ["serde", "v4"] }

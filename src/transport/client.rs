@@ -4,17 +4,28 @@ use {
     dialectic::prelude::*,
     dialectic_reconnect::retry,
     dialectic_tokio_serde_bincode::length_delimited,
-    std::{io, marker::PhantomData, sync::Arc, time::Duration},
+    http::uri::{InvalidUri, Uri},
+    std::{
+        fmt::{self, Display},
+        io,
+        marker::PhantomData,
+        str::FromStr,
+        sync::Arc,
+        time::Duration,
+    },
+    thiserror::Error,
     tokio::net::TcpStream,
     tokio_rustls::{
         rustls::{self, Certificate},
         webpki::DNSName,
         TlsConnector,
     },
+    webpki::{DNSNameRef, InvalidDNSNameError},
 };
 
 use super::channel::TransportError;
 use super::handshake;
+use crate::customer;
 
 pub use super::channel::ClientChan as Chan;
 pub use dialectic_reconnect::Backoff;
@@ -126,7 +137,10 @@ where
 
     /// Connect to the given [`DNSName`] and port, returning either a connected [`Chan`] or an
     /// error if connection and all re-connection attempts failed.
-    pub async fn connect(&self, domain: DNSName, port: u16) -> Result<Chan<Protocol>, Error> {
+    pub async fn connect(
+        &self,
+        ZkChannelAddress { host, port }: ZkChannelAddress,
+    ) -> Result<Chan<Protocol>, Error> {
         // Share the TLS config between all times we connect
         let tls_config = Arc::new(self.tls_config.clone());
 
@@ -185,7 +199,7 @@ where
         .recover_handshake(self.backoff.build(retry::Recovery::ReconnectAfter))
         .timeout(self.timeout)
         .max_pending_retries(self.max_pending_retries)
-        .connect((domain, port))
+        .connect((host, port.unwrap_or_else(customer::defaults::port)))
         .await
         .map_err(|e| {
             // Convert error into general error type
@@ -202,5 +216,65 @@ where
         })?;
 
         Ok(chan)
+    }
+}
+
+/// The address of a zkChannels merchant: a URI of the form `zkchannel://some.domain.com:2611` with
+/// an optional port number.
+#[derive(Debug, Clone)]
+pub struct ZkChannelAddress {
+    host: DNSName,
+    port: Option<u16>,
+}
+
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum InvalidZkChannelAddress {
+    #[error("Incorrect URI scheme: expecting `zkchannel://`")]
+    IncorrectScheme,
+    #[error("Unexpected non-root path in `zkchannel://` address")]
+    UnsupportedPath,
+    #[error("Unexpected query string in `zkchannel://` address")]
+    UnsupportedQuery,
+    #[error("Missing hostname in `zkchannel://` address")]
+    MissingHost,
+    #[error("Invalid DNS hostname in `zkchannel://` address: {0}")]
+    InvalidDnsName(InvalidDNSNameError),
+    #[error("Invalid `zkchannel://` address: {0}")]
+    InvalidUri(InvalidUri),
+}
+
+impl FromStr for ZkChannelAddress {
+    type Err = InvalidZkChannelAddress;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let uri: Uri = s.parse().map_err(InvalidZkChannelAddress::InvalidUri)?;
+        if uri.scheme_str() != Some("zkchannel") {
+            Err(InvalidZkChannelAddress::IncorrectScheme)
+        } else if uri.path() != "" && uri.path() != "/" {
+            Err(InvalidZkChannelAddress::UnsupportedPath)
+        } else if uri.query().is_some() {
+            Err(InvalidZkChannelAddress::UnsupportedQuery)
+        } else if let Some(host) = uri.host() {
+            Ok(ZkChannelAddress {
+                host: DNSNameRef::try_from_ascii_str(host)
+                    .map_err(InvalidZkChannelAddress::InvalidDnsName)?
+                    .to_owned(),
+                port: uri.port_u16(),
+            })
+        } else {
+            Err(InvalidZkChannelAddress::MissingHost)
+        }
+    }
+}
+
+impl Display for ZkChannelAddress {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let host: &str = self.host.as_ref().into();
+        write!(f, "zkchannel://{}", host)?;
+        if let Some(port) = self.port {
+            write!(f, ":{}", port)?;
+        }
+        Ok(())
     }
 }

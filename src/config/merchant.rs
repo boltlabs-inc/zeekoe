@@ -1,8 +1,10 @@
 use {
     serde::{Deserialize, Serialize},
-    std::{net::IpAddr, path::PathBuf, time::Duration},
+    std::{fs, net::IpAddr, path::Path, path::PathBuf, time::Duration},
     url::Url,
 };
+
+use crate::merchant::defaults;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -17,26 +19,21 @@ pub struct Config {
 pub struct Service {
     #[serde(default = "defaults::address")]
     address: IpAddr,
-    #[serde(default = "super::defaults::port")]
+    #[serde(default = "defaults::port")]
     port: u16,
     #[serde(with = "humantime_serde")]
     connection_timeout: Option<Duration>,
-    #[serde(default = "super::defaults::max_pending_connection_retries")]
+    #[serde(default = "defaults::max_pending_connection_retries")]
     max_pending_connection_retries: usize,
-    #[serde(default = "super::defaults::max_message_length")]
+    #[serde(default = "defaults::max_message_length")]
     max_message_length: usize,
     approve: Approver,
     private_key: PathBuf,
     certificate: PathBuf,
 }
 
-/// Defaults for the optional fields in the configuration.
-mod defaults {
-    use std::net::{IpAddr, Ipv6Addr};
-
-    pub const fn address() -> IpAddr {
-        IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0x1))
-    }
+pub fn load(path: impl AsRef<Path>) -> Result<Config, anyhow::Error> {
+    Ok(toml::from_str(&fs::read_to_string(path)?)?)
 }
 
 /// A description of how to approve payments.

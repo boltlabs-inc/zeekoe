@@ -1,5 +1,4 @@
 use std::{env, path::Path, time::Duration};
-use tokio_rustls::webpki::DNSNameRef;
 
 use zeekoe::{
     protocol::Ping,
@@ -35,9 +34,8 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 
     // Connect to `localhost:8080`
-    let domain = DNSNameRef::try_from_ascii_str("localhost")?.to_owned();
-    let port = 8080;
-    let mut chan: Chan<Ping> = client.connect(domain, port).await?;
+    let address = "zkchannel://localhost:8080".parse().unwrap();
+    let mut chan: Chan<Ping> = client.connect(address).await?;
 
     // Enact the client `Ping` protocol
     loop {
