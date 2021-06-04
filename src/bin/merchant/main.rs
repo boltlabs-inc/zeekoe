@@ -1,12 +1,9 @@
 use {
     std::time::Duration,
     zeekoe::{
+        merchant::{Chan, Server},
+        pem,
         protocol::Ping,
-        transport::{
-            pem::read_certificates,
-            pem::read_private_key,
-            server::{Chan, Server},
-        },
     },
 };
 
@@ -23,8 +20,8 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Configure the server
     let mut server: Server<Ping> = Server::new(
-        read_certificates("./dev/localhost.crt")?,
-        read_private_key("./dev/localhost.key")?,
+        pem::read_certificates("./dev/localhost.crt")?,
+        pem::read_private_key("./dev/localhost.key")?,
     );
     server
         .max_length(1024 * 8)

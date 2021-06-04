@@ -173,53 +173,58 @@ where
         while let Some(input) = initialize().await {
             match listener.accept().await {
                 Err(error) => result_tx.send(Err((None, error))).await.unwrap_or(()),
-                Ok((tcp_stream, address)) => match tls_acceptor.accept(tcp_stream).await {
-                    Err(error) => result_tx
-                        .send(Err((Some(address), error)))
-                        .await
-                        .unwrap_or(()),
-                    Ok(tls_stream) => {
-                        // Layer a length-delimmited bincode `Chan` over the TLS stream
-                        let (rx, tx) = tokio::io::split(tls_stream);
-                        let (tx, rx) =
-                            length_delimited(tx, rx, self.length_field_bytes, self.max_length);
+                Ok((tcp_stream, address)) => {
+                    // Session typed messages may be small; send them immediately
+                    tcp_stream.set_nodelay(true)?;
 
-                        let acceptor = acceptor.clone();
-                        let interact = interact.clone();
+                    match tls_acceptor.accept(tcp_stream).await {
+                        Err(error) => result_tx
+                            .send(Err((Some(address), error)))
+                            .await
+                            .unwrap_or(()),
+                        Ok(tls_stream) => {
+                            // Layer a length-delimmited bincode `Chan` over the TLS stream
+                            let (rx, tx) = tokio::io::split(tls_stream);
+                            let (tx, rx) =
+                                length_delimited(tx, rx, self.length_field_bytes, self.max_length);
 
-                        // Run the interaction concurrently, or resume it if it's resuming an
-                        // existing one
-                        let join_handle = tokio::spawn(async move {
-                            match acceptor.accept(tx, rx).await {
-                                Ok((_key, Some(chan))) => {
-                                    let interaction = interact(chan, input);
-                                    interaction.await?;
-                                }
-                                Ok((_key, None)) => {
-                                    // reconnected existing channel, nothing more to do
-                                }
-                                Err(err) => {
-                                    use resume::AcceptError::*;
-                                    // TODO: log these errors?
-                                    match err {
-                                        HandshakeError(_err) => {}
-                                        HandshakeIncomplete => {}
-                                        NoSuchSessionKey(_key) => {}
-                                        SessionKeyAlreadyExists(_key) => {}
-                                        NoCapacity => {}
+                            let acceptor = acceptor.clone();
+                            let interact = interact.clone();
+
+                            // Run the interaction concurrently, or resume it if it's resuming an
+                            // existing one
+                            let join_handle = tokio::spawn(async move {
+                                match acceptor.accept(tx, rx).await {
+                                    Ok((_key, Some(chan))) => {
+                                        let interaction = interact(chan, input);
+                                        interaction.await?;
+                                    }
+                                    Ok((_key, None)) => {
+                                        // reconnected existing channel, nothing more to do
+                                    }
+                                    Err(err) => {
+                                        use resume::AcceptError::*;
+                                        // TODO: log these errors?
+                                        match err {
+                                            HandshakeError(_err) => {}
+                                            HandshakeIncomplete => {}
+                                            NoSuchSessionKey(_key) => {}
+                                            SessionKeyAlreadyExists(_key) => {}
+                                            NoCapacity => {}
+                                        }
                                     }
                                 }
-                            }
-                            Ok::<_, Error>(())
-                        });
+                                Ok::<_, Error>(())
+                            });
 
-                        // Keep track of pending server task
-                        result_tx
-                            .send(Ok((address, join_handle)))
-                            .await
-                            .unwrap_or(());
+                            // Keep track of pending server task
+                            result_tx
+                                .send(Ok((address, join_handle)))
+                                .await
+                                .unwrap_or(());
+                        }
                     }
-                },
+                }
             }
         }
 

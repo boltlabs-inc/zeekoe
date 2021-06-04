@@ -1,12 +1,9 @@
 use std::{env, path::Path, time::Duration};
-use tokio_rustls::webpki::DNSNameRef;
 
 use zeekoe::{
+    customer::{client::Backoff, Chan, Client},
+    pem,
     protocol::Ping,
-    transport::{
-        client::{Backoff, Chan, Client},
-        pem::read_single_certificate,
-    },
 };
 
 #[tokio::main]
@@ -31,13 +28,12 @@ async fn main() -> Result<(), anyhow::Error> {
         if path.is_relative() {
             return Err(anyhow::anyhow!("Path specified in `ZEEKOE_TRUST_EXPLICIT_CERTIFICATE` must be absolute, but the current value, \"{}\", is relative", path_string));
         }
-        client.trust_explicit_certificate(&read_single_certificate(path)?)?;
+        client.trust_explicit_certificate(&pem::read_single_certificate(path)?)?;
     }
 
     // Connect to `localhost:8080`
-    let domain = DNSNameRef::try_from_ascii_str("localhost")?.to_owned();
-    let port = 8080;
-    let mut chan: Chan<Ping> = client.connect(domain, port).await?;
+    let address = "zkchannel://localhost:8080".parse().unwrap();
+    let mut chan: Chan<Ping> = client.connect(address).await?;
 
     // Enact the client `Ping` protocol
     loop {
