@@ -4,13 +4,15 @@ use {
     url::Url,
 };
 
+pub use super::DatabaseLocation;
+
 use crate::merchant::defaults;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[non_exhaustive]
 pub struct Config {
-    pub database: super::DatabaseLocation,
+    pub database: DatabaseLocation,
     #[serde(rename = "service")]
     pub services: Vec<Service>,
 }

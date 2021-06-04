@@ -4,13 +4,15 @@ use {
     std::{path::Path, time::Duration},
 };
 
+pub use super::DatabaseLocation;
+
 use crate::customer::defaults;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[non_exhaustive]
 pub struct Config {
-    pub database: Option<super::DatabaseLocation>,
+    pub database: Option<DatabaseLocation>,
     #[serde(default = "defaults::backoff")]
     pub backoff: Backoff,
     #[serde(with = "humantime_serde", default = "defaults::connection_timeout")]
