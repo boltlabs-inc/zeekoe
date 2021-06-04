@@ -85,11 +85,13 @@ pub struct Close {
 }
 
 #[derive(Debug, StructOpt)]
+#[non_exhaustive]
 pub struct Import {
     pub address: Option<String>,
 }
 
 #[derive(Debug, StructOpt)]
+#[non_exhaustive]
 pub struct Remove {
     pub address: Option<String>,
 }
