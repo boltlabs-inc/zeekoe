@@ -1,93 +1,55 @@
-use {std::io::Cursor, structopt::StructOpt, tokio::io::AsyncRead};
+use {std::convert::identity, structopt::StructOpt};
 
 use zeekoe::{
-    cli::{Account, Customer, Merchant, Note, ZkChannel},
-    customer::{self, ChannelName},
-    merchant,
+    customer, merchant,
+    Cli::{self, Customer, Merchant},
 };
 
-fn note_contents(note: Option<Note>) -> Box<dyn AsyncRead> {
-    match note.unwrap_or_else(|| Note::String(String::new())) {
-        Note::Stdin => Box::new(tokio::io::stdin()),
-        Note::String(s) => Box::new(Cursor::new(s)),
-    }
-}
-
-pub fn main() -> Result<(), anyhow::Error> {
-    use self::Account::*;
-
-    match ZkChannel::from_args() {
-        ZkChannel::Merchant { merchant, config } => {
-            use Merchant::*;
-            let config = if let Some(config) = config {
-                config
-            } else {
-                merchant::defaults::config_path()?
+#[tokio::main]
+pub async fn main() -> Result<(), anyhow::Error> {
+    match Cli::from_args() {
+        Merchant { merchant, config } => {
+            use merchant::{
+                cli::{self, Command, Merchant::*},
+                defaults::config_path,
+                Config,
             };
+
+            let config_path = config.ok_or_else(config_path).or_else(identity)?;
+            let config = Config::load(&config_path);
 
             match merchant {
-                Configure => Ok(edit::edit_file(config)?),
-                Run => {
-                    let config = merchant::config::load(config)?;
-                    todo!();
-                    Ok(())
+                Configure(cli::Configure { .. }) => {
+                    drop(config);
+                    tokio::task::spawn_blocking(|| Ok(edit::edit_file(config_path)?)).await?
                 }
+                Run(run) => run.run(config.await?).await,
             }
         }
-        ZkChannel::Customer { customer, config } => {
-            use Customer::*;
-            let config = if let Some(config) = config {
-                config
-            } else {
-                customer::defaults::config_path()?
+        Customer { customer, config } => {
+            use customer::{
+                cli::{self, Account::*, Command, Customer::*},
+                defaults::config_path,
+                Config,
             };
 
+            let config_path = config.ok_or_else(config_path).or_else(identity)?;
+            let config = Config::load(&config_path);
+
             match customer {
-                Account(a) => {
-                    let config = customer::config::load(config)?;
-                    match a {
-                        Import { address } => todo!(),
-                        Remove { address } => todo!(),
-                    }
+                Configure(cli::Configure { .. }) => {
+                    drop(config);
+                    tokio::task::spawn_blocking(|| Ok(edit::edit_file(config_path)?)).await?
                 }
-                List => todo!(),
-                Configure => todo!(),
-                Rename {
-                    old_label,
-                    new_label,
-                } => todo!(),
-                Establish {
-                    merchant,
-                    deposit,
-                    from,
-                    label,
-                    note,
-                } => {
-                    let config = customer::config::load(config)?;
-                    let note = note_contents(note);
-                    let label = label.unwrap_or_else(|| ChannelName::new(merchant.to_string()));
-                    todo!()
-                }
-                Pay { label, pay, note } => {
-                    let config = customer::config::load(config)?;
-                    let note = note_contents(note);
-                    // let merchant: ZkChannelAddress = db.get_merchant(label)?;
-                    customer::pay(todo!(), &pay, todo!())?;
-                    todo!()
-                }
-                Refund {
-                    label,
-                    refund,
-                    note,
-                } => {
-                    let config = customer::config::load(config)?;
-                    let note = note_contents(note);
-                    // let merchant: ZkChannelAddress = db.get_merchant(label)?;
-                    customer::pay(todo!(), &(-1 * refund), todo!())?;
-                    todo!()
-                }
-                Close { label } => todo!(),
-            };
+                Account(Import(import)) => import.run(config.await?).await,
+                Account(Remove(remove)) => remove.run(config.await?).await,
+                List(list) => list.run(config.await?).await,
+                Rename(rename) => rename.run(config.await?).await,
+                Establish(establish) => establish.run(config.await?).await,
+                Pay(pay) => pay.run(config.await?).await,
+                Refund(refund) => refund.run(config.await?).await,
+                Close(close) => close.run(config.await?).await,
+            }
         }
     }
 }

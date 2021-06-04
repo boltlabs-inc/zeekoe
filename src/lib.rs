@@ -1,9 +1,13 @@
 pub mod amount;
 pub mod chain;
-pub mod cli;
-mod config;
 pub mod customer;
-mod defaults;
 pub mod merchant;
 pub mod protocol;
-pub mod transport;
+
+mod cli;
+mod config;
+mod defaults;
+mod transport;
+
+pub use cli::Cli;
+pub use transport::pem; // TODO: don't re-export this

@@ -1,82 +1,35 @@
 use {
-    std::{path::PathBuf, str::FromStr},
+    read_restrict::ReadExt,
+    std::{
+        io::{self, Read},
+        path::PathBuf,
+        str::FromStr,
+    },
     structopt::StructOpt,
 };
 
-use crate::{
-    amount::{parse_amount, Amount},
-    customer::{AccountName, ChannelName},
-    transport::client::ZkChannelAddress,
-};
+pub mod customer;
+pub mod merchant;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = crate::defaults::shared::APPLICATION)]
-pub enum ZkChannel {
+pub enum Cli {
     Customer {
         #[structopt(long)]
         config: Option<PathBuf>,
         #[structopt(subcommand)]
-        customer: Customer,
+        customer: customer::Customer,
     },
     Merchant {
         #[structopt(long)]
         config: Option<PathBuf>,
         #[structopt(subcommand)]
-        merchant: Merchant,
+        merchant: merchant::Merchant,
     },
 }
 
-#[derive(Debug, StructOpt)]
-pub enum Customer {
-    Account(Account),
-    List,
-    Configure,
-    Rename {
-        old_label: ChannelName,
-        new_label: ChannelName,
-    },
-    Establish {
-        merchant: ZkChannelAddress,
-        #[structopt(parse(try_from_str = parse_amount))]
-        deposit: Amount,
-        #[structopt(long)]
-        from: AccountName,
-        #[structopt(long)]
-        label: Option<ChannelName>,
-        #[structopt(long)]
-        note: Option<Note>,
-    },
-    Pay {
-        label: ChannelName,
-        #[structopt(parse(try_from_str = parse_amount))]
-        pay: Amount,
-        #[structopt(long)]
-        note: Option<Note>,
-    },
-    Refund {
-        label: ChannelName,
-        #[structopt(parse(try_from_str = parse_amount))]
-        refund: Amount,
-        #[structopt(long)]
-        note: Option<Note>,
-    },
-    Close {
-        label: ChannelName,
-    },
-}
-
-#[derive(Debug, StructOpt)]
-pub enum Merchant {
-    Configure,
-    Run,
-}
-
-#[derive(Debug, StructOpt)]
-pub enum Account {
-    Import { address: Option<String> },
-    Remove { address: Option<String> },
-}
-
+/// An argument specified on the command line which may be a string literal, or the special string
+/// `-`, which indicates that the value should be read from standard input.
 #[derive(Debug)]
 pub enum Note {
     Stdin,
@@ -92,5 +45,16 @@ impl FromStr for Note {
         } else {
             Ok(Note::String(str.to_string()))
         }
+    }
+}
+
+impl Note {
+    pub fn read(self, max_length: u64) -> Result<String, io::Error> {
+        let mut output = String::new();
+        io::stdin()
+            .lock()
+            .restrict(max_length)
+            .read_to_string(&mut output)?;
+        Ok(output)
     }
 }

@@ -948,6 +948,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "read-restrict"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f8258dbe9cd2ac4fc41981ad7b298d9c6dcff8f21ee8a601aa72c425a4b4999"
+
+[[package]]
 name = "redox_syscall"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1558,6 +1564,7 @@ dependencies = [
  "libzkchannels-toolkit",
  "num",
  "pem",
+ "read-restrict",
  "ring",
  "rusty-money",
  "serde",

@@ -23,7 +23,7 @@ pub(crate) mod shared {
     }
 
     pub const fn max_message_length() -> usize {
-        1024 * 8
+        1024 * 16
     }
 
     pub const fn port() -> u16 {
@@ -64,5 +64,9 @@ pub mod customer {
 
     pub fn config_path() -> Result<PathBuf, anyhow::Error> {
         Ok(project_dirs()?.config_dir().join(CONFIG_FILE))
+    }
+
+    pub const fn max_note_length() -> u64 {
+        1024 * 8
     }
 }
