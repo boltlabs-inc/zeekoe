@@ -49,6 +49,7 @@ pub mod merchant {
 
 pub mod customer {
     use super::*;
+    use crate::customer::config::DatabaseLocation;
 
     pub use super::shared::*;
 
@@ -62,8 +63,16 @@ pub mod customer {
 
     pub const CONFIG_FILE: &str = "Customer.toml";
 
+    pub const DATABASE_FILE: &str = "customer.db";
+
     pub fn config_path() -> Result<PathBuf, anyhow::Error> {
         Ok(project_dirs()?.config_dir().join(CONFIG_FILE))
+    }
+
+    pub fn database_location() -> Result<DatabaseLocation, anyhow::Error> {
+        Ok(DatabaseLocation::Sqlite(
+            project_dirs()?.data_dir().join(DATABASE_FILE),
+        ))
     }
 
     pub const fn max_note_length() -> u64 {
