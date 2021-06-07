@@ -9,22 +9,18 @@ use {
         fmt::{self, Display},
         io,
         marker::PhantomData,
+        path::Path,
         str::FromStr,
         sync::Arc,
         time::Duration,
     },
     thiserror::Error,
     tokio::net::TcpStream,
-    tokio_rustls::{
-        rustls::{self, Certificate},
-        webpki::DNSName,
-        TlsConnector,
-    },
+    tokio_rustls::{rustls, webpki::DNSName, TlsConnector},
     webpki::{DNSNameRef, InvalidDNSNameError},
 };
 
-use super::channel::TransportError;
-use super::handshake;
+use super::{channel::TransportError, handshake, pem};
 use crate::customer;
 
 pub use super::channel::ClientChan as Chan;
@@ -129,9 +125,12 @@ where
     #[cfg(feature = "allow_explicit_certificate_trust")]
     pub fn trust_explicit_certificate(
         &mut self,
-        trust_explicit_certificate: &Certificate,
-    ) -> Result<&mut Self, webpki::Error> {
-        self.tls_config.root_store.add(trust_explicit_certificate)?;
+        trust_explicit_certificate: impl AsRef<Path>,
+    ) -> Result<&mut Self, io::Error> {
+        self.tls_config
+            .root_store
+            .add(&pem::read_single_certificate(trust_explicit_certificate)?)
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Invalid certificate"))?;
         Ok(self)
     }
 

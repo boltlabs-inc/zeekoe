@@ -7,7 +7,7 @@ use zeekoe::{
 
 use super::Method;
 
-pub struct Parameters(());
+pub struct Parameters;
 
 #[async_trait]
 impl Method for Parameters {

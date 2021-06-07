@@ -5,7 +5,10 @@ use {
     dialectic_reconnect::resume,
     dialectic_tokio_serde_bincode::length_delimited,
     futures::{stream::FuturesUnordered, Future, StreamExt},
-    std::{fmt::Display, io, marker::PhantomData, net::SocketAddr, sync::Arc, time::Duration},
+    std::{
+        fmt::Display, io, marker::PhantomData, net::SocketAddr, path::Path, sync::Arc,
+        time::Duration,
+    },
     tokio::{net::TcpListener, select, sync::mpsc},
     tokio_rustls::{
         rustls::{self, Certificate, PrivateKey},
@@ -13,8 +16,7 @@ use {
     },
 };
 
-use super::channel::TransportError;
-use super::handshake;
+use super::{channel::TransportError, handshake, pem};
 
 pub use super::channel::ServerChan as Chan;
 
@@ -49,16 +51,19 @@ where
     <Protocol as Session>::Dual: Session,
 {
     /// Create a new server using the given certificate chain and private key.
-    pub fn new(certificate_chain: Vec<Certificate>, private_key: PrivateKey) -> Self {
-        Server {
+    pub fn new(
+        certificate_chain: impl AsRef<Path>,
+        private_key: impl AsRef<Path>,
+    ) -> Result<Self, io::Error> {
+        Ok(Server {
             max_length: usize::MAX,
             length_field_bytes: 4,
-            certificate_chain,
-            private_key,
+            certificate_chain: pem::read_certificates(certificate_chain)?,
+            private_key: pem::read_private_key(private_key)?,
             max_pending_retries: None,
             timeout: None,
             client_session: PhantomData,
-        }
+        })
     }
 
     /// Set the number of bytes used to represent the length field in the length-delimited encoding.

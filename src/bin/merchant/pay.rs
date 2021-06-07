@@ -1,13 +1,15 @@
-use async_trait::async_trait;
+use {async_trait::async_trait, std::sync::Arc};
 
 use zeekoe::{
-    merchant::{Chan, Config},
+    merchant::{config::Approver, Chan, Config},
     protocol,
 };
 
 use super::Method;
 
-pub struct Pay(());
+pub struct Pay {
+    pub approve: Arc<Approver>,
+}
 
 #[async_trait]
 impl Method for Pay {

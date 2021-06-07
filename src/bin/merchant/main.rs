@@ -1,9 +1,19 @@
-use {async_trait::async_trait, dialectic::Session, std::convert::identity, structopt::StructOpt};
+use {
+    async_trait::async_trait,
+    dialectic::{offer, Session},
+    futures::stream::{FuturesUnordered, StreamExt},
+    std::{convert::identity, net::IpAddr, sync::Arc},
+    structopt::StructOpt,
+};
 
-use zeekoe::merchant::{
-    cli::{self, Run},
-    defaults::config_path,
-    Chan, Cli, Config,
+use zeekoe::{
+    merchant::{
+        cli::{self, Run},
+        config::Approver,
+        defaults::config_path,
+        Chan, Cli, Config, Server,
+    },
+    protocol::ZkChannels,
 };
 
 mod parameters;
@@ -24,8 +34,53 @@ pub trait Command {
 #[async_trait]
 impl Command for Run {
     async fn run(self, config: Config) -> Result<(), anyhow::Error> {
-        todo!()
-        // Pay::from_config(config).run(chan).await?
+        // TODO: open database connection here, share in an `Arc` between server threads
+        // TODO: graceful shutdown
+
+        let config = Arc::new(config);
+
+        let mut server_futures: FuturesUnordered<_> = config
+            .services
+            .iter()
+            .map(|service| {
+                let config = config.clone();
+                let approve = Arc::new(service.approve.clone());
+                async move {
+                    let mut server: Server<ZkChannels> =
+                        Server::new(&service.certificate, &service.private_key)?;
+                    server
+                        .timeout(service.connection_timeout)
+                        .max_pending_retries(Some(service.max_pending_connection_retries))
+                        .max_length(service.max_message_length);
+                    server
+                        .serve_while(
+                            (service.address, service.port),
+                            || async { Some(()) },
+                            move |chan, ()| {
+                                let config = config.clone();
+                                let approve = approve.clone();
+                                async move {
+                                    offer!(in chan {
+                                        0 => Parameters.run(&config, chan).await?,
+                                        1 => Pay { approve: approve.clone() }.run(&config, chan).await?,
+                                    })?;
+                                    Ok::<_, anyhow::Error>(())
+                                }
+                            },
+                        )
+                        .await?;
+                    Ok::<_, anyhow::Error>(())
+                }
+            })
+            .collect();
+
+        while let Some(result) = server_futures.next().await {
+            if let Err(e) = result {
+                eprintln!("Error: {}", e);
+            }
+        }
+
+        Ok(())
     }
 }
 

@@ -11,7 +11,6 @@ use zeekoe::{
         defaults::config_path,
         Chan, Cli, Client, Config,
     },
-    pem,
     protocol::{self, ZkChannels},
 };
 
@@ -74,7 +73,7 @@ pub async fn connect(
         if path.is_relative() {
             return Err(anyhow::anyhow!("Path specified in `ZEEKOE_TRUST_EXPLICIT_CERTIFICATE` must be absolute, but the current value, \"{}\", is relative", path_string));
         }
-        client.trust_explicit_certificate(&pem::read_single_certificate(path)?)?;
+        client.trust_explicit_certificate(path)?;
     }
 
     Ok(client.connect(address).await?)

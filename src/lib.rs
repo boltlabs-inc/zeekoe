@@ -8,5 +8,3 @@ mod cli;
 mod config;
 mod defaults;
 mod transport;
-
-pub use transport::pem; // TODO: don't re-export this
