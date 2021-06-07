@@ -1,14 +1,9 @@
 use std::str::FromStr;
 
-pub use crate::cli::{customer as cli, customer::Customer as Cli};
+pub use crate::cli::{customer as cli, customer::Cli};
 pub use crate::config::{customer as config, customer::Config};
 pub use crate::defaults::customer as defaults;
 pub use crate::transport::client::{self as client, Chan, Client};
-
-mod close;
-mod establish;
-mod manage;
-mod pay;
 
 #[derive(Debug)]
 pub struct AccountName(String);

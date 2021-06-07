@@ -1,12 +1,27 @@
-use {async_trait::async_trait, structopt::StructOpt};
+use {
+    read_restrict::ReadExt,
+    std::{
+        io::{self, Read},
+        path::PathBuf,
+        str::FromStr,
+    },
+    structopt::StructOpt,
+};
 
 use crate::{
     amount::{parse_amount, Amount},
-    customer::{self, AccountName, ChannelName},
+    customer::{AccountName, ChannelName},
     transport::client::ZkChannelAddress,
 };
 
-pub use crate::cli::Note;
+#[derive(Debug, StructOpt)]
+#[non_exhaustive]
+pub struct Cli {
+    #[structopt(long)]
+    pub config: Option<PathBuf>,
+    #[structopt(subcommand)]
+    pub customer: Customer,
+}
 
 #[derive(Debug, StructOpt)]
 pub enum Customer {
@@ -18,15 +33,6 @@ pub enum Customer {
     Pay(Pay),
     Refund(Refund),
     Close(Close),
-}
-
-/// A single customer-side command, parameterized by the currently loaded configuration.
-///
-/// All subcommands of [`Customer`] should implement this, except [`Configure`], which does not need
-/// to start with a valid loaded configuration.
-#[async_trait]
-pub trait Command {
-    async fn run(self, config: customer::Config) -> Result<(), anyhow::Error>;
 }
 
 #[derive(Debug, StructOpt)]
@@ -100,4 +106,35 @@ pub struct Remove {
 pub enum Account {
     Import(Import),
     Remove(Remove),
+}
+
+/// An argument specified on the command line which may be a string literal, or the special string
+/// `-`, which indicates that the value should be read from standard input.
+#[derive(Debug)]
+pub enum Note {
+    Stdin,
+    String(String),
+}
+
+impl FromStr for Note {
+    type Err = std::convert::Infallible;
+
+    fn from_str(str: &str) -> Result<Self, Self::Err> {
+        if str == "-" {
+            Ok(Note::Stdin)
+        } else {
+            Ok(Note::String(str.to_string()))
+        }
+    }
+}
+
+impl Note {
+    pub fn read(self, max_length: u64) -> Result<String, io::Error> {
+        let mut output = String::new();
+        io::stdin()
+            .lock()
+            .restrict(max_length)
+            .read_to_string(&mut output)?;
+        Ok(output)
+    }
 }

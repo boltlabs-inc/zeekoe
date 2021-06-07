@@ -1,9 +1,11 @@
 use async_trait::async_trait;
 
-use crate::customer::{
-    cli::{Command, Import, List, Remove, Rename},
+use zeekoe::customer::{
+    cli::{Import, List, Remove, Rename},
     Config,
 };
+
+use super::Command;
 
 #[async_trait]
 impl Command for Import {

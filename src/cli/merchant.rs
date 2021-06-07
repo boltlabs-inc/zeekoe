@@ -1,20 +1,20 @@
-use {async_trait::async_trait, structopt::StructOpt};
+use {std::path::PathBuf, structopt::StructOpt};
 
-pub use crate::{cli::Note, merchant};
+pub use crate::merchant;
+
+#[derive(Debug, StructOpt)]
+#[non_exhaustive]
+pub struct Cli {
+    #[structopt(long)]
+    pub config: Option<PathBuf>,
+    #[structopt(subcommand)]
+    pub merchant: Merchant,
+}
 
 #[derive(Debug, StructOpt)]
 pub enum Merchant {
     Configure(Configure),
     Run(Run),
-}
-
-/// A single merchant-side command, parameterized by the currently loaded configuration.
-///
-/// All subcommands of [`Merchant`] should implement this, except [`Configure`], which does not need
-/// to start with a valid loaded configuration.
-#[async_trait]
-pub trait Command {
-    async fn run(self, config: merchant::Config) -> Result<(), anyhow::Error>;
 }
 
 #[derive(Debug, StructOpt)]

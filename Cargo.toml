@@ -11,16 +11,16 @@ name = "zeekoe"
 path = "src/lib.rs"
 
 [[bin]]
-name = "zeekoe-client"
-path = "src/bin/customer/main.rs"
-
-[[bin]]
-name = "zeekoe-server"
-path = "src/bin/merchant/main.rs"
-
-[[bin]]
 name = "zkchannel"
-path = "src/main.rs"
+path = "bin/main.rs"
+
+[[bin]]
+name = "zkchannel-customer"
+path = "bin/customer.rs"
+
+[[bin]]
+name = "zkchannel-merchant"
+path = "bin/merchant.rs"
 
 [features]
 allow_explicit_certificate_trust = []

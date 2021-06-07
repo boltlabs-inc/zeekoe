@@ -1,9 +1,11 @@
 use async_trait::async_trait;
 
-use crate::customer::{
-    cli::{Command, Pay, Refund},
+use zeekoe::customer::{
+    cli::{Pay, Refund},
     Config,
 };
+
+use super::Command;
 
 #[async_trait]
 impl Command for Pay {

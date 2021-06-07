@@ -15,6 +15,7 @@ pub(crate) fn parse_amount(str: &str) -> Result<Amount, MoneyError> {
     }
 }
 
+#[allow(unused)]
 #[derive(Debug, Error)]
 pub enum AmountParseError {
     #[error("Unknown currency: {0}")]
