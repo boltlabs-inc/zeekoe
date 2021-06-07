@@ -74,6 +74,17 @@ pub struct Pay {
     pub note: Option<Note>,
 }
 
+impl Pay {
+    pub fn into_negative_refund(self) -> Refund {
+        let Self { label, pay, note } = self;
+        Refund {
+            label,
+            refund: -1 * pay,
+            note,
+        }
+    }
+}
+
 #[derive(Debug, StructOpt)]
 #[non_exhaustive]
 pub struct Refund {
@@ -82,6 +93,21 @@ pub struct Refund {
     pub refund: Amount,
     #[structopt(long)]
     pub note: Option<Note>,
+}
+
+impl Refund {
+    pub fn into_negative_pay(self) -> Pay {
+        let Self {
+            label,
+            refund,
+            note,
+        } = self;
+        Pay {
+            label,
+            pay: -1 * refund,
+            note,
+        }
+    }
 }
 
 #[derive(Debug, StructOpt)]

@@ -7,11 +7,11 @@ use zeekoe::{
 
 use super::Method;
 
-pub struct Pay(());
+pub struct Parameters(());
 
 #[async_trait]
-impl Method for Pay {
-    type Protocol = protocol::Pay;
+impl Method for Parameters {
+    type Protocol = protocol::Parameters;
 
     async fn run(&self, config: &Config, chan: Chan<Self::Protocol>) -> Result<(), anyhow::Error> {
         todo!()

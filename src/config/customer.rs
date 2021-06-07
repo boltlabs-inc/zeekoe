@@ -21,6 +21,8 @@ pub struct Config {
     pub max_pending_connection_retries: usize,
     #[serde(default = "defaults::max_message_length")]
     pub max_message_length: usize,
+    #[serde(default = "defaults::max_note_length")]
+    pub max_note_length: u64,
 }
 
 impl Config {

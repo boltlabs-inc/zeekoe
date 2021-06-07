@@ -6,7 +6,10 @@ use zeekoe::merchant::{
     Chan, Cli, Config,
 };
 
+mod parameters;
 mod pay;
+
+use parameters::Parameters;
 use pay::Pay;
 
 /// A single merchant-side command, parameterized by the currently loaded configuration.
@@ -34,9 +37,7 @@ where
 {
     type Protocol;
 
-    fn from_config(config: &Config) -> Self;
-
-    async fn run(&self, chan: Chan<Self::Protocol>) -> Result<(), anyhow::Error>;
+    async fn run(&self, config: &Config, chan: Chan<Self::Protocol>) -> Result<(), anyhow::Error>;
 }
 
 pub async fn main_with_cli(cli: Cli) -> Result<(), anyhow::Error> {
