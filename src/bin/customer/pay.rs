@@ -39,17 +39,7 @@ impl Command for Pay {
         let payment_units: usize = todo!("convert `rusty_money::Money` into `usize`");
 
         // Start the zkAbacus core payment and get fresh proofs and commitments
-        let (
-            started,
-            StartMessage {
-                nonce,
-                pay_proof,
-                revocation_lock_commitment,
-                close_state_commitment,
-                state_commitment,
-                ..
-            },
-        ) = ready.start(PaymentAmount::pay_merchant(payment_units));
+        let (started, start_message) = ready.start(PaymentAmount::pay_merchant(payment_units));
 
         // Send the payment amount and note to the merchant
         let chan = chan.send(payment_units).await?.send(note).await?;
@@ -59,15 +49,15 @@ impl Command for Pay {
 
         // Send the initial proofs and commitments to the merchant
         let chan = chan
-            .send(nonce)
+            .send(start_message.nonce)
             .await?
-            .send(pay_proof)
+            .send(start_message.pay_proof)
             .await?
-            .send(revocation_lock_commitment)
+            .send(start_message.revocation_lock_commitment)
             .await?
-            .send(close_state_commitment)
+            .send(start_message.close_state_commitment)
             .await?
-            .send(state_commitment)
+            .send(start_message.state_commitment)
             .await?;
 
         // Allow the merchant to cancel the session at this point, and throw an error if so
@@ -77,24 +67,15 @@ impl Command for Pay {
         let (closing_signature, chan) = chan.recv().await?;
 
         // Verify the closing signature and transition into a locked state
-        let (chan, locked) = if let Ok((
-            locked,
-            LockMessage {
-                revocation_lock,
-                revocation_secret,
-                revocation_lock_blinding_factor,
-                ..
-            },
-        )) = started.lock(closing_signature)
-        {
+        let (chan, locked) = if let Ok((locked, lock_message)) = started.lock(closing_signature) {
             // If the closing signature verifies, reveal our lock, secret, and blinding factor
             let chan = choose_continue!(in chan)?;
             let chan = chan
-                .send(revocation_lock)
+                .send(lock_message.revocation_lock)
                 .await?
-                .send(revocation_secret)
+                .send(lock_message.revocation_secret)
                 .await?
-                .send(revocation_lock_blinding_factor)
+                .send(lock_message.revocation_lock_blinding_factor)
                 .await?;
 
             // Allow the merchant to cancel the session at this point, and throw an error if so
