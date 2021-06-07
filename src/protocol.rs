@@ -1,5 +1,8 @@
 use dialectic::prelude::*;
-use libzkchannels_toolkit::{nonce::Nonce, proofs::PayProof, revlock::*, states::*};
+use zkabacus_crypto::{
+    ClosingSignature, CloseStateCommitment, Nonce, PayProof,
+    PayToken, StateCommitment, revlock::*,
+};
 
 pub type Ping = Session! {
     loop {
@@ -42,7 +45,7 @@ pub mod pay {
     };
 
     pub type MerchantAcceptPayment = Session! {
-        recv CloseStateBlindedSignature;
+        recv ClosingSignature;
         ChooseAbort<CustomerRevokePreviousPayToken>;
     };
 
@@ -54,6 +57,6 @@ pub mod pay {
     };
 
     pub type MerchantIssueNewPayToken = Session! {
-        recv BlindedPayToken;
+        recv PayToken;
     };
 }
