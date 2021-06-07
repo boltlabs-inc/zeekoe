@@ -17,14 +17,14 @@ use pay::Pay;
 /// to start with a valid loaded configuration.
 #[async_trait]
 pub trait Command {
-    async fn run(self, config: merchant::Config) -> Result<(), anyhow::Error>;
+    async fn run(self, config: Config) -> Result<(), anyhow::Error>;
 }
 
 #[async_trait]
 impl Command for Run {
     async fn run(self, config: Config) -> Result<(), anyhow::Error> {
         todo!()
-        // Pay.run(&config, chan).await?
+        // Pay::from_config(config).run(chan).await?
     }
 }
 
@@ -41,7 +41,7 @@ where
     async fn run(&self, chan: Chan<Self::Protocol>) -> Result<(), anyhow::Error>;
 }
 
-pub async fn main_with_cli(cli: zeekoe::merchant::Cli) -> Result<(), anyhow::Error> {
+pub async fn main_with_cli(cli: Cli) -> Result<(), anyhow::Error> {
     let config_path = cli.config.ok_or_else(config_path).or_else(identity)?;
     let config = Config::load(&config_path);
 
