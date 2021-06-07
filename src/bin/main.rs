@@ -1,9 +1,9 @@
 use structopt::StructOpt;
 
-#[path = "customer/customer.rs"]
-mod customer;
+#[path = "customer/main.rs"]
+mod main;
 
-#[path = "merchant/merchant.rs"]
+#[path = "merchant/main.rs"]
 mod merchant;
 
 #[derive(Debug, StructOpt)]
@@ -23,6 +23,6 @@ pub async fn main() -> Result<(), anyhow::Error> {
     use Cli::{Customer, Merchant};
     match Cli::from_args() {
         Merchant { merchant } => merchant::main_with_cli(merchant).await,
-        Customer { customer } => customer::main_with_cli(customer).await,
+        Customer { customer } => main::main_with_cli(customer).await,
     }
 }
