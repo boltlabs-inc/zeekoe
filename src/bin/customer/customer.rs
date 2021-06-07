@@ -6,17 +6,14 @@ use zeekoe::customer::{
     Cli, Config,
 };
 
-#[path = "customer/close.rs"]
 mod close;
-#[path = "customer/establish.rs"]
 mod establish;
-#[path = "customer/manage.rs"]
 mod manage;
-#[path = "customer/pay.rs"]
 mod pay;
 
 /// A single customer-side command, parameterized by the currently loaded configuration.
 ///
+#[path = "customer/close.rs"]
 /// All subcommands of [`Customer`] should implement this, except [`Configure`], which does not need
 /// to start with a valid loaded configuration.
 #[async_trait]

@@ -7,7 +7,6 @@ use zeekoe::merchant::{
     Chan, Cli, Config,
 };
 
-#[path = "merchant/pay.rs"]
 mod pay;
 use pay::Pay;
 

@@ -1,6 +1,9 @@
 use structopt::StructOpt;
 
+#[path = "customer/customer.rs"]
 mod customer;
+
+#[path = "merchant/merchant.rs"]
 mod merchant;
 
 #[derive(Debug, StructOpt)]
