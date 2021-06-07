@@ -12,15 +12,15 @@ path = "src/lib.rs"
 
 [[bin]]
 name = "zkchannel"
-path = "bin/main.rs"
+path = "src/bin/main.rs"
 
 [[bin]]
 name = "zkchannel-customer"
-path = "bin/customer.rs"
+path = "src/bin/customer.rs"
 
 [[bin]]
 name = "zkchannel-merchant"
-path = "bin/merchant.rs"
+path = "src/bin/merchant.rs"
 
 [features]
 allow_explicit_certificate_trust = []
