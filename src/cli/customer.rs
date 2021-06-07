@@ -130,11 +130,25 @@ impl FromStr for Note {
 
 impl Note {
     pub fn read(self, max_length: u64) -> Result<String, io::Error> {
-        let mut output = String::new();
-        io::stdin()
-            .lock()
-            .restrict(max_length)
-            .read_to_string(&mut output)?;
-        Ok(output)
+        match self {
+            Note::Stdin => {
+                let mut output = String::new();
+                io::stdin()
+                    .lock()
+                    .restrict(max_length)
+                    .read_to_string(&mut output)?;
+                Ok(output)
+            }
+            Note::String(s) => {
+                if s.len() as u64 <= max_length {
+                    Ok(s)
+                } else {
+                    Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "Read restriction exceeded",
+                    ))
+                }
+            }
+        }
     }
 }
