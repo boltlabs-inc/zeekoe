@@ -19,24 +19,21 @@ use super::{connect, Command};
 #[async_trait]
 impl Command for Pay {
     async fn run(self, config: self::Config) -> Result<(), anyhow::Error> {
-        let Self {
-            label, pay, note, ..
-        } = self;
-
-        // Look up the address for this merchant in the database
-        let address = todo!("look up address in database");
-        let ready: Ready = todo!("look up channel state in database");
+        // Look up the address and current local customer state for this merchant in the database
+        let address = todo!("look up address in database by `self.label`");
+        let ready: Ready = todo!("look up channel state in database by `self.label`");
 
         // Connect and select the Pay session
         let chan = connect(&config, address).await?.choose::<1>().await?;
 
         // Read the contents of the note, if any
-        let note = note
+        let note = self
+            .note
             .unwrap_or_else(|| zeekoe::customer::cli::Note::String(String::from("")))
             .read(config.max_note_length)?;
 
         // Start the payment and get the messages to send to the merchant
-        let payment_units: usize = todo!("convert `rusty_money::Money` into `usize`");
+        let payment_units: usize = todo!("convert `self.pay: rusty_money::Money` into `usize`");
 
         // Start the zkAbacus core payment and get fresh proofs and commitments
         let (started, start_message) = ready.start(PaymentAmount::pay_merchant(payment_units));
