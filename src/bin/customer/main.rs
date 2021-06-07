@@ -13,7 +13,6 @@ mod pay;
 
 /// A single customer-side command, parameterized by the currently loaded configuration.
 ///
-#[path = "customer/close.rs"]
 /// All subcommands of [`Customer`] should implement this, except [`Configure`], which does not need
 /// to start with a valid loaded configuration.
 #[async_trait]
@@ -41,6 +40,7 @@ pub async fn main_with_cli(cli: Cli) -> Result<(), anyhow::Error> {
     }
 }
 
+#[allow(unused)]
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     main_with_cli(Cli::from_args()).await

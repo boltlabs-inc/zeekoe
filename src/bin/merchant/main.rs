@@ -1,7 +1,6 @@
 use {async_trait::async_trait, dialectic::Session, std::convert::identity, structopt::StructOpt};
 
 use zeekoe::merchant::{
-    self,
     cli::{self, Run},
     defaults::config_path,
     Chan, Cli, Config,
@@ -54,6 +53,7 @@ pub async fn main_with_cli(cli: Cli) -> Result<(), anyhow::Error> {
     }
 }
 
+#[allow(unused)]
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     main_with_cli(Cli::from_args()).await
