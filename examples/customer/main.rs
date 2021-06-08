@@ -2,7 +2,6 @@ use std::{env, path::Path, time::Duration};
 
 use zeekoe::{
     customer::{client::Backoff, Chan, Client},
-    pem,
     protocol::Ping,
 };
 
@@ -28,7 +27,7 @@ async fn main() -> Result<(), anyhow::Error> {
         if path.is_relative() {
             return Err(anyhow::anyhow!("Path specified in `ZEEKOE_TRUST_EXPLICIT_CERTIFICATE` must be absolute, but the current value, \"{}\", is relative", path_string));
         }
-        client.trust_explicit_certificate(&pem::read_single_certificate(path)?)?;
+        client.trust_explicit_certificate(path)?;
     }
 
     // Connect to `localhost:8080`
