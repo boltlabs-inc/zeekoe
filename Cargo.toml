@@ -62,7 +62,7 @@ dialectic = { version = "0.4", path = "../dialectic/dialectic" }
 dialectic-tokio-serde = { version = "0.1", path = "../dialectic/dialectic-tokio-serde" }
 dialectic-tokio-serde-bincode = { version = "0.1", path = "../dialectic/dialectic-tokio-serde-bincode" }
 dialectic-reconnect = { version = "0.1", features = ["serde", "humantime-serde"], path = "../dialectic/dialectic-reconnect" }
-sqlx = { version = "0.5.2", features = ["any", "migrate", "mysql", "offline", "postgres", "runtime-tokio-rustls", "sqlite"] }
+sqlx = { version = "0.5.2", features = ["any", "migrate", "offline", "runtime-tokio-rustls", "sqlite"] }
 
 [dev-dependencies]
 rand = "0.8.3"
