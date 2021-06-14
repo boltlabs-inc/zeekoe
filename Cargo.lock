@@ -2475,7 +2475,6 @@ dependencies = [
  "webpki-roots",
  "zeroize",
  "zkabacus-crypto",
- "zkchannels-crypto",
 ]
 
 [[package]]
