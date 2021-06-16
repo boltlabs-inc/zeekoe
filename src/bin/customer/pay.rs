@@ -1,9 +1,6 @@
-use async_trait::async_trait;
+use {async_trait::async_trait, rand::rngs::StdRng};
 
-use zkabacus_crypto::{
-    customer::{LockMessage, Ready, StartMessage},
-    PaymentAmount,
-};
+use zkabacus_crypto::{customer::Ready, Context, PaymentAmount};
 
 use zeekoe::{
     choose_abort, choose_continue,
@@ -18,13 +15,14 @@ use super::{connect, Command};
 
 #[async_trait]
 impl Command for Pay {
-    async fn run(self, config: self::Config) -> Result<(), anyhow::Error> {
+    async fn run(self, mut rng: StdRng, config: self::Config) -> Result<(), anyhow::Error> {
         // Look up the address and current local customer state for this merchant in the database
         let address = todo!("look up address in database by `self.label`");
         let ready: Ready = todo!("look up channel state in database by `self.label`");
 
         // Connect and select the Pay session
-        let chan = connect(&config, address).await?.choose::<1>().await?;
+        let (session_key, chan) = connect(&config, address).await?;
+        let chan = chan.choose::<1>().await?;
 
         // Read the contents of the note, if any
         let note = self
@@ -33,35 +31,37 @@ impl Command for Pay {
             .read(config.max_note_length)?;
 
         // Start the payment and get the messages to send to the merchant
-        let payment_units: usize = todo!("convert `self.pay: rusty_money::Money` into `usize`");
+        let payment_units: isize = todo!("convert `self.pay: rusty_money::Money` into `isize`");
 
-        // Start the zkAbacus core payment and get fresh proofs and commitments
-        let (started, start_message) = ready.start(
-            &mut rand::thread_rng(), // TODO: use parameterized Rng
-            PaymentAmount::pay_merchant(payment_units),
-        );
+        let payment_amount = if payment_units < 0 {
+            PaymentAmount::pay_customer(payment_units.abs() as u64)?
+        } else {
+            PaymentAmount::pay_merchant(payment_units.abs() as u64)?
+        };
 
         // Send the payment amount and note to the merchant
-        let chan = chan.send(payment_units).await?.send(note).await?;
+        let chan = chan.send(payment_amount).await?.send(note).await?;
 
         // Allow the merchant to accept or reject the payment and note
-        let chan = offer_continue!(in chan else anyhow::anyhow!("merchant rejected payment amount and/or note"))?;
+        let chan = offer_continue!(in chan else return Err(anyhow::anyhow!("merchant rejected payment amount and/or note")))?;
+
+        // Generate the shared context for proofs
+        let context = Context::new(&session_key.to_bytes());
+
+        // Start the zkAbacus core payment and get fresh proofs and commitments
+        let (started, start_message) = ready.start(&mut rng, payment_amount, &context)?;
 
         // Send the initial proofs and commitments to the merchant
         let chan = chan
             .send(start_message.nonce)
             .await?
             .send(start_message.pay_proof)
-            .await?
-            .send(start_message.revocation_lock_commitment)
-            .await?
-            .send(start_message.close_state_commitment)
-            .await?
-            .send(start_message.state_commitment)
             .await?;
 
         // Allow the merchant to cancel the session at this point, and throw an error if so
-        let chan = offer_continue!(in chan else anyhow::anyhow!("merchant aborted"))?;
+        let chan = offer_continue!(
+            in chan else return Err(anyhow::anyhow!("merchant aborted before providing closing signature"))
+        )?;
 
         // Receive a closing signature from the merchant
         let (closing_signature, chan) = chan.recv().await?;
@@ -79,7 +79,9 @@ impl Command for Pay {
                 .await?;
 
             // Allow the merchant to cancel the session at this point, and throw an error if so
-            let chan = offer_continue!(in chan else anyhow::anyhow!("merchant aborted"))?;
+            let chan = offer_continue!(
+                in chan else return Err(anyhow::anyhow!("merchant aborted before providing pay token"))
+            )?;
             (chan, locked)
         } else {
             // If the closing signature does not verify, inform the merchant we are aborting
@@ -90,7 +92,7 @@ impl Command for Pay {
         // Receive a pay token from the merchant, which allows us to pay again
         let (pay_token, chan) = chan.recv().await?;
 
-        // Close the channel: we are done communicating with the merchant
+        // Close the communication channel: we are done communicating with the merchant
         chan.close();
 
         // Unlock the payment channel using the pay token
@@ -106,7 +108,8 @@ impl Command for Pay {
 
 #[async_trait]
 impl Command for Refund {
-    async fn run(self, config: Config) -> Result<(), anyhow::Error> {
-        self.into_negative_pay().run(config).await
+    async fn run(self, rng: StdRng, config: Config) -> Result<(), anyhow::Error> {
+        // A refund is merely a negative payment
+        self.into_negative_pay().run(rng, config).await
     }
 }
