@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 
 use zeekoe::{
-    merchant::{Chan, Config},
+    merchant::{database::QueryMerchant, Chan, Config},
     protocol,
 };
 
@@ -17,6 +17,7 @@ impl Method for Parameters {
         &self,
         config: &Config,
         merchant_config: &zkabacus_crypto::merchant::Config,
+        database: &(dyn QueryMerchant + Send + Sync),
         chan: Chan<Self::Protocol>,
     ) -> Result<(), anyhow::Error> {
         let customer_config = merchant_config.to_customer_config();

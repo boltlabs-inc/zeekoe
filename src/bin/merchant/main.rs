@@ -2,6 +2,8 @@ use {
     async_trait::async_trait,
     dialectic::{offer, Session},
     futures::stream::{FuturesUnordered, StreamExt},
+    sqlx::Postgres,
+    sqlx::SqlitePool,
     std::{
         convert::identity,
         io,
@@ -16,6 +18,8 @@ use {
 use zeekoe::{
     merchant::{
         cli::{self, Run},
+        config::DatabaseLocation,
+        database::QueryMerchant,
         defaults::config_path,
         Chan, Cli, Config, Server,
     },
@@ -40,7 +44,15 @@ pub trait Command {
 #[async_trait]
 impl Command for Run {
     async fn run(self, config: Config) -> Result<(), anyhow::Error> {
-        // TODO: open database connection here, share in an `Arc` between server threads
+        let database: Arc<dyn QueryMerchant + Send + Sync> = match config.database {
+            DatabaseLocation::InMemory => Arc::new(SqlitePool::connect("file::memory:").await?),
+            DatabaseLocation::Sqlite(uri) => Arc::new(SqlitePool::connect(&uri).await?),
+            DatabaseLocation::Postgres(_) => {
+                return Err(anyhow::anyhow!(
+                    "Postgres database support is not yet implemented"
+                ))
+            }
+        };
 
         let merchant_config: zkabacus_crypto::merchant::Config =
             todo!("fetch merchant config from database");
@@ -60,6 +72,7 @@ impl Command for Run {
                 // Clone `Arc`s for the various resources we need in this server
                 let config = config.clone();
                 let merchant_config = merchant_config.clone();
+                let database = database.clone();
                 let running = running.clone();
                 let approve = Arc::new(service.approve.clone());
 
@@ -90,14 +103,15 @@ impl Command for Run {
                         // Clone `Arc`s for the various resources we need in this request
                         let config = config.clone();
                         let merchant_config = merchant_config.clone();
+                        let database = database.clone();
                         let approve = approve.clone();
 
                         async move {
                             offer!(in chan {
-                                0 => Parameters.run(&config, &merchant_config, chan).await?,
+                                0 => Parameters.run(&config, &merchant_config, database.as_ref(), chan).await?,
                                 1 => {
                                     let pay = Pay { approve: approve.clone() };
-                                    pay.run(&config, &merchant_config, chan).await?
+                                    pay.run(&config, &merchant_config, database.as_ref(), chan).await?
                                 },
                             })?;
                             Ok::<_, anyhow::Error>(())
@@ -142,6 +156,7 @@ where
         &self,
         config: &Config,
         merchant_config: &zkabacus_crypto::merchant::Config,
+        database: &(dyn QueryMerchant + Send + Sync),
         chan: Chan<Self::Protocol>,
     ) -> Result<(), anyhow::Error>;
 }

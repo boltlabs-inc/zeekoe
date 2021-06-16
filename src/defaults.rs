@@ -71,7 +71,12 @@ pub mod customer {
 
     pub fn database_location() -> Result<DatabaseLocation, anyhow::Error> {
         Ok(DatabaseLocation::Sqlite(
-            project_dirs()?.data_dir().join(DATABASE_FILE),
+            project_dirs()?
+                .data_dir()
+                .join(DATABASE_FILE)
+                .to_str()
+                .ok_or_else(|| anyhow::anyhow!("Invalid UTF-8 in database location path"))?
+                .into(),
         ))
     }
 

@@ -1,7 +1,7 @@
 use {async_trait::async_trait, std::sync::Arc};
 
 use zeekoe::{
-    merchant::{config::Approver, Chan, Config},
+    merchant::{config::Approver, database::QueryMerchant, Chan, Config},
     protocol,
 };
 
@@ -19,6 +19,7 @@ impl Method for Pay {
         &self,
         config: &Config,
         merchant_config: &zkabacus_crypto::merchant::Config,
+        database: &(dyn QueryMerchant + Send + Sync),
         chan: Chan<Self::Protocol>,
     ) -> Result<(), anyhow::Error> {
         todo!()
