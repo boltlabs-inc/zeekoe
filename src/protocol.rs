@@ -1,9 +1,5 @@
 use dialectic::prelude::*;
-
-use zkabacus_crypto::{
-    self as zkabacus, customer, revlock::*, CloseStateCommitment, ClosingSignature, Nonce,
-    PayProof, PayToken, StateCommitment,
-};
+use zkabacus_crypto::{revlock::*, ClosingSignature, Nonce, PayProof, PayToken};
 
 pub type Ping = Session! {
     loop {
@@ -25,7 +21,7 @@ macro_rules! offer_continue {
         dialectic::offer!(in $chan {
             0 => {
                 $chan.close();
-                return Err($err);
+                $err
             }
             1 => $chan,
         })
@@ -77,20 +73,19 @@ pub mod parameters {
 
 pub mod pay {
     use super::*;
+    use zkabacus_crypto::PaymentAmount;
 
-    /// The full "pay" protocol's session type.
+    /// The full zkchannels "pay" protocol's session type.
     pub type Pay = Session! {
-        send usize;
+        send PaymentAmount;
         send String;
         OfferContinue<CustomerStartPayment>;
     };
 
+    /// The start of the zkabacus "pay" protocol.
     pub type CustomerStartPayment = Session! {
         send Nonce;
         send PayProof;
-        send RevocationLockCommitment;
-        send CloseStateCommitment;
-        send StateCommitment;
         OfferContinue<MerchantAcceptPayment>;
     };
 
