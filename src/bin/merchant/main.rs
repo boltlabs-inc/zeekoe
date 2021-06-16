@@ -2,6 +2,7 @@ use {
     async_trait::async_trait,
     dialectic::{offer, Session},
     futures::stream::{FuturesUnordered, StreamExt},
+    rand::{rngs::StdRng, SeedableRng},
     sqlx::Postgres,
     sqlx::SqlitePool,
     std::{
@@ -18,9 +19,10 @@ use {
 use zeekoe::{
     merchant::{
         cli::{self, Run},
-        config::DatabaseLocation,
+        config::{DatabaseLocation, Service},
         database::QueryMerchant,
         defaults::config_path,
+        server::SessionKey,
         Chan, Cli, Config, Server,
     },
     protocol::ZkChannels,
@@ -75,6 +77,7 @@ impl Command for Run {
                 let database = database.clone();
                 let running = running.clone();
                 let approve = Arc::new(service.approve.clone());
+                let service = Arc::new(service.clone());
 
                 async move {
                     // Initialize a new `Server` with parameters taken from the configuration
@@ -99,19 +102,23 @@ impl Command for Run {
                     };
 
                     // For each request, dispatch to the appropriate method, defined elsewhere
-                    let interact = move |chan: Chan<ZkChannels>, ()| {
+                    let interact = move |session_key, (), chan: Chan<ZkChannels>| {
                         // Clone `Arc`s for the various resources we need in this request
                         let config = config.clone();
                         let merchant_config = merchant_config.clone();
                         let database = database.clone();
                         let approve = approve.clone();
+                        let service = service.clone();
+
+                        // TODO: permit configuration option to make this deterministic for testing
+                        let rng = StdRng::from_entropy();
 
                         async move {
                             offer!(in chan {
-                                0 => Parameters.run(&config, &merchant_config, database.as_ref(), chan).await?,
+                                0 => Parameters.run(rng, &service, &merchant_config, database.as_ref(), session_key, chan).await?,
                                 1 => {
                                     let pay = Pay { approve: approve.clone() };
-                                    pay.run(&config, &merchant_config, database.as_ref(), chan).await?
+                                    pay.run(rng, &service, &merchant_config, database.as_ref(), session_key, chan).await?
                                 },
                             })?;
                             Ok::<_, anyhow::Error>(())
@@ -154,9 +161,11 @@ where
 
     async fn run(
         &self,
-        config: &Config,
+        rng: StdRng,
+        config: &Service,
         merchant_config: &zkabacus_crypto::merchant::Config,
         database: &(dyn QueryMerchant + Send + Sync),
+        session_key: SessionKey,
         chan: Chan<Self::Protocol>,
     ) -> Result<(), anyhow::Error>;
 }
