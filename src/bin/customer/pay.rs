@@ -36,7 +36,10 @@ impl Command for Pay {
         let payment_units: usize = todo!("convert `self.pay: rusty_money::Money` into `usize`");
 
         // Start the zkAbacus core payment and get fresh proofs and commitments
-        let (started, start_message) = ready.start(PaymentAmount::pay_merchant(payment_units));
+        let (started, start_message) = ready.start(
+            &mut rand::thread_rng(), // TODO: use parameterized Rng
+            PaymentAmount::pay_merchant(payment_units),
+        );
 
         // Send the payment amount and note to the merchant
         let chan = chan.send(payment_units).await?.send(note).await?;

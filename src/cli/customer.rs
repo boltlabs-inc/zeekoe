@@ -114,6 +114,8 @@ impl Refund {
 #[non_exhaustive]
 pub struct Close {
     pub label: ChannelName,
+    #[structopt(long)]
+    pub force: bool,
 }
 
 #[derive(Debug, StructOpt)]

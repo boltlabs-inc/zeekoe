@@ -1,8 +1,8 @@
 use dialectic::prelude::*;
 
 use zkabacus_crypto::{
-    customer, revlock::*, CloseStateCommitment, ClosingSignature, Nonce, PayProof, PayToken,
-    StateCommitment,
+    self as zkabacus, customer, revlock::*, CloseStateCommitment, ClosingSignature, Nonce,
+    PayProof, PayToken, StateCommitment,
 };
 
 pub type Ping = Session! {
@@ -72,10 +72,7 @@ pub mod parameters {
     use super::*;
 
     /// Get the public parameters for the merchant.
-    pub type Parameters = Session! {
-        // TODO: receive on-chain keys here
-        recv customer::Config;
-    };
+    pub type Parameters = Session! {};
 }
 
 pub mod pay {

@@ -2,14 +2,20 @@ use {
     async_trait::async_trait,
     dialectic::{offer, Session},
     futures::stream::{FuturesUnordered, StreamExt},
-    std::{convert::identity, net::IpAddr, sync::Arc},
+    std::{
+        convert::identity,
+        io,
+        sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc,
+        },
+    },
     structopt::StructOpt,
 };
 
 use zeekoe::{
     merchant::{
         cli::{self, Run},
-        config::Approver,
         defaults::config_path,
         Chan, Cli, Config, Server,
     },
@@ -35,45 +41,85 @@ pub trait Command {
 impl Command for Run {
     async fn run(self, config: Config) -> Result<(), anyhow::Error> {
         // TODO: open database connection here, share in an `Arc` between server threads
-        // TODO: graceful shutdown
 
+        let merchant_config: zkabacus_crypto::merchant::Config =
+            todo!("fetch merchant config from database");
+
+        // Share the configuration between all server threads
         let config = Arc::new(config);
+        let merchant_config = Arc::new(merchant_config);
 
+        // Flag to indicate graceful shutdown should occur
+        let running = Arc::new(AtomicBool::new(true));
+
+        // Collect the futures for the result of running each specified server
         let mut server_futures: FuturesUnordered<_> = config
             .services
             .iter()
             .map(|service| {
+                // Clone `Arc`s for the various resources we need in this server
                 let config = config.clone();
+                let merchant_config = merchant_config.clone();
+                let running = running.clone();
                 let approve = Arc::new(service.approve.clone());
+
                 async move {
+                    // Initialize a new `Server` with parameters taken from the configuration
                     let mut server: Server<ZkChannels> =
                         Server::new(&service.certificate, &service.private_key)?;
                     server
                         .timeout(service.connection_timeout)
                         .max_pending_retries(Some(service.max_pending_connection_retries))
                         .max_length(service.max_message_length);
-                    server
-                        .serve_while(
-                            (service.address, service.port),
-                            || async { Some(()) },
-                            move |chan, ()| {
-                                let config = config.clone();
-                                let approve = approve.clone();
-                                async move {
-                                    offer!(in chan {
-                                        0 => Parameters.run(&config, chan).await?,
-                                        1 => Pay { approve: approve.clone() }.run(&config, chan).await?,
-                                    })?;
-                                    Ok::<_, anyhow::Error>(())
-                                }
-                            },
-                        )
-                        .await?;
+
+                    // Serve on this address
+                    let address = (service.address, service.port);
+
+                    // Every request, check to see if the graceful shutdown has been issued, and
+                    // stop accepting new requests, if so
+                    let initialize = || async {
+                        if running.load(Ordering::Relaxed) {
+                            Some(())
+                        } else {
+                            None
+                        }
+                    };
+
+                    // For each request, dispatch to the appropriate method, defined elsewhere
+                    let interact = move |chan: Chan<ZkChannels>, ()| {
+                        // Clone `Arc`s for the various resources we need in this request
+                        let config = config.clone();
+                        let merchant_config = merchant_config.clone();
+                        let approve = approve.clone();
+
+                        async move {
+                            offer!(in chan {
+                                0 => Parameters.run(&config, &merchant_config, chan).await?,
+                                1 => {
+                                    let pay = Pay { approve: approve.clone() };
+                                    pay.run(&config, &merchant_config, chan).await?
+                                },
+                            })?;
+                            Ok::<_, anyhow::Error>(())
+                        }
+                    };
+
+                    // Run the server until the graceful shutdown is issued
+                    server.serve_while(address, initialize, interact).await?;
                     Ok::<_, anyhow::Error>(())
                 }
             })
             .collect();
 
+        // Task to await ^C and shut down the server gracefully if it is received
+        tokio::spawn(async move {
+            tokio::signal::ctrl_c().await?;
+            running.store(false, Ordering::Relaxed);
+            eprintln!("Shutting down (waiting for all open sessions to complete) ...");
+            Ok::<_, io::Error>(())
+        });
+
+        // Wait for each server to finish, and print its error if it did
         while let Some(result) = server_futures.next().await {
             if let Err(e) = result {
                 eprintln!("Error: {}", e);
@@ -92,7 +138,12 @@ where
 {
     type Protocol;
 
-    async fn run(&self, config: &Config, chan: Chan<Self::Protocol>) -> Result<(), anyhow::Error>;
+    async fn run(
+        &self,
+        config: &Config,
+        merchant_config: &zkabacus_crypto::merchant::Config,
+        chan: Chan<Self::Protocol>,
+    ) -> Result<(), anyhow::Error>;
 }
 
 pub async fn main_with_cli(cli: Cli) -> Result<(), anyhow::Error> {
