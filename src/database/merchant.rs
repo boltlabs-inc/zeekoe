@@ -18,6 +18,11 @@ pub trait QueryMerchant {
         &self,
         revocation: (&str, Option<&str>),
     ) -> sqlx::Result<Vec<(String, Option<String>)>>;
+
+    async fn fetch_or_initialize_config(
+        &self,
+        new_config: zkabacus_crypto::merchant::Config,
+    ) -> sqlx::Result<zkabacus_crypto::merchant::Config>;
 }
 
 #[async_trait]
@@ -62,6 +67,13 @@ impl QueryMerchant for SqlitePool {
         .await?;
 
         Ok(existing_pairs)
+    }
+
+    async fn fetch_or_initialize_config(
+        &self,
+        new_config: zkabacus_crypto::merchant::Config,
+    ) -> sqlx::Result<zkabacus_crypto::merchant::Config> {
+        todo!("fetch or initialize merchant config")
     }
 }
 

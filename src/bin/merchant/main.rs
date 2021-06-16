@@ -46,7 +46,7 @@ impl Command for Run {
     async fn run(self, config: Config) -> Result<(), anyhow::Error> {
         let database: Arc<dyn QueryMerchant + Send + Sync> = match config.database {
             DatabaseLocation::InMemory => Arc::new(SqlitePool::connect("file::memory:").await?),
-            DatabaseLocation::Sqlite(uri) => Arc::new(SqlitePool::connect(&uri).await?),
+            DatabaseLocation::Sqlite(ref uri) => Arc::new(SqlitePool::connect(uri).await?),
             DatabaseLocation::Postgres(_) => {
                 return Err(anyhow::anyhow!(
                     "Postgres database support is not yet implemented"
@@ -54,8 +54,13 @@ impl Command for Run {
             }
         };
 
-        let merchant_config: zkabacus_crypto::merchant::Config =
-            todo!("fetch merchant config from database");
+        // Either initialize the merchant's configuration afresh, or fetch the existing config if it exists
+        let merchant_config = database
+            .fetch_or_initialize_config(
+                // This config will only be used if one doesn't already exist
+                zkabacus_crypto::merchant::Config::new(&mut rand::rngs::OsRng),
+            )
+            .await?;
 
         // Share the configuration between all server threads
         let config = Arc::new(config);
