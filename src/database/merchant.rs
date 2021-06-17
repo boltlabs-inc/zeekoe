@@ -139,13 +139,13 @@ mod tests {
 
         // Each time we insert a lock (& optional secret), it returns all previously
         // stored pairs for that lock.
-        let result = conn.insert_revocation((&lock1, None)).await?;
+        let result = conn.insert_revocation(&lock1, None).await?;
         assert_eq!(result.len(), 0,);
 
-        let result = conn.insert_revocation((&lock1, Some(&secret1))).await?;
+        let result = conn.insert_revocation(&lock1, Some(&secret1)).await?;
         assert_valid_pair(&result[0].0, &secret1);
 
-        let result = conn.insert_revocation((&lock1, None)).await?;
+        let result = conn.insert_revocation(&lock1, None).await?;
         assert_valid_pair(&result[0].0, &secret1);
         assert!(result[0].1.is_none(),);
         assert_valid_pair(&result[1].0, &secret1);
@@ -156,7 +156,7 @@ mod tests {
         // Inserting a previously-unseen lock should not return any old pairs.
         let secret2 = test_new_revocation_secret(&mut rng);
         let lock2 = test_new_revocation_lock(&secret2);
-        let result = conn.insert_revocation((&lock2, Some(&secret2))).await?;
+        let result = conn.insert_revocation(&lock2, Some(&secret2)).await?;
         assert_eq!(result.len(), 0);
 
         Ok(())
