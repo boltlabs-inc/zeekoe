@@ -71,6 +71,49 @@ pub mod parameters {
     pub type Parameters = Session! {};
 }
 
+pub mod establish {
+    use super::*;
+    use zkabacus_crypto::{
+        ClosingSignature, CustomerBalance, EstablishProof, MerchantBalance, PayToken,
+    };
+
+    pub type Establish = CustomerSupplyInfo;
+
+    pub type CustomerSupplyInfo = Session! {
+        // TODO: send customer-side chain-specific public stuff
+        // TODO: send customer randomness from zkAbacus
+        CustomerProposeFunding;
+    };
+
+    pub type CustomerProposeFunding = Session! {
+        send CustomerBalance;
+        send MerchantBalance;
+        OfferContinue<MerchantSupplyInfo>;
+    };
+
+    pub type MerchantSupplyInfo = Session! {
+        // TODO: recv merchant-side chain-specific public stuff
+        // TODO: recv merchant randomness from zkAbacus
+        Initialize;
+    };
+
+    pub type Initialize = CustomerSupplyProof;
+
+    pub type CustomerSupplyProof = Session! {
+        send EstablishProof;
+        OfferContinue<MerchantSupplyClosingSignature>;
+    };
+
+    pub type MerchantSupplyClosingSignature = Session! {
+        recv ClosingSignature;
+        ChooseContinue<Activate>;
+    };
+
+    pub type Activate = Session! {
+        recv PayToken;
+    };
+}
+
 pub mod pay {
     use super::*;
     use zkabacus_crypto::PaymentAmount;
