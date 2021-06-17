@@ -1,5 +1,8 @@
 use dialectic::prelude::*;
-use zkabacus_crypto::{revlock::*, ClosingSignature, Nonce, PayProof, PayToken};
+use zkabacus_crypto::{
+    revlock::*, ClosingSignature, CommitmentParameters, Nonce, PayProof, PayToken, PublicKey,
+    RangeProofParameters,
+};
 
 pub type Ping = Session! {
     loop {
@@ -70,7 +73,11 @@ pub mod parameters {
     use super::*;
 
     /// Get the public parameters for the merchant.
-    pub type Parameters = Session! {};
+    pub type Parameters = Session! {
+        recv PublicKey;
+        recv CommitmentParameters;
+        recv RangeProofParameters;
+    };
 }
 
 pub mod establish {
@@ -90,6 +97,7 @@ pub mod establish {
     pub type CustomerProposeFunding = Session! {
         send CustomerBalance;
         send MerchantBalance;
+        send String;
         OfferContinue<MerchantSupplyInfo>;
     };
 
@@ -123,7 +131,7 @@ pub mod pay {
     /// The full zkchannels "pay" protocol's session type.
     pub type Pay = Session! {
         send PaymentAmount;
-        send String;
+        send String; // Payment note
         MerchantApprovePayment;
     };
 
@@ -151,6 +159,6 @@ pub mod pay {
 
     pub type MerchantIssueNewPayToken = Session! {
         recv PayToken;
-        recv Option<String>;
+        recv Option<String>; // Response note (service rendered)
     };
 }
