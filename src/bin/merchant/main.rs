@@ -3,8 +3,7 @@ use {
     dialectic::{offer, Session},
     futures::stream::{FuturesUnordered, StreamExt},
     rand::{rngs::StdRng, SeedableRng},
-    sqlx::Postgres,
-    sqlx::SqlitePool,
+    sqlx::{Postgres, SqlitePool},
     std::{
         convert::identity,
         io,

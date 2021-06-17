@@ -1,7 +1,9 @@
 use crate::database::SqlitePool;
 use async_trait::async_trait;
-use futures::stream::TryStreamExt;
-use zkabacus_crypto::Nonce;
+use zkabacus_crypto::{
+    revlock::{RevocationLock, RevocationSecret},
+    Nonce,
+};
 
 #[async_trait]
 pub trait QueryMerchant {
@@ -16,8 +18,15 @@ pub trait QueryMerchant {
     /// that existed prior.
     async fn insert_revocation(
         &self,
-        revocation: (&str, Option<&str>),
-    ) -> sqlx::Result<Vec<(String, Option<String>)>>;
+        revocation_lock: &RevocationLock,
+        revocation_secret: Option<&RevocationSecret>,
+    ) -> sqlx::Result<Vec<(RevocationLock, Option<RevocationSecret>)>>;
+}
+
+#[derive(Debug, sqlx::Type)]
+pub struct RevocationPair {
+    lock: RevocationLock,
+    secret: Option<RevocationSecret>,
 }
 
 #[async_trait]
@@ -42,25 +51,35 @@ impl QueryMerchant for SqlitePool {
 
     async fn insert_revocation(
         &self,
-        revocation: (&str, Option<&str>),
-    ) -> sqlx::Result<Vec<(String, Option<String>)>> {
+        revocation_lock: &RevocationLock,
+        revocation_secret: Option<&RevocationSecret>,
+    ) -> sqlx::Result<Vec<(RevocationLock, Option<RevocationSecret>)>> {
+        let mut transaction = self.begin().await?;
         let existing_pairs = sqlx::query!(
-            "SELECT lock, secret FROM revocations WHERE lock = ?",
-            revocation.0
+            r#"
+            SELECT
+                lock AS "lock: RevocationLock",
+                secret AS "secret: RevocationSecret"
+            FROM revocations
+            WHERE lock = ?
+            "#,
+            revocation_lock
         )
-        .fetch(self)
-        .map_ok(|rev| (rev.lock, rev.secret))
-        .try_collect()
-        .await?;
+        .fetch_all(&mut transaction)
+        .await?
+        .into_iter()
+        .map(|r| (r.lock, r.secret))
+        .collect();
 
         sqlx::query!(
             "INSERT INTO revocations (lock, secret) VALUES (?, ?)",
-            revocation.0,
-            revocation.1
+            revocation_lock,
+            revocation_secret
         )
-        .execute(self)
+        .execute(&mut transaction)
         .await?;
 
+        transaction.commit().await?;
         Ok(existing_pairs)
     }
 }
@@ -69,6 +88,19 @@ impl QueryMerchant for SqlitePool {
 mod tests {
     use super::*;
     use crate::database::SqlitePoolOptions;
+    use zkabacus_crypto::internal::{
+        test_new_nonce, test_new_revocation_lock, test_new_revocation_secret, test_verify_pair,
+    };
+    use zkabacus_crypto::Verification;
+
+    fn assert_valid_pair(lock: &RevocationLock, secret: &RevocationSecret) {
+        assert!(
+            matches!(test_verify_pair(lock, secret), Verification::Verified),
+            "revocation lock {:?} unlocks with {:?}",
+            lock,
+            secret
+        );
+    }
 
     async fn create_migrated_db() -> Result<SqlitePool, anyhow::Error> {
         let conn = SqlitePoolOptions::new().connect("sqlite::memory:").await?;
@@ -87,11 +119,19 @@ mod tests {
         let conn = create_migrated_db().await?;
         let mut rng = rand::thread_rng();
 
+<<<<<<< HEAD
         let nonce = zkabacus_crypto::internal::test_new_nonce(&mut rng);
         assert!(conn.insert_nonce(&nonce).await?);
         assert!(!conn.insert_nonce(&nonce).await?);
 
         let nonce2 = zkabacus_crypto::internal::test_new_nonce(&mut rng);
+=======
+        let nonce = test_new_nonce(&mut rng);
+        assert!(conn.insert_nonce(&nonce).await?);
+        assert!(!conn.insert_nonce(&nonce).await?);
+
+        let nonce2 = test_new_nonce(&mut rng);
+>>>>>>> main
         assert!(conn.insert_nonce(&nonce2).await?);
         Ok(())
     }
@@ -99,23 +139,33 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn test_insert_revocation() -> Result<(), anyhow::Error> {
         let conn = create_migrated_db().await?;
-        assert_eq!(conn.insert_revocation(("test-lock-1", None)).await?, []);
+        let mut rng = rand::thread_rng();
 
-        assert_eq!(
-            conn.insert_revocation(("test-lock-1", Some("test-secret-1")))
-                .await?,
-            [("test-lock-1".to_string(), None)]
-        );
+        let secret1 = test_new_revocation_secret(&mut rng);
+        let lock1 = test_new_revocation_lock(&secret1);
 
-        assert_eq!(
-            conn.insert_revocation(("test-lock-1", None)).await?,
-            [
-                ("test-lock-1".into(), None),
-                ("test-lock-1".into(), Some("test-secret-1".into()))
-            ]
-        );
+        // Each time we insert a lock (& optional secret), it returns all previously
+        // stored pairs for that lock.
+        let result = conn.insert_revocation(&lock1, None).await?;
+        assert_eq!(result.len(), 0,);
 
-        assert_eq!(conn.insert_revocation(("test-lock-2", None)).await?, []);
+        let result = conn.insert_revocation(&lock1, Some(&secret1)).await?;
+        assert_valid_pair(&result[0].0, &secret1);
+
+        let result = conn.insert_revocation(&lock1, None).await?;
+        assert_valid_pair(&result[0].0, &secret1);
+        assert!(result[0].1.is_none(),);
+        assert_valid_pair(&result[1].0, &secret1);
+        assert!(result[1].1.is_some(),);
+        assert_valid_pair(&lock1, result[1].1.as_ref().unwrap());
+        assert_eq!(result.len(), 2);
+
+        // Inserting a previously-unseen lock should not return any old pairs.
+        let secret2 = test_new_revocation_secret(&mut rng);
+        let lock2 = test_new_revocation_lock(&secret2);
+        let result = conn.insert_revocation(&lock2, Some(&secret2)).await?;
+        assert_eq!(result.len(), 0);
+
         Ok(())
     }
 }
