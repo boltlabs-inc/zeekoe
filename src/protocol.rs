@@ -54,6 +54,7 @@ macro_rules! choose_continue {
 
 // All protocols are from the perspective of the customer.
 
+pub use establish::Establish;
 pub use parameters::Parameters;
 pub use pay::Pay;
 
@@ -61,6 +62,7 @@ pub type ZkChannels = Session! {
     choose {
         0 => Parameters,
         1 => Pay,
+        2 => Establish,
     }
 };
 
