@@ -1,6 +1,5 @@
 use crate::database::SqlitePool;
 use async_trait::async_trait;
-use futures::stream::TryStreamExt;
 use zkabacus_crypto::{
     revlock::{RevocationLock, RevocationSecret},
     Nonce,
@@ -48,7 +47,7 @@ impl QueryMerchant for SqlitePool {
 
     async fn insert_revocation(
         &self,
-        revocation: &RevocationLock,
+        lock: &RevocationLock,
         secret: Option<&RevocationSecret>,
     ) -> sqlx::Result<Vec<(RevocationLock, Option<RevocationSecret>)>> {
         let mut transaction = self.begin().await?;
@@ -60,7 +59,7 @@ impl QueryMerchant for SqlitePool {
             FROM revocations
             WHERE lock = ?
             "#,
-            revocation,
+            lock,
         )
         .fetch_all(&mut transaction)
         .await?
@@ -70,7 +69,7 @@ impl QueryMerchant for SqlitePool {
 
         sqlx::query!(
             "INSERT INTO revocations (lock, secret) VALUES (?, ?)",
-            revocation,
+            lock,
             secret,
         )
         .execute(&mut transaction)
