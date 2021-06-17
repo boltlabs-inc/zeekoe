@@ -44,11 +44,12 @@ impl QueryMerchant for SqlitePool {
         &self,
         revocation: (&str, Option<&str>),
     ) -> sqlx::Result<Vec<(String, Option<String>)>> {
+        let mut transaction = self.begin().await?;
         let existing_pairs = sqlx::query!(
             "SELECT lock, secret FROM revocations WHERE lock = ?",
             revocation.0
         )
-        .fetch(self)
+        .fetch(&mut transaction)
         .map_ok(|rev| (rev.lock, rev.secret))
         .try_collect()
         .await?;
@@ -58,9 +59,10 @@ impl QueryMerchant for SqlitePool {
             revocation.0,
             revocation.1
         )
-        .execute(self)
+        .execute(&mut transaction)
         .await?;
 
+        transaction.commit().await?;
         Ok(existing_pairs)
     }
 }
@@ -69,6 +71,7 @@ impl QueryMerchant for SqlitePool {
 mod tests {
     use super::*;
     use crate::database::SqlitePoolOptions;
+    use zkabacus_crypto::internal::test_new_nonce;
 
     async fn create_migrated_db() -> Result<SqlitePool, anyhow::Error> {
         let conn = SqlitePoolOptions::new().connect("sqlite::memory:").await?;
@@ -87,11 +90,11 @@ mod tests {
         let conn = create_migrated_db().await?;
         let mut rng = rand::thread_rng();
 
-        let nonce = Nonce::new(&mut rng);
+        let nonce = test_new_nonce(&mut rng);
         assert!(conn.insert_nonce(&nonce).await?);
         assert!(!conn.insert_nonce(&nonce).await?);
 
-        let nonce2 = Nonce::new(&mut rng);
+        let nonce2 = test_new_nonce(&mut rng);
         assert!(conn.insert_nonce(&nonce2).await?);
         Ok(())
     }
