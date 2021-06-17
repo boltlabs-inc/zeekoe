@@ -79,8 +79,11 @@ pub mod pay {
     pub type Pay = Session! {
         send PaymentAmount;
         send String;
-        OfferContinue<CustomerStartPayment>;
+        MerchantApprovePayment;
     };
+
+    /// The merchant approves the payment.
+    pub type MerchantApprovePayment = OfferContinue<CustomerStartPayment>;
 
     /// The start of the zkabacus "pay" protocol.
     pub type CustomerStartPayment = Session! {
