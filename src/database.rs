@@ -1,2 +1,2 @@
 pub mod merchant;
-pub use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
+pub use sqlx::sqlite::{SqlitePool, SqlitePoolOptions, SqliteRow};

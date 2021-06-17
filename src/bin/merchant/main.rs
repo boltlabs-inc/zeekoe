@@ -2,7 +2,6 @@ use {
     async_trait::async_trait,
     dialectic::{offer, Session},
     futures::stream::{FuturesUnordered, StreamExt},
-    sqlx::Postgres,
     sqlx::SqlitePool,
     std::{
         convert::identity,
