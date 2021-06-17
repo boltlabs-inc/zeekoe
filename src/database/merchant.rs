@@ -44,11 +44,12 @@ impl QueryMerchant for SqlitePool {
         &self,
         revocation: (&str, Option<&str>),
     ) -> sqlx::Result<Vec<(String, Option<String>)>> {
+        let mut transaction = self.begin().await?;
         let existing_pairs = sqlx::query!(
             "SELECT lock, secret FROM revocations WHERE lock = ?",
             revocation.0
         )
-        .fetch(self)
+        .fetch(&mut transaction)
         .map_ok(|rev| (rev.lock, rev.secret))
         .try_collect()
         .await?;
@@ -58,9 +59,10 @@ impl QueryMerchant for SqlitePool {
             revocation.0,
             revocation.1
         )
-        .execute(self)
+        .execute(&mut transaction)
         .await?;
 
+        transaction.commit().await?;
         Ok(existing_pairs)
     }
 }
