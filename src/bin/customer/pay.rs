@@ -1,4 +1,7 @@
-use {async_trait::async_trait, rand::rngs::StdRng};
+use {
+    async_trait::async_trait, rand::rngs::StdRng, rust_decimal::Decimal,
+    rusty_money::FormattableCurrency, std::convert::TryInto,
+};
 
 use zkabacus_crypto::{customer::Ready, Context, PaymentAmount};
 
@@ -16,6 +19,16 @@ use super::{connect, Command};
 #[async_trait]
 impl Command for Pay {
     async fn run(self, mut rng: StdRng, config: self::Config) -> Result<(), anyhow::Error> {
+        // Convert the payment amount appropriately
+        let minor_units: i64 = self.pay.as_minor_units().ok_or_else(|| {
+            anyhow::anyhow!("payment amount invalid for currency or out of range for channel")
+        })?;
+        let payment_amount = (if minor_units < 0 {
+            PaymentAmount::pay_customer
+        } else {
+            PaymentAmount::pay_merchant
+        })(minor_units.abs() as u64)?;
+
         // Look up the address and current local customer state for this merchant in the database
         let address = todo!("look up address in database by `self.label`");
         let ready: Ready = todo!("look up channel state in database by `self.label`");
@@ -29,15 +42,6 @@ impl Command for Pay {
             .note
             .unwrap_or_else(|| zeekoe::customer::cli::Note::String(String::from("")))
             .read(config.max_note_length)?;
-
-        // Start the payment and get the messages to send to the merchant
-        let payment_units: isize = todo!("convert `self.pay: rusty_money::Money` into `isize`");
-
-        let payment_amount = if payment_units < 0 {
-            PaymentAmount::pay_customer(payment_units.abs() as u64)?
-        } else {
-            PaymentAmount::pay_merchant(payment_units.abs() as u64)?
-        };
 
         // Send the payment amount and note to the merchant
         let chan = chan.send(payment_amount).await?.send(note).await?;

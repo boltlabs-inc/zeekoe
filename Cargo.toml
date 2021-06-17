@@ -53,6 +53,8 @@ directories = "3"
 http-serde = "1"
 toml = "0.5"
 read-restrict = "0.3"
+rust_decimal = "1"
+num-traits = "0.2"
 rand = "0.8"
 url = { version = "2.2", features = ["serde"] }
 rusty-money = { version = "0.4", features = ["crypto"] }
