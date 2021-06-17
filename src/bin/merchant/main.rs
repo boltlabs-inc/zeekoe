@@ -61,6 +61,7 @@ impl Command for Run {
         // Share the configuration between all server threads
         let config = Arc::new(config);
         let merchant_config = Arc::new(merchant_config);
+        let client = reqwest::Client::new();
 
         // Flag to indicate graceful shutdown should occur
         let running = Arc::new(AtomicBool::new(true));
@@ -72,6 +73,7 @@ impl Command for Run {
             .map(|service| {
                 // Clone `Arc`s for the various resources we need in this server
                 let config = config.clone();
+                let client = client.clone();
                 let merchant_config = merchant_config.clone();
                 let database = database.clone();
                 let running = running.clone();
@@ -104,6 +106,7 @@ impl Command for Run {
                     let interact = move |session_key, (), chan: Chan<ZkChannels>| {
                         // Clone `Arc`s for the various resources we need in this request
                         let config = config.clone();
+                        let client = client.clone();
                         let merchant_config = merchant_config.clone();
                         let database = database.clone();
                         let approve = approve.clone();
@@ -114,10 +117,10 @@ impl Command for Run {
 
                         async move {
                             offer!(in chan {
-                                0 => Parameters.run(rng, &service, &merchant_config, database.as_ref(), session_key, chan).await?,
+                                0 => Parameters.run(rng, &client, &service, &merchant_config, database.as_ref(), session_key, chan).await?,
                                 1 => {
                                     let pay = Pay { approve: approve.clone() };
-                                    pay.run(rng, &service, &merchant_config, database.as_ref(), session_key, chan).await?
+                                    pay.run(rng, &client, &service, &merchant_config, database.as_ref(), session_key, chan).await?
                                 },
                             })?;
                             Ok::<_, anyhow::Error>(())
@@ -161,6 +164,7 @@ where
     async fn run(
         &self,
         rng: StdRng,
+        client: &reqwest::Client,
         config: &Service,
         merchant_config: &zkabacus_crypto::merchant::Config,
         database: &(dyn QueryMerchant + Send + Sync),

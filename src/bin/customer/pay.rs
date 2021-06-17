@@ -96,6 +96,9 @@ impl Command for Pay {
         // Receive a pay token from the merchant, which allows us to pay again
         let (pay_token, chan) = chan.recv().await?;
 
+        // Receive the response note (i.e. the fulfillment of the service)
+        let (response_note, chan) = chan.recv().await?;
+
         // Close the communication channel: we are done communicating with the merchant
         chan.close();
 
@@ -105,6 +108,11 @@ impl Command for Pay {
         } else {
             return Err(anyhow::anyhow!("could not unlock: channel is frozen"));
         };
+
+        // Print the response note on standard out
+        if let Some(response_note) = response_note {
+            println!("{}", response_note);
+        }
 
         Ok(())
     }

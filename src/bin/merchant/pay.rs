@@ -1,4 +1,4 @@
-use {async_trait::async_trait, rand::rngs::StdRng, std::sync::Arc};
+use {async_trait::async_trait, rand::rngs::StdRng, std::sync::Arc, url::Url};
 
 use zeekoe::{
     choose_abort, choose_continue,
@@ -25,6 +25,7 @@ impl Method for Pay {
     async fn run(
         &self,
         mut rng: StdRng,
+        client: &reqwest::Client,
         service: &Service,
         merchant_config: &MerchantConfig,
         database: &(dyn QueryMerchant + Send + Sync),
@@ -35,26 +36,43 @@ impl Method for Pay {
         let (payment_amount, chan) = chan.recv().await?;
         let (_note, chan) = chan.recv().await?;
 
-        // Signal that the payment was not approved
-        struct NotApproved;
-
         // Determine whether to accept the payment
-        let approved = match &service.approve {
+        let (response_url, chan): (Option<Url>, _) = match &service.approve {
             // The automatic approver approves all non-negative payments
-            Approver::Automatic => payment_amount > PaymentAmount::zero(),
-            Approver::Url(_url) => {
-                todo!("External approvers are not yet supported")
+            Approver::Automatic => {
+                if payment_amount > PaymentAmount::zero() {
+                    (None, choose_continue!(in chan)?)
+                } else {
+                    choose_abort!(in chan)?;
+                    return Ok(());
+                }
+            }
+            // A URL-based approver approves a payment iff it returns a success code
+            Approver::Url(approver_url) => {
+                let response = client
+                    .get(
+                        approver_url.join(if payment_amount > PaymentAmount::zero() {
+                            "pay"
+                        } else {
+                            "refund"
+                        })?,
+                    )
+                    .query(&[("amount", payment_amount.to_i64().abs() as u64)])
+                    .send()
+                    .await?;
+                if response.status().is_success() {
+                    let response_url = response.headers().get(reqwest::header::LOCATION).and_then(
+                        |header_value| Some(Url::parse(header_value.to_str().ok()?).ok()?),
+                    );
+                    (response_url, choose_continue!(in chan)?)
+                } else {
+                    choose_abort!(in chan)?;
+                    return Ok(());
+                }
             }
         };
 
-        // Continue only if we should permit the payment as stated
-        let chan = if !approved {
-            choose_abort!(in chan)?;
-            return Ok(());
-        } else {
-            choose_continue!(in chan)?
-        };
-
+        // Get the nonce and pay proof (this is the start of zkAbacus.Pay)
         let (nonce, chan) = chan.recv().await?;
         let (pay_proof, chan) = chan.recv().await?;
 
@@ -100,8 +118,24 @@ impl Method for Pay {
                     &revocation_blinding_factor,
                 ) {
                     // The revealed information was correct; issue the pay token
-                    let chan = choose_continue!(in chan)?;
-                    chan.send(pay_token).await?.close();
+                    let chan = choose_continue!(in chan)?.send(pay_token).await?;
+
+                    // Send the response note (i.e. the fulfillment of the service) and close the
+                    // connection to the customer
+                    let response_note = if let Some(response_url) = response_url {
+                        let response = client.get(response_url).send().await?;
+                        if response.status().is_success() {
+                            Some(response.text().await.unwrap_or_else(|_| String::new()))
+                        } else {
+                            None
+                        }
+                    } else {
+                        Some(String::new())
+                    };
+                    chan.send(response_note).await?.close();
+                    // TODO: send deletion command for resource acquired from confirmer. This will
+                    // require restructuring this code a bit so that the deletion occurs
+                    // unconditionally even if the payment fails.
                 } else {
                     // Incorrect information; abort the session and do not issue a pay token. This
                     // has the effect of freezing the channel, since the nonce has been recorded,

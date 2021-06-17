@@ -16,6 +16,7 @@ impl Method for Parameters {
     async fn run(
         &self,
         rng: StdRng,
+        client: &reqwest::Client,
         config: &Service,
         merchant_config: &zkabacus_crypto::merchant::Config,
         database: &(dyn QueryMerchant + Send + Sync),
