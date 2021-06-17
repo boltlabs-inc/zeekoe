@@ -119,19 +119,11 @@ mod tests {
         let conn = create_migrated_db().await?;
         let mut rng = rand::thread_rng();
 
-<<<<<<< HEAD
-        let nonce = zkabacus_crypto::internal::test_new_nonce(&mut rng);
-        assert!(conn.insert_nonce(&nonce).await?);
-        assert!(!conn.insert_nonce(&nonce).await?);
-
-        let nonce2 = zkabacus_crypto::internal::test_new_nonce(&mut rng);
-=======
         let nonce = test_new_nonce(&mut rng);
         assert!(conn.insert_nonce(&nonce).await?);
         assert!(!conn.insert_nonce(&nonce).await?);
 
         let nonce2 = test_new_nonce(&mut rng);
->>>>>>> main
         assert!(conn.insert_nonce(&nonce2).await?);
         Ok(())
     }
