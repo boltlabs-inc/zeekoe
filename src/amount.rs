@@ -1,5 +1,4 @@
 use {
-    num_traits::Pow,
     rust_decimal::Decimal,
     rusty_money::{crypto, FormattableCurrency, Money, MoneyError},
     std::{convert::TryInto, str::FromStr},

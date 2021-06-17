@@ -35,6 +35,9 @@ impl Method for Pay {
         let (payment_amount, chan) = chan.recv().await?;
         let (_note, chan) = chan.recv().await?;
 
+        // Signal that the payment was not approved
+        struct NotApproved;
+
         // Determine whether to accept the payment
         let approved = match &service.approve {
             // The automatic approver approves all non-negative payments
@@ -77,6 +80,17 @@ impl Method for Pay {
                 let (revocation_lock, chan) = chan.recv().await?;
                 let (revocation_secret, chan) = chan.recv().await?;
                 let (revocation_blinding_factor, chan) = chan.recv().await?;
+
+                // Check to see if the revocation lock was already present in the database
+                let prior_revocations = database
+                    .insert_revocation(&revocation_lock, Some(&revocation_secret))
+                    .await?;
+
+                // Abort if the revocation lock was already present in the database
+                if !prior_revocations.is_empty() {
+                    choose_abort!(in chan)?;
+                    return Ok(());
+                }
 
                 // Validate the received information
                 if let Ok(pay_token) = unrevoked.complete_payment(
