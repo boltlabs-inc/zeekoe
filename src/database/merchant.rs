@@ -1,6 +1,5 @@
 use crate::database::SqlitePool;
 use async_trait::async_trait;
-use futures::stream::TryStreamExt;
 use zkabacus_crypto::{
     revlock::{RevocationLock, RevocationSecret},
     Nonce,
@@ -19,7 +18,8 @@ pub trait QueryMerchant {
     /// that existed prior.
     async fn insert_revocation(
         &self,
-        revocation: (&RevocationLock, Option<&RevocationSecret>),
+        revocation_lock: &RevocationLock,
+        revocation_secret: Option<&RevocationSecret>,
     ) -> sqlx::Result<Vec<(RevocationLock, Option<RevocationSecret>)>>;
 }
 
@@ -51,7 +51,8 @@ impl QueryMerchant for SqlitePool {
 
     async fn insert_revocation(
         &self,
-        revocation: (&RevocationLock, Option<&RevocationSecret>),
+        revocation_lock: &RevocationLock,
+        revocation_secret: Option<&RevocationSecret>,
     ) -> sqlx::Result<Vec<(RevocationLock, Option<RevocationSecret>)>> {
         let mut transaction = self.begin().await?;
         let existing_pairs = sqlx::query!(
@@ -62,7 +63,7 @@ impl QueryMerchant for SqlitePool {
             FROM revocations
             WHERE lock = ?
             "#,
-            revocation.0
+            revocation_lock
         )
         .fetch_all(&mut transaction)
         .await?
@@ -72,8 +73,8 @@ impl QueryMerchant for SqlitePool {
 
         sqlx::query!(
             "INSERT INTO revocations (lock, secret) VALUES (?, ?)",
-            revocation.0,
-            revocation.1
+            revocation_lock,
+            revocation_secret
         )
         .execute(&mut transaction)
         .await?;
@@ -137,13 +138,13 @@ mod tests {
 
         // Each time we insert a lock (& optional secret), it returns all previously
         // stored pairs for that lock.
-        let result = conn.insert_revocation((&lock1, None)).await?;
+        let result = conn.insert_revocation(&lock1, None).await?;
         assert_eq!(result.len(), 0,);
 
-        let result = conn.insert_revocation((&lock1, Some(&secret1))).await?;
+        let result = conn.insert_revocation(&lock1, Some(&secret1)).await?;
         assert_valid_pair(&result[0].0, &secret1);
 
-        let result = conn.insert_revocation((&lock1, None)).await?;
+        let result = conn.insert_revocation(&lock1, None).await?;
         assert_valid_pair(&result[0].0, &secret1);
         assert!(result[0].1.is_none(),);
         assert_valid_pair(&result[1].0, &secret1);
@@ -154,7 +155,7 @@ mod tests {
         // Inserting a previously-unseen lock should not return any old pairs.
         let secret2 = test_new_revocation_secret(&mut rng);
         let lock2 = test_new_revocation_lock(&secret2);
-        let result = conn.insert_revocation((&lock2, Some(&secret2))).await?;
+        let result = conn.insert_revocation(&lock2, Some(&secret2)).await?;
         assert_eq!(result.len(), 0);
 
         Ok(())
