@@ -63,13 +63,15 @@ impl Method for Pay {
             }
         };
 
+        proceed!(in chan);
+
         // Run the zkAbacus.Pay protocol
         let pay_result = zkabacus_pay(
             rng,
             merchant_config,
             database,
             session_key,
-            proceed!(in chan),
+            chan,
             payment_amount,
         )
         .await
@@ -230,13 +232,14 @@ async fn zkabacus_pay(
             abort!(in chan return pay::Error::ReusedNonce);
         } else {
             // Nonce was fresh, so continue
-            let chan = proceed!(in chan)
+            proceed!(in chan);
+            let chan = chan
                 .send(closing_signature)
                 .await
                 .context("Failed to send closing signature")?;
 
             // Offer the customer the choice of whether to continue after receiving the signature
-            let chan = offer_abort!(in chan as Merchant);
+            offer_abort!(in chan as Merchant);
 
             // Receive the customer's revealed lock, secret, and blinding factor
             let (revocation_lock, chan) = chan
@@ -271,7 +274,8 @@ async fn zkabacus_pay(
                 }
 
                 // The revealed information was correct; issue the pay token
-                let chan = proceed!(in chan)
+                proceed!(in chan);
+                let chan = chan
                     .send(pay_token)
                     .await
                     .context("Failed to send pay token")?;

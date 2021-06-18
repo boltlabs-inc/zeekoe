@@ -22,7 +22,7 @@ type OfferAbort<Next, Err> = Session! {
 #[macro_export]
 macro_rules! offer_abort {
     (in $chan:ident as $party:expr) => {
-        ::anyhow::Context::context(dialectic::offer!(in $chan {
+        let $chan = ::anyhow::Context::context(dialectic::offer!(in $chan {
             0 => {
                 let party_ctx = || format!("{:?} chose to abort the session", $party.opposite());
                 let (err, $chan) = ::anyhow::Context::with_context(
@@ -35,7 +35,7 @@ macro_rules! offer_abort {
                 return ::anyhow::Context::with_context(Err(err), party_ctx);
             }
             1 => $chan,
-        }), "Failure while receiving choice of continue/abort")?
+        }), "Failure while receiving choice of continue/abort")?;
     }
 }
 
@@ -59,17 +59,17 @@ macro_rules! abort {
             "Failed to send error after choosing to abort",
         )?;
         $chan.close();
-        return Err(err.into());
+        return ::anyhow::Context::context(Err(err), "Pay protocol aborted");
     };
 }
 
 #[macro_export]
 macro_rules! proceed {
     (in $chan:ident) => {
-        ::anyhow::Context::context(
+        let $chan = ::anyhow::Context::context(
             $chan.choose::<1>().await,
             "Failure while choosing to continue",
-        )?
+        )?;
     };
 }
 

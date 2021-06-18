@@ -65,7 +65,7 @@ impl Command for Pay {
             .context("Failed to send payment note")?;
 
         // Allow the merchant to accept or reject the payment and note
-        let chan = offer_abort!(in chan as Customer);
+        offer_abort!(in chan as Customer);
 
         // Run the core zkAbacus.Pay protocol
         let mut state = State::Ready;
@@ -147,7 +147,7 @@ async fn zkabacus_pay(
         .context("Failed to send payment proof")?;
 
     // Allow the merchant to cancel the session at this point, and throw an error if so
-    let chan = offer_abort!(in chan as Customer);
+    offer_abort!(in chan as Customer);
 
     // Receive a closing signature from the merchant
     let (closing_signature, chan) = chan
@@ -160,8 +160,10 @@ async fn zkabacus_pay(
         // Record that we are now in the locked state
         *state = State::Locked;
 
+        proceed!(in chan);
+
         // If the closing signature verifies, reveal our lock, secret, and blinding factor
-        let chan = proceed!(in chan)
+        let chan = chan
             .send(lock_message.revocation_lock)
             .await
             .context("Failed to send revocation lock")?
@@ -173,7 +175,7 @@ async fn zkabacus_pay(
             .context("Failed to send revocation lock blinding factor")?;
 
         // Allow the merchant to cancel the session at this point, and throw an error if so
-        let chan = offer_abort!(in chan as Customer);
+        offer_abort!(in chan as Customer);
         (chan, locked)
     } else {
         // If the closing signature does not verify, inform the merchant we are aborting
