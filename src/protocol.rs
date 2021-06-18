@@ -3,6 +3,11 @@ use zkabacus_crypto::{
     revlock::*, ClosingSignature, CommitmentParameters, Nonce, PayProof, PayToken, PublicKey,
     RangeProofParameters,
 };
+use {
+    dialectic::prelude::*,
+    serde::{Deserialize, Serialize},
+    thiserror::Error,
+};
 
 pub type Ping = Session! {
     loop {
@@ -11,48 +16,84 @@ pub type Ping = Session! {
     }
 };
 
-type OfferContinue<Next> = Session! {
+type OfferAbort<Next, Err> = Session! {
     offer {
-        0 => {},
+        0 => recv Err,
         1 => Next,
     }
 };
 
 #[macro_export]
-macro_rules! offer_continue {
-    (in $chan:ident else $err:expr) => {
-        dialectic::offer!(in $chan {
+macro_rules! offer_abort {
+    (in $chan:ident as $party:expr) => {
+        let $chan = ::anyhow::Context::context(dialectic::offer!(in $chan {
             0 => {
+                let party_ctx = || format!("{:?} chose to abort the session", $party.opposite());
+                let (err, $chan) = ::anyhow::Context::with_context(
+                    ::anyhow::Context::context(
+                        $chan.recv().await,
+                        "Failed to receive error after receiving abort"
+                    ),
+                    party_ctx)?;
                 $chan.close();
-                $err
+                return ::anyhow::Context::with_context(Err(err), party_ctx);
             }
             1 => $chan,
-        })
+        }), "Failure while receiving choice of continue/abort")?;
     }
 }
 
-type ChooseContinue<Next> = Session! {
+type ChooseAbort<Next, Err> = Session! {
     choose {
-        0 => {},
+        0 => send Err,
         1 => Next,
     }
 };
 
 #[macro_export]
-macro_rules! choose_abort {
-    (in $chan:ident) => {
-        match $chan.choose::<0>().await {
-            Ok($chan) => Ok($chan.close()),
-            Err(e) => Err(e),
-        }
+macro_rules! abort {
+    (in $chan:ident return $err:expr ) => {
+        let $chan = ::anyhow::Context::context(
+            $chan.choose::<0>().await,
+            "Failure while choosing to abort",
+        )?;
+        let err = $err;
+        let $chan = ::anyhow::Context::context(
+            $chan.send(err.clone()).await,
+            "Failed to send error after choosing to abort",
+        )?;
+        $chan.close();
+        return ::anyhow::Context::context(Err(err), "Pay protocol aborted");
     };
 }
 
 #[macro_export]
-macro_rules! choose_continue {
+macro_rules! proceed {
     (in $chan:ident) => {
-        $chan.choose::<1>().await
+        let $chan = ::anyhow::Context::context(
+            $chan.choose::<1>().await,
+            "Failure while choosing to continue",
+        )?;
     };
+}
+
+/// The two parties in the protocol.
+#[derive(Debug, Clone, Copy)]
+pub enum Party {
+    /// The customer client.
+    Customer,
+    /// The merchant server.
+    Merchant,
+}
+
+impl Party {
+    pub fn opposite(self) -> Self {
+        use Party::*;
+        match self {
+            Customer => Merchant,
+            Merchant => Customer,
+        }
+    }
 }
 
 // All protocols are from the perspective of the customer.
@@ -86,6 +127,18 @@ pub mod establish {
         ClosingSignature, CustomerBalance, EstablishProof, MerchantBalance, PayToken,
     };
 
+    #[derive(Debug, Clone, Error, Serialize, Deserialize)]
+    pub enum Error {
+        #[error("Channel funding request rejected: {0}")]
+        Rejected(String),
+        #[error("Invalid channel establish proof")]
+        InvalidEstablishProof,
+        #[error("Invalid closing signature")]
+        InvalidClosingSignature,
+        #[error("Invalid payment token")]
+        InvalidPayToken,
+    }
+
     pub type Establish = CustomerSupplyInfo;
 
     pub type CustomerSupplyInfo = Session! {
@@ -98,7 +151,7 @@ pub mod establish {
         send CustomerBalance;
         send MerchantBalance;
         send String;
-        OfferContinue<MerchantSupplyInfo>;
+        OfferAbort<MerchantSupplyInfo, Error>;
     };
 
     pub type MerchantSupplyInfo = Session! {
@@ -111,12 +164,12 @@ pub mod establish {
 
     pub type CustomerSupplyProof = Session! {
         send EstablishProof;
-        OfferContinue<MerchantSupplyClosingSignature>;
+        OfferAbort<MerchantSupplyClosingSignature, Error>;
     };
 
     pub type MerchantSupplyClosingSignature = Session! {
         recv ClosingSignature;
-        ChooseContinue<Activate>;
+        ChooseAbort<Activate, Error>;
     };
 
     pub type Activate = Session! {
@@ -128,37 +181,56 @@ pub mod pay {
     use super::*;
     use zkabacus_crypto::PaymentAmount;
 
+    #[derive(Debug, Clone, Serialize, Deserialize, Error)]
+    pub enum Error {
+        #[error("Payment rejected: {0}")]
+        Rejected(String),
+        #[error("Customer submitted reused nonce")]
+        ReusedNonce,
+        #[error("Merchant returned invalid closing signature")]
+        InvalidClosingSignature,
+        #[error("Customer submitted reused revocation lock")]
+        ReusedRevocationLock,
+        #[error("Customer submitted invalid opening of commitments")]
+        InvalidRevocationOpening,
+        #[error("Customer submitted invalid payment proof")]
+        InvalidPayProof,
+        #[error("Channel frozen: merchant returned invalid payment token")]
+        InvalidPayToken,
+    }
+
     /// The full zkchannels "pay" protocol's session type.
     pub type Pay = Session! {
         send PaymentAmount;
         send String; // Payment note
-        MerchantApprovePayment;
+        OfferAbort<CustomerStartPayment, Error>;
     };
-
-    /// The merchant approves the payment.
-    pub type MerchantApprovePayment = OfferContinue<CustomerStartPayment>;
 
     /// The start of the zkabacus "pay" protocol.
     pub type CustomerStartPayment = Session! {
         send Nonce;
         send PayProof;
-        OfferContinue<MerchantAcceptPayment>;
+        OfferAbort<MerchantAcceptPayment, Error>;
     };
 
     pub type MerchantAcceptPayment = Session! {
         recv ClosingSignature;
-        ChooseContinue<CustomerRevokePreviousPayToken>;
+        ChooseAbort<CustomerRevokePreviousPayToken, Error>;
     };
 
     pub type CustomerRevokePreviousPayToken = Session! {
         send RevocationLock;
         send RevocationSecret;
         send RevocationLockBlindingFactor;
-        OfferContinue<MerchantIssueNewPayToken>;
+        OfferAbort<MerchantIssueNewPayToken, Error>;
     };
 
     pub type MerchantIssueNewPayToken = Session! {
         recv PayToken;
-        recv Option<String>; // Response note (service rendered)
+        MerchantProvideService;
+    };
+
+    pub type MerchantProvideService = Session! {
+        recv Option<String>;
     };
 }

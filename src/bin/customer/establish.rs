@@ -5,9 +5,10 @@ use zkabacus_crypto::{
 };
 
 use zeekoe::{
-    choose_abort, choose_continue,
+    abort,
     customer::{cli::Establish, Config},
-    offer_continue, protocol,
+    offer_abort, proceed,
+    protocol::Party::Customer,
 };
 
 use super::{connect, Command};
@@ -55,9 +56,7 @@ impl Command for Establish {
             .await?;
 
         // Allow the merchant to reject the funding of the channel, else continue
-        let chan = offer_continue!(
-            in chan else return Err(anyhow::anyhow!("merchant rejected channel funding"))
-        )?;
+        offer_abort!(in chan as Customer);
 
         // TODO: receive merchant chain-specific things + randomness
 
