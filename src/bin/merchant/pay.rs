@@ -15,7 +15,8 @@ use zeekoe::{
         server::SessionKey,
         Chan,
     },
-    offer_continue, protocol,
+    offer_abort,
+    protocol::{self, pay},
 };
 
 use zkabacus_crypto::{merchant::Config as MerchantConfig, Context as ProofContext, PaymentAmount};
@@ -41,32 +42,36 @@ impl Method for Pay {
         chan: Chan<Self::Protocol>,
     ) -> Result<(), anyhow::Error> {
         // Get the payment amount and note in the clear from the customer
-        let (payment_amount, chan) = chan.recv().await?;
-        let (note, chan) = chan.recv().await?;
+        let (payment_amount, chan) = chan
+            .recv()
+            .await
+            .context("Failed to receive payment amount")?;
+        let (note, chan) = chan
+            .recv()
+            .await
+            .context("Failed to receive payment note")?;
 
         // Determine whether to accept the payment
-        let (response_url, chan) =
-            match approve_payment(client, &service.approve, &payment_amount, note).await {
-                Ok(response_url) => {
-                    let chan = choose_continue!(in chan)?;
-                    (response_url, chan)
-                }
-                Err(approval_error) => {
-                    // If the payment was not approved, indicate to the client why
-                    chan.choose::<0>()
-                        .await?
-                        .send(format!(
-                            "Payment rejected: {}",
-                            match approval_error {
-                                None => "internal approver service error".into(),
-                                Some(err) => err,
-                            }
-                        ))
-                        .await?
-                        .close();
-                    return Ok(());
-                }
-            };
+        let (response_url, chan) = match approve_payment(
+            client,
+            &service.approve,
+            &payment_amount,
+            note,
+        )
+        .await
+        {
+            Ok(response_url) => {
+                let chan = choose_continue!(in chan);
+                (response_url, chan)
+            }
+            Err(approval_error) => {
+                // If the payment was not approved, indicate to the client why
+                choose_abort!(
+                    in chan
+                    return pay::Error::Rejected(approval_error.unwrap_or("internal error".into()))
+                );
+            }
+        };
 
         // Run the zkAbacus.Pay protocol
         let pay_result = zkabacus_pay(
@@ -77,15 +82,23 @@ impl Method for Pay {
             chan,
             payment_amount,
         )
-        .await;
+        .await
+        .context("Core pay protocol failed");
 
         match pay_result {
             Ok(chan) => {
                 // Send the response note (i.e. the fulfillment of the service) and close the
                 // connection to the customer
                 let response_note = payment_success(client, response_url).await;
-                chan.send(response_note).await?.close();
-                Ok(())
+                let (note, result) = match response_note {
+                    Err(err) => (None, Err(err)),
+                    Ok(o) => (o, Ok(())),
+                };
+                chan.send(note)
+                    .await
+                    .context("Failed to send response note")?
+                    .close();
+                result
             }
             Err(err) => {
                 payment_failure(client, response_url).await;
@@ -155,18 +168,25 @@ async fn approve_payment(
 
 /// Notify the confirmer, if any, of a payment success, and fetch a payment result, if any, to
 /// return directly to the customer.
-async fn payment_success(client: &reqwest::Client, response_url: Option<Url>) -> Option<String> {
+async fn payment_success(
+    client: &reqwest::Client,
+    response_url: Option<Url>,
+) -> Result<Option<String>, anyhow::Error> {
     if let Some(response_url) = response_url {
-        let response = client.get(response_url.clone()).send().await.ok()?;
+        let response = client
+            .get(response_url.clone())
+            .send()
+            .await
+            .with_context(|| format!("Failed to get resource at {}", response_url.clone()))?;
         if response.status().is_success() {
-            let body = response.text().await.ok()?;
+            let body = response.text().await?;
             delete_resource(client, response_url, true).await;
-            Some(body)
+            Ok(Some(body))
         } else {
-            None
+            Ok(None)
         }
     } else {
-        Some(String::new())
+        Ok(Some(String::new()))
     }
 }
 
@@ -201,8 +221,8 @@ async fn zkabacus_pay(
     payment_amount: PaymentAmount,
 ) -> Result<Chan<Session! { recv Option<String> }>, anyhow::Error> {
     // Get the nonce and pay proof (this is the start of zkAbacus.Pay)
-    let (nonce, chan) = chan.recv().await?;
-    let (pay_proof, chan) = chan.recv().await?;
+    let (nonce, chan) = chan.recv().await.context("Failed to receive nonce")?;
+    let (pay_proof, chan) = chan.recv().await.context("Failed to receive pay proof")?;
 
     // Generate the shared context for the proof
     let context = ProofContext::new(&session_key.to_bytes());
@@ -211,23 +231,36 @@ async fn zkabacus_pay(
         merchant_config.allow_payment(&mut rng, payment_amount, &nonce, pay_proof, &context)
     {
         // Proof verified, so check the nonce
-        if database.insert_nonce(&nonce).await? {
+        if database
+            .insert_nonce(&nonce)
+            .await
+            .context("Failed to insert nonce in database")?
+        {
             // Nonce was already present, so reject the payment
-            choose_abort!(in chan)?;
-            return Err(anyhow::anyhow!("nonce was already present in database"));
+            choose_abort!(in chan return pay::Error::ReusedNonce);
         } else {
             // Nonce was fresh, so continue
-            let chan = choose_continue!(in chan)?.send(closing_signature).await?;
+            let chan = choose_continue!(in chan)
+                .send(closing_signature)
+                .await
+                .context("Failed to send closing signature")?;
 
             // Offer the customer the choice of whether to continue after receiving the signature
-            let chan = offer_continue!(
-                in chan else return Err(anyhow::anyhow!("customer rejected closing signature"))
-            )?;
+            let chan = offer_abort!(in chan);
 
             // Receive the customer's revealed lock, secret, and blinding factor
-            let (revocation_lock, chan) = chan.recv().await?;
-            let (revocation_secret, chan) = chan.recv().await?;
-            let (revocation_blinding_factor, chan) = chan.recv().await?;
+            let (revocation_lock, chan) = chan
+                .recv()
+                .await
+                .context("Failed to send revocation lock")?;
+            let (revocation_secret, chan) = chan
+                .recv()
+                .await
+                .context("Failed to send revocation secret")?;
+            let (revocation_blinding_factor, chan) = chan
+                .recv()
+                .await
+                .context("Failed to send revocation blinding factor")?;
 
             // Validate the received information
             if let Ok(pay_token) = unrevoked.complete_payment(
@@ -239,32 +272,31 @@ async fn zkabacus_pay(
                 // Check to see if the revocation lock was already present in the database
                 let prior_revocations = database
                     .insert_revocation(&revocation_lock, Some(&revocation_secret))
-                    .await?;
+                    .await
+                    .context("Failed to insert revocation lock/secret pair in database")?;
 
                 // Abort if the revocation lock was already present in the database
                 if !prior_revocations.is_empty() {
-                    choose_abort!(in chan)?;
-                    return Err(anyhow::anyhow!(
-                        "revocation lock was already present in database"
-                    ));
+                    choose_abort!(in chan return pay::Error::ReusedRevocationLock);
                 }
 
                 // The revealed information was correct; issue the pay token
-                let chan = choose_continue!(in chan)?.send(pay_token).await?;
-                return Ok(chan);
+                let chan = choose_continue!(in chan)
+                    .send(pay_token)
+                    .await
+                    .context("Failed to send pay token")?;
+
+                // Return the channel, ready for the finalization of the outer protocol
+                Ok(chan)
             } else {
                 // Incorrect information; abort the session and do not issue a pay token. This
                 // has the effect of freezing the channel, since the nonce has been recorded,
                 // but the customer has no new state to pay from.
-                choose_abort!(in chan)?;
-                return Err(anyhow::anyhow!(
-                    "invalid revealed lock/secret/blinding-factor triple"
-                ));
+                choose_abort!(in chan return pay::Error::InvalidRevocationOpening);
             }
         }
     } else {
         // Proof didn't verify, so don't check the nonce
-        choose_abort!(in chan)?;
-        return Err(anyhow::anyhow!("payment proof did not verify"));
-    };
+        choose_abort!(in chan return pay::Error::InvalidPayProof);
+    }
 }
