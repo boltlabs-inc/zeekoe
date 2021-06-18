@@ -16,7 +16,7 @@ use zeekoe::{
         Chan,
     },
     offer_abort,
-    protocol::{self, pay},
+    protocol::{self, pay, Party::Merchant},
 };
 
 use zkabacus_crypto::{merchant::Config as MerchantConfig, Context as ProofContext, PaymentAmount};
@@ -236,7 +236,7 @@ async fn zkabacus_pay(
                 .context("Failed to send closing signature")?;
 
             // Offer the customer the choice of whether to continue after receiving the signature
-            let chan = offer_abort!(in chan);
+            let chan = offer_abort!(in chan as Merchant);
 
             // Receive the customer's revealed lock, secret, and blinding factor
             let (revocation_lock, chan) = chan

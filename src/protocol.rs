@@ -21,12 +21,13 @@ type OfferContinue<Next, Err> = Session! {
 
 #[macro_export]
 macro_rules! offer_abort {
-    (in $chan:ident) => {
+    (in $chan:ident as $party:expr) => {
         ::anyhow::Context::context(dialectic::offer!(in $chan {
             0 => {
                 let (err, $chan) = ::anyhow::Context::context($chan.recv().await, "Failed to receive error after offering abort")?;
                 $chan.close();
-                return Err(err.into());
+                let party: $crate::protocol::Party = $party;
+                return ::anyhow::Context::context(Err(err), format!("{:?} chose to abort the session", party.opposite()));
             }
             1 => $chan,
         }), "Failure while receiving choice of continue/abort")?
@@ -65,6 +66,25 @@ macro_rules! choose_continue {
             "Failure while choosing to continue",
         )?
     };
+}
+
+/// The two parties in the protocol.
+#[derive(Debug, Clone, Copy)]
+pub enum Party {
+    /// The customer client.
+    Customer,
+    /// The merchant server.
+    Merchant,
+}
+
+impl Party {
+    pub fn opposite(self) -> Self {
+        use Party::*;
+        match self {
+            Customer => Merchant,
+            Merchant => Customer,
+        }
+    }
 }
 
 // All protocols are from the perspective of the customer.
