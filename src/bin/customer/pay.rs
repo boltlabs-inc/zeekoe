@@ -1,4 +1,10 @@
-use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng};
+use {
+    anyhow::Context,
+    async_trait::async_trait,
+    dialectic::prelude::*,
+    rand::rngs::StdRng,
+    std::fmt::{self, Display, Formatter},
+};
 
 use zkabacus_crypto::{customer::Ready, Context as ProofContext, PaymentAmount};
 
@@ -6,7 +12,8 @@ use zeekoe::{
     choose_abort, choose_continue,
     customer::{
         cli::{Pay, Refund},
-        Config,
+        client::SessionKey,
+        Chan, Config,
     },
     offer_abort,
     protocol::pay,
@@ -60,59 +67,11 @@ impl Command for Pay {
         // Allow the merchant to accept or reject the payment and note
         let chan = offer_abort!(in chan);
 
-        // Generate the shared context for proofs
-        let context = ProofContext::new(&session_key.to_bytes());
-
-        // Start the zkAbacus core payment and get fresh proofs and commitments
-        let (started, start_message) = ready
-            .start(&mut rng, payment_amount, &context)
-            .context("Failed to generate nonce and payment proof")?;
-
-        // Send the initial proofs and commitments to the merchant
-        let chan = chan
-            .send(start_message.nonce)
+        // Run the core zkAbacus.Pay protocol
+        let mut state = State::Ready;
+        let chan = zkabacus_pay(rng, session_key, chan, payment_amount, ready, &mut state)
             .await
-            .context("Failed to send nonce")?
-            .send(start_message.pay_proof)
-            .await
-            .context("Failed to send payment proof")?;
-
-        // Allow the merchant to cancel the session at this point, and throw an error if so
-        let chan = offer_abort!(in chan);
-
-        // Receive a closing signature from the merchant
-        let (closing_signature, chan) = chan
-            .recv()
-            .await
-            .context("Failed to receive closing signature")?;
-
-        // Verify the closing signature and transition into a locked state
-        let (chan, locked) = if let Ok((locked, lock_message)) = started.lock(closing_signature) {
-            // If the closing signature verifies, reveal our lock, secret, and blinding factor
-            let chan = choose_continue!(in chan)
-                .send(lock_message.revocation_lock)
-                .await
-                .context("Failed to send revocation lock")?
-                .send(lock_message.revocation_secret)
-                .await
-                .context("Failed to send revocation secret")?
-                .send(lock_message.revocation_lock_blinding_factor)
-                .await
-                .context("Failed to send revocation lock blinding factor")?;
-
-            // Allow the merchant to cancel the session at this point, and throw an error if so
-            let chan = offer_abort!(in chan);
-            (chan, locked)
-        } else {
-            // If the closing signature does not verify, inform the merchant we are aborting
-            choose_abort!(in chan return pay::Error::InvalidClosingSignature);
-        };
-
-        // Receive a pay token from the merchant, which allows us to pay again
-        let (pay_token, chan) = chan
-            .recv()
-            .await
-            .context("Failed to receive payment token")?;
+            .with_context(|| format!("Payment failed: channel is in {} state", state))?;
 
         // Receive the response note (i.e. the fulfillment of the service)
         let (response_note, chan) = chan
@@ -123,13 +82,6 @@ impl Command for Pay {
         // Close the communication channel: we are done communicating with the merchant
         chan.close();
 
-        // Unlock the payment channel using the pay token
-        if let Ok(ready) = locked.unlock(pay_token) {
-            todo!("store new channel state in the database")
-        } else {
-            return Err(anyhow::anyhow!("Invalid pay token: channel is frozen"));
-        };
-
         // Print the response note on standard out
         if let Some(response_note) = response_note {
             println!("{}", response_note);
@@ -137,6 +89,113 @@ impl Command for Pay {
 
         Ok(())
     }
+}
+
+/// Enumeration of the states the channel can be in.
+#[derive(Debug, Clone, Copy)]
+enum State {
+    /// Ready for a new payment.
+    Ready,
+    /// Payment initiated: can close on either new or old balance.
+    Started,
+    /// Can close on new balance only, but is not yet ready for a new payment.
+    Locked,
+}
+
+impl Display for State {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        use State::*;
+        write!(
+            f,
+            "{}",
+            match self {
+                Ready => "ready",
+                Started => "started",
+                Locked => "locked",
+            }
+        )
+    }
+}
+
+async fn zkabacus_pay(
+    mut rng: StdRng,
+    session_key: SessionKey,
+    chan: Chan<pay::CustomerStartPayment>,
+    payment_amount: PaymentAmount,
+    ready: Ready,
+    state: &mut State,
+) -> Result<Chan<Session! { recv Option<String> }>, anyhow::Error> {
+    // Generate the shared context for proofs
+    let context = ProofContext::new(&session_key.to_bytes());
+
+    // Start the zkAbacus core payment and get fresh proofs and commitments
+    let (started, start_message) = ready
+        .start(&mut rng, payment_amount, &context)
+        .context("Failed to generate nonce and payment proof")?;
+
+    // Record that we are now in the started state
+    *state = State::Started;
+
+    // Send the initial proofs and commitments to the merchant
+    let chan = chan
+        .send(start_message.nonce)
+        .await
+        .context("Failed to send nonce")?
+        .send(start_message.pay_proof)
+        .await
+        .context("Failed to send payment proof")?;
+
+    // Allow the merchant to cancel the session at this point, and throw an error if so
+    let chan = offer_abort!(in chan);
+
+    // Receive a closing signature from the merchant
+    let (closing_signature, chan) = chan
+        .recv()
+        .await
+        .context("Failed to receive closing signature")?;
+
+    // Verify the closing signature and transition into a locked state
+    let (chan, locked) = if let Ok((locked, lock_message)) = started.lock(closing_signature) {
+        // Record that we are now in the locked state
+        *state = State::Locked;
+
+        // If the closing signature verifies, reveal our lock, secret, and blinding factor
+        let chan = choose_continue!(in chan)
+            .send(lock_message.revocation_lock)
+            .await
+            .context("Failed to send revocation lock")?
+            .send(lock_message.revocation_secret)
+            .await
+            .context("Failed to send revocation secret")?
+            .send(lock_message.revocation_lock_blinding_factor)
+            .await
+            .context("Failed to send revocation lock blinding factor")?;
+
+        // Allow the merchant to cancel the session at this point, and throw an error if so
+        let chan = offer_abort!(in chan);
+        (chan, locked)
+    } else {
+        // If the closing signature does not verify, inform the merchant we are aborting
+        choose_abort!(in chan return pay::Error::InvalidClosingSignature);
+    };
+
+    // Receive a pay token from the merchant, which allows us to pay again
+    let (pay_token, chan) = chan
+        .recv()
+        .await
+        .context("Failed to receive payment token")?;
+
+    // Unlock the payment channel using the pay token
+    if let Ok(ready) = locked.unlock(pay_token) {
+        // Record that we are now in the ready state
+        *state = State::Ready;
+
+        todo!("store new channel state in the database")
+    } else {
+        return Err(pay::Error::InvalidPayToken.into());
+    };
+
+    Ok(chan)
 }
 
 #[async_trait]

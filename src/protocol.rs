@@ -94,17 +94,17 @@ pub mod pay {
     pub enum Error {
         #[error("Payment rejected: {0}")]
         Rejected(String),
-        #[error("Payment failed: customer submitted reused nonce")]
+        #[error("Customer submitted reused nonce")]
         ReusedNonce,
-        #[error("Payment failed: merchant returned invalid closing signature")]
+        #[error("Merchant returned invalid closing signature")]
         InvalidClosingSignature,
-        #[error("Payment failed: customer submitted reused revocation lock")]
+        #[error("Customer submitted reused revocation lock")]
         ReusedRevocationLock,
-        #[error("Payment failed: customer submitted invalid opening of commitments")]
+        #[error("Customer submitted invalid opening of commitments")]
         InvalidRevocationOpening,
-        #[error("Payment failed: customer submitted invalid payment proof")]
+        #[error("Customer submitted invalid payment proof")]
         InvalidPayProof,
-        #[error("Channel frozen: invalid payment token")]
+        #[error("Channel frozen: merchant returned invalid payment token")]
         InvalidPayToken,
     }
 

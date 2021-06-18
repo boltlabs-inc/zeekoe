@@ -52,24 +52,14 @@ impl Method for Pay {
             .context("Failed to receive payment note")?;
 
         // Determine whether to accept the payment
-        let (response_url, chan) = match approve_payment(
-            client,
-            &service.approve,
-            &payment_amount,
-            note,
-        )
-        .await
+        let response_url = match approve_payment(client, &service.approve, &payment_amount, note)
+            .await
         {
-            Ok(response_url) => {
-                let chan = choose_continue!(in chan);
-                (response_url, chan)
-            }
+            Ok(response_url) => response_url,
             Err(approval_error) => {
                 // If the payment was not approved, indicate to the client why
-                choose_abort!(
-                    in chan
-                    return pay::Error::Rejected(approval_error.unwrap_or("internal error".into()))
-                );
+                let error = pay::Error::Rejected(approval_error.unwrap_or("internal error".into()));
+                choose_abort!(in chan return error);
             }
         };
 
@@ -79,11 +69,11 @@ impl Method for Pay {
             merchant_config,
             database,
             session_key,
-            chan,
+            choose_continue!(in chan),
             payment_amount,
         )
         .await
-        .context("Core pay protocol failed");
+        .context("Payment failed");
 
         match pay_result {
             Ok(chan) => {
@@ -217,15 +207,15 @@ async fn zkabacus_pay(
     merchant_config: &MerchantConfig,
     database: &(dyn QueryMerchant + Send + Sync),
     session_key: SessionKey,
-    chan: Chan<protocol::pay::CustomerStartPayment>,
+    chan: Chan<pay::CustomerStartPayment>,
     payment_amount: PaymentAmount,
 ) -> Result<Chan<Session! { recv Option<String> }>, anyhow::Error> {
+    // Generate the shared context for the proof
+    let context = ProofContext::new(&session_key.to_bytes());
+
     // Get the nonce and pay proof (this is the start of zkAbacus.Pay)
     let (nonce, chan) = chan.recv().await.context("Failed to receive nonce")?;
     let (pay_proof, chan) = chan.recv().await.context("Failed to receive pay proof")?;
-
-    // Generate the shared context for the proof
-    let context = ProofContext::new(&session_key.to_bytes());
 
     if let Some((unrevoked, closing_signature)) =
         merchant_config.allow_payment(&mut rng, payment_amount, &nonce, pay_proof, &context)
