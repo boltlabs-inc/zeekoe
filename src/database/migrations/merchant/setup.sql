@@ -10,3 +10,10 @@ CREATE TABLE revocations (
   secret BLOB
 );
 CREATE INDEX revocations_lock on revocations (lock);
+
+CREATE TABLE config (
+  id SERIAL PRIMARY KEY,
+  signing_keypair BLOB NOT NULL,
+  revocation_commitment_parameters BLOB NOT NULL,
+  range_proof_parameters BLOB NOT NULL
+);

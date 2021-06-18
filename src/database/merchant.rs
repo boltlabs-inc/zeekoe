@@ -1,9 +1,9 @@
 use crate::database::SqlitePool;
 use zkabacus_crypto::{
     revlock::{RevocationLock, RevocationSecret},
-    Nonce,
+    CommitmentParameters, KeyPair, Nonce, RangeProofParameters,
 };
-use {async_trait::async_trait, rand::rngs::StdRng};
+use {async_trait::async_trait, futures::StreamExt, rand::rngs::StdRng};
 
 #[async_trait]
 pub trait QueryMerchant {
@@ -97,15 +97,23 @@ impl QueryMerchant for SqlitePool {
                 range_proof_parameters
                     AS "range_proof_parameters: RangeProofParameters"
             FROM
-                configuration
+                config
             "#,
         )
         .fetch(&mut transaction)
+        .next()
         .await?;
 
-        if let Some(existing_config) = existing_config {
+        if let Ok(existing_config) = existing_config {
+            let signing_keypair = existing_config.signing_keypair;
+            let revocation_commitment_parameters = existing_config.revocation_commitment_parameters;
+            let range_proof_parameters = existing_config.range_proof_parameters;
             transaction.commit().await?;
-            return Ok(existing_config);
+            return Ok(zkabacus_crypto::merchant::Config::from_parts(
+                signing_keypair,
+                revocation_commitment_parameters,
+                range_proof_parameters,
+            ));
         }
 
         let new_config = zkabacus_crypto::merchant::Config::new(rng);
@@ -113,7 +121,7 @@ impl QueryMerchant for SqlitePool {
         sqlx::query!(
             r#"
             INSERT INTO
-                configuration
+                config
             (signing_keypair, revocation_commitment_parameters, range_proof_parameters)
                 VALUES
             (?, ?, ?)
