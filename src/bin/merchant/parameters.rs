@@ -1,7 +1,7 @@
-use async_trait::async_trait;
+use {async_trait::async_trait, rand::rngs::StdRng};
 
 use zeekoe::{
-    merchant::{database::QueryMerchant, Chan, Config},
+    merchant::{config::Service, database::QueryMerchant, server::SessionKey, Chan},
     protocol,
 };
 
@@ -15,9 +15,12 @@ impl Method for Parameters {
 
     async fn run(
         &self,
-        config: &Config,
+        rng: StdRng,
+        client: &reqwest::Client,
+        config: &Service,
         merchant_config: &zkabacus_crypto::merchant::Config,
         database: &(dyn QueryMerchant + Send + Sync),
+        session_key: SessionKey,
         chan: Chan<Self::Protocol>,
     ) -> Result<(), anyhow::Error> {
         let customer_config = merchant_config.to_customer_config();

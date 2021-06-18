@@ -10,8 +10,8 @@
       "nullable": []
     }
   },
-  "bdc8b1b00ec8116e1ecf14aa63274e16f902f413695ca6297926a1cd77f49585": {
-    "query": "\n            SELECT \n                lock AS \"lock: RevocationLock\",\n                secret AS \"secret: RevocationSecret\"\n            FROM revocations\n            WHERE lock = ?\n            ",
+  "9d5edcbcff4ed4c1d16bab23284ae831ef5027cd1aab3e233befcda62a707160": {
+    "query": "\n            SELECT\n                lock AS \"lock: RevocationLock\",\n                secret AS \"secret: RevocationSecret\"\n            FROM revocations\n            WHERE lock = ?\n            ",
     "describe": {
       "columns": [
         {

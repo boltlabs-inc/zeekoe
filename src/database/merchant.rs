@@ -57,7 +57,7 @@ impl QueryMerchant for SqlitePool {
         let mut transaction = self.begin().await?;
         let existing_pairs = sqlx::query!(
             r#"
-            SELECT 
+            SELECT
                 lock AS "lock: RevocationLock",
                 secret AS "secret: RevocationSecret"
             FROM revocations

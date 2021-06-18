@@ -9,7 +9,7 @@ use {
 };
 
 use crate::{
-    amount::{parse_amount, Amount},
+    amount::Amount,
     customer::{AccountName, ChannelName},
     transport::client::ZkChannelAddress,
 };
@@ -47,7 +47,6 @@ pub struct Configure {}
 #[non_exhaustive]
 pub struct Establish {
     pub merchant: ZkChannelAddress,
-    #[structopt(parse(try_from_str = parse_amount))]
     pub deposit: Amount,
     #[structopt(long)]
     pub from: AccountName,
@@ -68,7 +67,6 @@ pub struct Rename {
 #[non_exhaustive]
 pub struct Pay {
     pub label: ChannelName,
-    #[structopt(parse(try_from_str = parse_amount))]
     pub pay: Amount,
     #[structopt(long)]
     pub note: Option<Note>,
@@ -79,7 +77,9 @@ impl Pay {
         let Self { label, pay, note } = self;
         Refund {
             label,
-            refund: -1 * pay,
+            refund: Amount {
+                money: -1 * pay.money,
+            },
             note,
         }
     }
@@ -89,7 +89,6 @@ impl Pay {
 #[non_exhaustive]
 pub struct Refund {
     pub label: ChannelName,
-    #[structopt(parse(try_from_str = parse_amount))]
     pub refund: Amount,
     #[structopt(long)]
     pub note: Option<Note>,
@@ -104,7 +103,9 @@ impl Refund {
         } = self;
         Pay {
             label,
-            pay: -1 * refund,
+            pay: Amount {
+                money: -1 * refund.money,
+            },
             note,
         }
     }

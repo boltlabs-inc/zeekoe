@@ -25,6 +25,7 @@ use crate::customer;
 
 pub use super::channel::ClientChan as Chan;
 pub use dialectic_reconnect::Backoff;
+pub use handshake::SessionKey;
 
 /// The type of errors returned during sessions on a client-side channel.
 pub type Error = retry::RetryError<TransportError, io::Error, TransportError>;
@@ -139,7 +140,7 @@ where
     pub async fn connect(
         &self,
         ZkChannelAddress { host, port }: ZkChannelAddress,
-    ) -> Result<Chan<Protocol>, Error> {
+    ) -> Result<(SessionKey, Chan<Protocol>), Error> {
         // Share the TLS config between all times we connect
         let tls_config = Arc::new(self.tls_config.clone());
 
@@ -186,7 +187,7 @@ where
             }
         };
 
-        let (_key, chan) = retry::Connector::new(
+        retry::Connector::new(
             connect,
             handshake::client::init::<_, _, TransportError>,
             handshake::client::retry::<_, _, TransportError>,
@@ -212,9 +213,7 @@ where
                 HandshakeIncomplete => HandshakeIncomplete,
                 NoCapacity => NoCapacity,
             }
-        })?;
-
-        Ok(chan)
+        })
     }
 }
 
