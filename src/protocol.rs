@@ -1,4 +1,3 @@
-use dialectic::prelude::*;
 use zkabacus_crypto::{
     revlock::*, ClosingSignature, CommitmentParameters, Nonce, PayProof, PayToken, PublicKey,
     RangeProofParameters,
@@ -6,6 +5,7 @@ use zkabacus_crypto::{
 use {
     dialectic::prelude::*,
     serde::{Deserialize, Serialize},
+    std::fmt::{self, Display, Formatter},
     thiserror::Error,
 };
 
@@ -78,7 +78,7 @@ macro_rules! proceed {
 }
 
 /// The two parties in the protocol.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd, Hash, Serialize, Deserialize)]
 pub enum Party {
     /// The customer client.
     Customer,
@@ -86,8 +86,32 @@ pub enum Party {
     Merchant,
 }
 
+impl Display for Party {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        use Party::*;
+        write!(
+            f,
+            "{}",
+            match self {
+                Customer => "customer",
+                Merchant => "merchant",
+            }
+        )
+    }
+}
+
 impl Party {
-    pub fn opposite(self) -> Self {
+    /// Get the other party.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use zeekoe::protocol::Party::*;
+    ///
+    /// assert_eq!(Customer.opposite(), Merchant);
+    /// assert_eq!(Merchant.opposite(), Customer);
+    /// ```
+    pub const fn opposite(self) -> Self {
         use Party::*;
         match self {
             Customer => Merchant,
@@ -129,6 +153,8 @@ pub mod establish {
 
     #[derive(Debug, Clone, Error, Serialize, Deserialize)]
     pub enum Error {
+        #[error("Invalid {0} deposit amount")]
+        InvalidDeposit(Party),
         #[error("Channel funding request rejected: {0}")]
         Rejected(String),
         #[error("Invalid channel establish proof")]
