@@ -75,7 +75,6 @@ impl Command for Run {
                 let merchant_config = merchant_config.clone();
                 let database = database.clone();
                 let running = running.clone();
-                let approve = Arc::new(service.approve.clone());
                 let service = Arc::new(service.clone());
 
                 async move {
@@ -106,7 +105,6 @@ impl Command for Run {
                         let client = client.clone();
                         let merchant_config = merchant_config.clone();
                         let database = database.clone();
-                        let approve = approve.clone();
                         let service = service.clone();
 
                         // TODO: permit configuration option to make this deterministic for testing
@@ -114,11 +112,24 @@ impl Command for Run {
 
                         async move {
                             offer!(in chan {
-                                0 => Parameters.run(rng, &client, &service, &merchant_config, database.as_ref(), session_key, chan).await?,
-                                1 => {
-                                    let pay = Pay { approve: approve.clone() };
-                                    pay.run(rng, &client, &service, &merchant_config, database.as_ref(), session_key, chan).await?
-                                },
+                                0 => Parameters.run(
+                                    rng,
+                                    &client,
+                                    &service,
+                                    &merchant_config,
+                                    database.as_ref(),
+                                    session_key,
+                                    chan,
+                                ).await?,
+                                1 => Pay.run(
+                                    rng,
+                                    &client,
+                                    &service,
+                                    &merchant_config,
+                                    database.as_ref(),
+                                    session_key,
+                                    chan,
+                                ).await?,
                             })?;
                             Ok::<_, anyhow::Error>(())
                         }

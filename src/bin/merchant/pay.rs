@@ -23,9 +23,7 @@ use zkabacus_crypto::{merchant::Config as MerchantConfig, Context as ProofContex
 
 use super::Method;
 
-pub struct Pay {
-    pub approve: Arc<Approver>,
-}
+pub struct Pay;
 
 #[async_trait]
 impl Method for Pay {
