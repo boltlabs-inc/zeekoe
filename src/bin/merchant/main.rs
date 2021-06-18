@@ -2,6 +2,7 @@ use {
     async_trait::async_trait,
     dialectic::{offer, Session},
     futures::stream::{FuturesUnordered, StreamExt},
+    rand::{rngs::StdRng, SeedableRng},
     sqlx::SqlitePool,
     std::{
         convert::identity,
@@ -55,10 +56,7 @@ impl Command for Run {
 
         // Either initialize the merchant's configuration afresh, or fetch the existing config if it exists
         let merchant_config = database
-            .fetch_or_initialize_config(
-                // This config will only be used if one doesn't already exist
-                zkabacus_crypto::merchant::Config::new(&mut rand::rngs::OsRng),
-            )
+            .fetch_or_initialize_config(&mut StdRng::from_entropy())
             .await?;
 
         // Share the configuration between all server threads

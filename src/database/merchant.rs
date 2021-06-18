@@ -1,9 +1,9 @@
 use crate::database::SqlitePool;
-use async_trait::async_trait;
 use zkabacus_crypto::{
     revlock::{RevocationLock, RevocationSecret},
     Nonce,
 };
+use {async_trait::async_trait, rand::rngs::StdRng};
 
 #[async_trait]
 pub trait QueryMerchant {
@@ -22,7 +22,10 @@ pub trait QueryMerchant {
         secret: Option<&RevocationSecret>,
     ) -> sqlx::Result<Vec<(RevocationLock, Option<RevocationSecret>)>>;
 
-    async fn fetch_or_initialize_config(&self) -> sqlx::Result<zkabacus_crypto::merchant::Config>;
+    async fn fetch_or_initialize_config(
+        &self,
+        rng: &mut StdRng,
+    ) -> sqlx::Result<zkabacus_crypto::merchant::Config>;
 }
 
 #[async_trait]
@@ -79,7 +82,10 @@ impl QueryMerchant for SqlitePool {
         Ok(existing_pairs)
     }
 
-    async fn fetch_or_initialize_config(&self) -> sqlx::Result<zkabacus_crypto::merchant::Config> {
+    async fn fetch_or_initialize_config(
+        &self,
+        rng: &mut StdRng,
+    ) -> sqlx::Result<zkabacus_crypto::merchant::Config> {
         todo!("fetch or initialize merchant config")
     }
 }
