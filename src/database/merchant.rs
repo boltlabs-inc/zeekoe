@@ -86,7 +86,47 @@ impl QueryMerchant for SqlitePool {
         &self,
         rng: &mut StdRng,
     ) -> sqlx::Result<zkabacus_crypto::merchant::Config> {
-        todo!("fetch or initialize merchant config")
+        let mut transaction = self.begin().await?;
+        let existing_config = sqlx::query!(
+            r#"
+            SELECT
+                signing_keypair
+                    AS "signing_keypair: KeyPair",
+                revocation_commitment_parameters
+                    AS "revocation_commitment_parameters: CommitmentParameters",
+                range_proof_parameters
+                    AS "range_proof_parameters: RangeProofParameters"
+            FROM
+                configuration
+            "#,
+        )
+        .fetch(&mut transaction)
+        .await?;
+
+        if let Some(existing_config) = existing_config {
+            transaction.commit().await?;
+            return Ok(existing_config);
+        }
+
+        let new_config = zkabacus_crypto::merchant::Config::new(rng);
+
+        sqlx::query!(
+            r#"
+            INSERT INTO
+                configuration
+            (signing_keypair, revocation_commitment_parameters, range_proof_parameters)
+                VALUES
+            (?, ?, ?)
+            "#,
+            new_config.signing_keypair(),
+            new_config.revocation_commitment_parameters(),
+            new_config.range_proof_parameters(),
+        )
+        .execute(&mut transaction)
+        .await?;
+
+        transaction.commit().await?;
+        Ok(new_config)
     }
 }
 
