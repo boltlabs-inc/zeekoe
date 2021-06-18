@@ -209,7 +209,7 @@ async fn zkabacus_pay(
     session_key: SessionKey,
     chan: Chan<pay::CustomerStartPayment>,
     payment_amount: PaymentAmount,
-) -> Result<Chan<Session! { recv Option<String> }>, anyhow::Error> {
+) -> Result<Chan<pay::MerchantProvideService>, anyhow::Error> {
     // Generate the shared context for the proof
     let context = ProofContext::new(&session_key.to_bytes());
 

@@ -117,6 +117,7 @@ impl Display for State {
     }
 }
 
+/// The core zkAbacus.Pay protocol.
 async fn zkabacus_pay(
     mut rng: StdRng,
     session_key: SessionKey,
@@ -124,7 +125,7 @@ async fn zkabacus_pay(
     payment_amount: PaymentAmount,
     ready: Ready,
     state: &mut State,
-) -> Result<Chan<Session! { recv Option<String> }>, anyhow::Error> {
+) -> Result<Chan<pay::MerchantProvideService>, anyhow::Error> {
     // Generate the shared context for proofs
     let context = ProofContext::new(&session_key.to_bytes());
 

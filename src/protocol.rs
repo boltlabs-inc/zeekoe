@@ -156,6 +156,10 @@ pub mod pay {
 
     pub type MerchantIssueNewPayToken = Session! {
         recv PayToken;
+        MerchantProvideService;
+    };
+
+    pub type MerchantProvideService = Session! {
         recv Option<String>;
     };
 }
