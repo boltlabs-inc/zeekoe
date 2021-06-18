@@ -83,7 +83,12 @@ pub mod pay {
     };
 
     /// The merchant approves the payment.
-    pub type MerchantApprovePayment = OfferContinue<CustomerStartPayment>;
+    pub type MerchantApprovePayment = Session! {
+        offer {
+            0 => recv String, // Reason for rejecting payment
+            1 => CustomerStartPayment, // Continue
+        }
+    };
 
     /// The start of the zkabacus "pay" protocol.
     pub type CustomerStartPayment = Session! {

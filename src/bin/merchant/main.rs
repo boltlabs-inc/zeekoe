@@ -59,7 +59,6 @@ impl Command for Run {
             todo!("fetch merchant config from database");
 
         // Share the configuration between all server threads
-        let config = Arc::new(config);
         let merchant_config = Arc::new(merchant_config);
         let client = reqwest::Client::new();
 
@@ -72,7 +71,6 @@ impl Command for Run {
             .iter()
             .map(|service| {
                 // Clone `Arc`s for the various resources we need in this server
-                let config = config.clone();
                 let client = client.clone();
                 let merchant_config = merchant_config.clone();
                 let database = database.clone();
@@ -105,7 +103,6 @@ impl Command for Run {
                     // For each request, dispatch to the appropriate method, defined elsewhere
                     let interact = move |session_key, (), chan: Chan<ZkChannels>| {
                         // Clone `Arc`s for the various resources we need in this request
-                        let config = config.clone();
                         let client = client.clone();
                         let merchant_config = merchant_config.clone();
                         let database = database.clone();
