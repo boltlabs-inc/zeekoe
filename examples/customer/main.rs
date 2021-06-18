@@ -32,7 +32,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Connect to `localhost:8080`
     let address = "zkchannel://localhost:8080".parse().unwrap();
-    let mut chan: Chan<Ping> = client.connect(address).await?;
+    let (_, mut chan): (_, Chan<Ping>) = client.connect(address).await?;
 
     // Enact the client `Ping` protocol
     loop {

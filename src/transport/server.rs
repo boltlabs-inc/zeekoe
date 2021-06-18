@@ -19,6 +19,7 @@ use {
 use super::{channel::TransportError, handshake, pem};
 
 pub use super::channel::ServerChan as Chan;
+pub use handshake::SessionKey;
 
 /// The type of errors returned during sessions on a server-side channel.
 pub type Error = resume::ResumeError<TransportError>;
@@ -116,7 +117,8 @@ where
         Error: Send + Display + 'static,
         Init: FnMut() -> InitFut,
         InitFut: Future<Output = Option<Input>>,
-        Interaction: Fn(Chan<Protocol>, Input) -> InteractionFut + Send + Sync + 'static,
+        Interaction:
+            Fn(SessionKey, Input, Chan<Protocol>) -> InteractionFut + Send + Sync + 'static,
         InteractionFut: Future<Output = Result<(), Error>> + Send + 'static,
     {
         // Configure server-side TLS
@@ -200,11 +202,11 @@ where
                             // existing one
                             let join_handle = tokio::spawn(async move {
                                 match acceptor.accept(tx, rx).await {
-                                    Ok((_key, Some(chan))) => {
-                                        let interaction = interact(chan, input);
+                                    Ok((session_key, Some(chan))) => {
+                                        let interaction = interact(session_key, input, chan);
                                         interaction.await?;
                                     }
-                                    Ok((_key, None)) => {
+                                    Ok((_session_key, None)) => {
                                         // reconnected existing channel, nothing more to do
                                     }
                                     Err(err) => {

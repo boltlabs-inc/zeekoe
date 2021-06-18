@@ -9,7 +9,7 @@ use {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Closure to perform the `Ping` protocol
-    let interact = |mut chan: Chan<Ping>, ()| async move {
+    let interact = |_, (), mut chan: Chan<Ping>| async move {
         #[allow(unreachable_code)]
         Ok::<_, anyhow::Error>(loop {
             chan = chan.recv().await?.1.send("pong".to_string()).await?;

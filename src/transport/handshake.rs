@@ -15,6 +15,22 @@ pub struct SessionKey {
     server_key: Uuid,
 }
 
+impl SessionKey {
+    pub fn to_bytes(&self) -> [u8; 32] {
+        let mut bytes = [0; 32];
+        for (index, byte) in self
+            .client_key
+            .as_bytes()
+            .iter()
+            .chain(self.server_key.as_bytes().iter())
+            .enumerate()
+        {
+            bytes[index] = *byte;
+        }
+        bytes
+    }
+}
+
 pub(crate) type Handshake = Session! {
     choose {
         0 => {
