@@ -8,14 +8,14 @@ use {
 };
 
 use zeekoe::{
-    choose_abort, choose_continue,
+    abort,
     merchant::{
         config::{Approver, Service},
         database::QueryMerchant,
         server::SessionKey,
         Chan,
     },
-    offer_abort,
+    offer_abort, proceed,
     protocol::{self, pay, Party::Merchant},
 };
 
@@ -59,7 +59,7 @@ impl Method for Pay {
             Err(approval_error) => {
                 // If the payment was not approved, indicate to the client why
                 let error = pay::Error::Rejected(approval_error.unwrap_or("internal error".into()));
-                choose_abort!(in chan return error);
+                abort!(in chan return error);
             }
         };
 
@@ -69,7 +69,7 @@ impl Method for Pay {
             merchant_config,
             database,
             session_key,
-            choose_continue!(in chan),
+            proceed!(in chan),
             payment_amount,
         )
         .await
@@ -227,10 +227,10 @@ async fn zkabacus_pay(
             .context("Failed to insert nonce in database")?
         {
             // Nonce was already present, so reject the payment
-            choose_abort!(in chan return pay::Error::ReusedNonce);
+            abort!(in chan return pay::Error::ReusedNonce);
         } else {
             // Nonce was fresh, so continue
-            let chan = choose_continue!(in chan)
+            let chan = proceed!(in chan)
                 .send(closing_signature)
                 .await
                 .context("Failed to send closing signature")?;
@@ -267,11 +267,11 @@ async fn zkabacus_pay(
 
                 // Abort if the revocation lock was already present in the database
                 if !prior_revocations.is_empty() {
-                    choose_abort!(in chan return pay::Error::ReusedRevocationLock);
+                    abort!(in chan return pay::Error::ReusedRevocationLock);
                 }
 
                 // The revealed information was correct; issue the pay token
-                let chan = choose_continue!(in chan)
+                let chan = proceed!(in chan)
                     .send(pay_token)
                     .await
                     .context("Failed to send pay token")?;
@@ -282,11 +282,11 @@ async fn zkabacus_pay(
                 // Incorrect information; abort the session and do not issue a pay token. This
                 // has the effect of freezing the channel, since the nonce has been recorded,
                 // but the customer has no new state to pay from.
-                choose_abort!(in chan return pay::Error::InvalidRevocationOpening);
+                abort!(in chan return pay::Error::InvalidRevocationOpening);
             }
         }
     } else {
         // Proof didn't verify, so don't check the nonce
-        choose_abort!(in chan return pay::Error::InvalidPayProof);
+        abort!(in chan return pay::Error::InvalidPayProof);
     }
 }

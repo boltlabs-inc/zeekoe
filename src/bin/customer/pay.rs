@@ -9,13 +9,13 @@ use {
 use zkabacus_crypto::{customer::Ready, Context as ProofContext, PaymentAmount};
 
 use zeekoe::{
-    choose_abort, choose_continue,
+    abort,
     customer::{
         cli::{Pay, Refund},
         client::SessionKey,
         Chan, Config,
     },
-    offer_abort,
+    offer_abort, proceed,
     protocol::{pay, Party::Customer},
 };
 
@@ -161,7 +161,7 @@ async fn zkabacus_pay(
         *state = State::Locked;
 
         // If the closing signature verifies, reveal our lock, secret, and blinding factor
-        let chan = choose_continue!(in chan)
+        let chan = proceed!(in chan)
             .send(lock_message.revocation_lock)
             .await
             .context("Failed to send revocation lock")?
@@ -177,7 +177,7 @@ async fn zkabacus_pay(
         (chan, locked)
     } else {
         // If the closing signature does not verify, inform the merchant we are aborting
-        choose_abort!(in chan return pay::Error::InvalidClosingSignature);
+        abort!(in chan return pay::Error::InvalidClosingSignature);
     };
 
     // Receive a pay token from the merchant, which allows us to pay again
