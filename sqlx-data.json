@@ -10,6 +10,36 @@
       "nullable": []
     }
   },
+  "94aa83184c9545cfacf67eab9d349e4fe15f56342fd758203283012fd6048482": {
+    "query": "\n            SELECT\n                signing_keypair\n                    AS \"signing_keypair: KeyPair\",\n                revocation_commitment_parameters\n                    AS \"revocation_commitment_parameters: CommitmentParameters\",\n                range_proof_parameters\n                    AS \"range_proof_parameters: RangeProofParameters\"\n            FROM\n                config\n            ",
+    "describe": {
+      "columns": [
+        {
+          "name": "signing_keypair: KeyPair",
+          "ordinal": 0,
+          "type_info": "Blob"
+        },
+        {
+          "name": "revocation_commitment_parameters: CommitmentParameters",
+          "ordinal": 1,
+          "type_info": "Blob"
+        },
+        {
+          "name": "range_proof_parameters: RangeProofParameters",
+          "ordinal": 2,
+          "type_info": "Blob"
+        }
+      ],
+      "parameters": {
+        "Right": 0
+      },
+      "nullable": [
+        false,
+        false,
+        false
+      ]
+    }
+  },
   "9d5edcbcff4ed4c1d16bab23284ae831ef5027cd1aab3e233befcda62a707160": {
     "query": "\n            SELECT\n                lock AS \"lock: RevocationLock\",\n                secret AS \"secret: RevocationSecret\"\n            FROM revocations\n            WHERE lock = ?\n            ",
     "describe": {
@@ -32,6 +62,16 @@
         false,
         true
       ]
+    }
+  },
+  "d77cb8d3ab5b657ec211f20292295d1174450761727202a49930bb09c61fd10c": {
+    "query": "\n            INSERT INTO\n                config\n            (signing_keypair, revocation_commitment_parameters, range_proof_parameters)\n                VALUES\n            (?, ?, ?)\n            ",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Right": 3
+      },
+      "nullable": []
     }
   },
   "f85f1798bbf5436cb9036f76cf40f2e90d92527f395b37f97d933cebee216320": {
