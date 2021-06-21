@@ -22,7 +22,7 @@ pub trait QueryMerchant {
         secret: Option<&RevocationSecret>,
     ) -> sqlx::Result<Vec<Option<RevocationSecret>>>;
 
-    async fn fetch_or_initialize_config(
+    async fn fetch_or_create_config(
         &self,
         rng: &mut StdRng,
     ) -> sqlx::Result<zkabacus_crypto::merchant::Config>;
@@ -80,7 +80,7 @@ impl QueryMerchant for SqlitePool {
         Ok(existing_pairs)
     }
 
-    async fn fetch_or_initialize_config(
+    async fn fetch_or_create_config(
         &self,
         rng: &mut StdRng,
     ) -> sqlx::Result<zkabacus_crypto::merchant::Config> {

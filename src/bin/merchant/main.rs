@@ -55,9 +55,9 @@ impl Command for Run {
             }
         };
 
-        // Either initialize the merchant's configuration afresh, or fetch the existing config if it exists
+        // Either initialize the merchant's config afresh, or get existing config if it exists
         let merchant_config = database
-            .fetch_or_initialize_config(&mut StdRng::from_entropy())
+            .fetch_or_create_config(&mut StdRng::from_entropy()) // TODO: allow determinism
             .await?;
 
         // Share the configuration between all server threads
