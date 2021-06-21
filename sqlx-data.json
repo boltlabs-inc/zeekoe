@@ -1,5 +1,23 @@
 {
   "db": "SQLite",
+  "46ea459c9d2e371ace67299de61c55d6e17a6c8b3a8d10e6bfd0771ffc907b0e": {
+    "query": "\n            SELECT secret AS \"secret: RevocationSecret\"\n            FROM revocations\n            WHERE lock = ?\n            ",
+    "describe": {
+      "columns": [
+        {
+          "name": "secret: RevocationSecret",
+          "ordinal": 0,
+          "type_info": "Blob"
+        }
+      ],
+      "parameters": {
+        "Right": 1
+      },
+      "nullable": [
+        true
+      ]
+    }
+  },
   "866f68c59d036e6c895aaaa65aad6b2805ece96bde8a6fc31e4abf4c3de0b0da": {
     "query": "INSERT INTO nonces (data) VALUES (?) ON CONFLICT (data) DO NOTHING",
     "describe": {
@@ -37,30 +55,6 @@
         false,
         false,
         false
-      ]
-    }
-  },
-  "9d5edcbcff4ed4c1d16bab23284ae831ef5027cd1aab3e233befcda62a707160": {
-    "query": "\n            SELECT\n                lock AS \"lock: RevocationLock\",\n                secret AS \"secret: RevocationSecret\"\n            FROM revocations\n            WHERE lock = ?\n            ",
-    "describe": {
-      "columns": [
-        {
-          "name": "lock: RevocationLock",
-          "ordinal": 0,
-          "type_info": "Blob"
-        },
-        {
-          "name": "secret: RevocationSecret",
-          "ordinal": 1,
-          "type_info": "Blob"
-        }
-      ],
-      "parameters": {
-        "Right": 1
-      },
-      "nullable": [
-        false,
-        true
       ]
     }
   },

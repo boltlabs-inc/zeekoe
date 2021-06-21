@@ -20,7 +20,7 @@ pub trait QueryMerchant {
         &self,
         revocation: &RevocationLock,
         secret: Option<&RevocationSecret>,
-    ) -> sqlx::Result<Vec<(RevocationLock, Option<RevocationSecret>)>>;
+    ) -> sqlx::Result<Vec<Option<RevocationSecret>>>;
 
     async fn fetch_or_initialize_config(
         &self,
@@ -52,13 +52,11 @@ impl QueryMerchant for SqlitePool {
         &self,
         lock: &RevocationLock,
         secret: Option<&RevocationSecret>,
-    ) -> sqlx::Result<Vec<(RevocationLock, Option<RevocationSecret>)>> {
+    ) -> sqlx::Result<Vec<Option<RevocationSecret>>> {
         let mut transaction = self.begin().await?;
         let existing_pairs = sqlx::query!(
             r#"
-            SELECT
-                lock AS "lock: RevocationLock",
-                secret AS "secret: RevocationSecret"
+            SELECT secret AS "secret: RevocationSecret"
             FROM revocations
             WHERE lock = ?
             "#,
@@ -67,7 +65,7 @@ impl QueryMerchant for SqlitePool {
         .fetch_all(&mut transaction)
         .await?
         .into_iter()
-        .map(|r| (r.lock, r.secret))
+        .map(|r| r.secret)
         .collect();
 
         sqlx::query!(
@@ -193,17 +191,14 @@ mod tests {
         // Each time we insert a lock (& optional secret), it returns all previously
         // stored pairs for that lock.
         let result = conn.insert_revocation(&lock1, None).await?;
-        assert_eq!(result.len(), 0,);
+        assert_eq!(result.len(), 0);
 
-        let result = conn.insert_revocation(&lock1, Some(&secret1)).await?;
-        assert_valid_pair(&result[0].0, &secret1);
+        conn.insert_revocation(&lock1, Some(&secret1)).await?;
 
         let result = conn.insert_revocation(&lock1, None).await?;
-        assert_valid_pair(&result[0].0, &secret1);
-        assert!(result[0].1.is_none(),);
-        assert_valid_pair(&result[1].0, &secret1);
-        assert!(result[1].1.is_some(),);
-        assert_valid_pair(&lock1, result[1].1.as_ref().unwrap());
+        assert!(result[0].is_none());
+        assert!(result[1].is_some());
+        assert_valid_pair(&lock1, result[1].as_ref().unwrap());
         assert_eq!(result.len(), 2);
 
         // Inserting a previously-unseen lock should not return any old pairs.
