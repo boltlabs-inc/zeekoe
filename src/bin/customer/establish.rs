@@ -1,12 +1,13 @@
 use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng, std::convert::TryInto};
 
 use zkabacus_crypto::{
-    ChannelId, ClosingSignature, CustomerBalance, EstablishProof, MerchantBalance, PayToken,
+    ChannelId, ClosingSignature, CustomerBalance, CustomerRandomness, EstablishProof,
+    MerchantBalance, PayToken,
 };
 
 use zeekoe::{
     abort,
-    customer::{cli::Establish, Config},
+    customer::{cli::Establish, client::SessionKey, Chan, Config},
     offer_abort, proceed,
     protocol::{
         establish,
@@ -28,8 +29,15 @@ impl Command for Establish {
             .await
             .context("Failed to select channel establishment session")?;
 
-        // TODO: send customer chain-specific things + randomness
+        // TODO: send customer chain-specific things
 
+        let customer_randomness = CustomerRandomness::new(&mut rng);
+        let chan = chan
+            .send(customer_randomness)
+            .await
+            .context("Failed to send customer randomness for channel ID")?;
+
+        // Format deposit amounts as the correct types
         let customer_deposit = CustomerBalance::try_new(
             self.deposit
                 .as_minor_units()
@@ -69,10 +77,67 @@ impl Command for Establish {
         // Allow the merchant to reject the funding of the channel, else continue
         offer_abort!(in chan as Customer);
 
-        // TODO: receive merchant chain-specific things + randomness
+        // TODO: receive merchant chain-specific things
 
-        let channel_id: ChannelId = todo!("generate channel id");
+        let (merchant_randomness, chan) = chan
+            .recv()
+            .await
+            .context("Failed to recieve merchant randomness for channel ID")?;
+
+        let channel_id = ChannelId::new(
+            merchant_randomness,
+            customer_randomness,
+            todo!("zkabacus public key"),
+            todo!("merchant tezos account info"),
+            todo!("customer tezos account info"),
+        );
+
+        let chan = zkabacus_initialize(
+            rng,
+            session_key,
+            channel_id,
+            chan,
+            merchant_deposit,
+            customer_deposit,
+        )
+        .await
+        .context("Failed to initialize channel.")?;
+
+        // TODO: initialize contract on-chain via escrow agent.
+        // TODO: fund contract via escrow agent.
+        // TODO: send contract id to merchant
+
+        // Allow the merchant to indicate whether it funded the channel.
+        offer_abort!(in chan as Customer);
+
+        // TODO: check that merchant funding was successful. If not, recommend unilateral close. 
+        let merchant_funding_successful: bool = todo!();
+
+        // for now, assume it was.
+        if merchant_funding_successful {
+            abort!(in chan return establish::Error::FailedMerchantFunding);
+        }
+        proceed!(in chan);
+
+        zkabacus_activate(chan);
 
         Ok(())
     }
+}
+
+
+/// The core zkAbacus.Initialize and zkAbacus.Activate protocols.
+async fn zkabacus_initialize(
+    mut rng: StdRng,
+    session_key: SessionKey,
+    channel_id: ChannelId,
+    chan: Chan<establish::Initialize>,
+    merchant_balance: MerchantBalance,
+    customer_balance: CustomerBalance,
+) -> Result<Chan<establish::CustomerSupplyContractInfo>, anyhow::Error> {
+    todo!();
+}
+
+async fn zkabacus_activate(chan: Chan<establish::Activate>) -> Result<(), anyhow::Error> {
+    todo!();
 }

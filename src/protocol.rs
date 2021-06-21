@@ -1,6 +1,6 @@
 use zkabacus_crypto::{
-    revlock::*, ClosingSignature, CommitmentParameters, Nonce, PayProof, PayToken, PublicKey,
-    RangeProofParameters,
+    revlock::*, ClosingSignature, CommitmentParameters, CustomerRandomness, MerchantRandomness,
+    Nonce, PayProof, PayToken, PublicKey, RangeProofParameters,
 };
 use {
     dialectic::prelude::*,
@@ -163,6 +163,8 @@ pub mod establish {
         InvalidClosingSignature,
         #[error("Invalid payment token")]
         InvalidPayToken,
+        #[error("Merchant funding not received")]
+        FailedMerchantFunding,
     }
 
     pub type Establish = CustomerSupplyInfo;
@@ -170,6 +172,7 @@ pub mod establish {
     pub type CustomerSupplyInfo = Session! {
         // TODO: send customer-side chain-specific public stuff
         // TODO: send customer randomness from zkAbacus
+        send CustomerRandomness;
         CustomerProposeFunding;
     };
 
@@ -182,7 +185,7 @@ pub mod establish {
 
     pub type MerchantSupplyInfo = Session! {
         // TODO: recv merchant-side chain-specific public stuff
-        // TODO: recv merchant randomness from zkAbacus
+        recv MerchantRandomness;
         Initialize;
     };
 
@@ -195,6 +198,15 @@ pub mod establish {
 
     pub type MerchantSupplyClosingSignature = Session! {
         recv ClosingSignature;
+        ChooseAbort<CustomerSupplyContractInfo, Error>;
+    };
+
+    pub type CustomerSupplyContractInfo = Session! {
+        // TODO send contract id
+        OfferAbort<CustomerVerifyMerchantFunding, Error>;
+    };
+
+    pub type CustomerVerifyMerchantFunding = Session! {
         ChooseAbort<Activate, Error>;
     };
 
