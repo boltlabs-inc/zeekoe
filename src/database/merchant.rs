@@ -1,12 +1,10 @@
+use {async_trait::async_trait, futures::StreamExt, rand::rngs::StdRng};
+
 use crate::database::SqlitePool;
+
 use zkabacus_crypto::{
     revlock::{RevocationLock, RevocationSecret},
     CommitmentParameters, KeyPair, Nonce, RangeProofParameters,
-};
-use {
-    async_trait::async_trait,
-    futures::StreamExt,
-    rand::{rngs::StdRng, SeedableRng},
 };
 
 #[async_trait]
@@ -107,13 +105,17 @@ impl QueryMerchant for SqlitePool {
         .next()
         .await;
 
-        if let Some(Ok(existing)) = existing {
-            transaction.commit().await?;
-            return Ok(zkabacus_crypto::merchant::Config::from_parts(
-                existing.signing_keypair,
-                existing.revocation_commitment_parameters,
-                existing.range_proof_parameters,
-            ));
+        match existing {
+            Some(Ok(existing)) => {
+                transaction.commit().await?;
+                return Ok(zkabacus_crypto::merchant::Config::from_parts(
+                    existing.signing_keypair,
+                    existing.revocation_commitment_parameters,
+                    existing.range_proof_parameters,
+                ));
+            }
+            Some(Err(err)) => Err(err)?,
+            None => {}
         }
 
         let new_config = zkabacus_crypto::merchant::Config::new(rng);
@@ -146,6 +148,8 @@ impl QueryMerchant for SqlitePool {
 mod tests {
     use super::*;
     use crate::database::SqlitePoolOptions;
+    use rand::SeedableRng;
+
     use zkabacus_crypto::internal::{
         test_new_nonce, test_new_revocation_lock, test_new_revocation_secret, test_verify_pair,
     };
