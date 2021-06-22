@@ -20,6 +20,26 @@
       "nullable": []
     }
   },
+  "1b06b279f5e94b49abdb22c41add85c8c3b66cdf5f90cc5c179acab980f16c92": {
+    "query": "UPDATE customer_channels SET clean = ? WHERE label = ?",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Right": 2
+      },
+      "nullable": []
+    }
+  },
+  "25601de5c6748724f92d8a8e18ff3e95321a32b0dc0bb0cac2e0b0eb479dc78a": {
+    "query": "UPDATE customer_channels SET address = ? WHERE label = ?",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Right": 2
+      },
+      "nullable": []
+    }
+  },
   "2ee6f4e70a91ea95072d9ed09d610ff33ca320c65dccba12d9f1dafdc40196d7": {
     "query": "\n            SELECT\n                signing_keypair\n                    AS \"signing_keypair: KeyPair\",\n                revocation_commitment_parameters\n                    AS \"revocation_commitment_parameters: CommitmentParameters\",\n                range_proof_parameters\n                    AS \"range_proof_parameters: RangeProofParameters\"\n            FROM\n                merchant_config\n            ",
     "describe": {
@@ -68,12 +88,58 @@
       ]
     }
   },
+  "5f5b996527eef064573730fb1be591f68bff04573070e866733004682c5713c0": {
+    "query": "SELECT clean FROM customer_channels WHERE label = ?",
+    "describe": {
+      "columns": [
+        {
+          "name": "clean",
+          "ordinal": 0,
+          "type_info": "Bool"
+        }
+      ],
+      "parameters": {
+        "Right": 1
+      },
+      "nullable": [
+        false
+      ]
+    }
+  },
+  "69377cabe38e67da48503697a4f862521c02db27307026e082bfcc042a57f092": {
+    "query": "SELECT state AS \"state: State\" FROM customer_channels WHERE label = ?",
+    "describe": {
+      "columns": [
+        {
+          "name": "state: State",
+          "ordinal": 0,
+          "type_info": "Blob"
+        }
+      ],
+      "parameters": {
+        "Right": 1
+      },
+      "nullable": [
+        true
+      ]
+    }
+  },
   "866f68c59d036e6c895aaaa65aad6b2805ece96bde8a6fc31e4abf4c3de0b0da": {
     "query": "INSERT INTO nonces (data) VALUES (?) ON CONFLICT (data) DO NOTHING",
     "describe": {
       "columns": [],
       "parameters": {
         "Right": 1
+      },
+      "nullable": []
+    }
+  },
+  "8704951f20ae78f141c2a5d049cc15340a14e9ef6c7f56f8807b615f8db51846": {
+    "query": "UPDATE customer_channels SET clean = ?, state = ? WHERE label = ?",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Right": 3
       },
       "nullable": []
     }
@@ -90,6 +156,26 @@
   },
   "f85f1798bbf5436cb9036f76cf40f2e90d92527f395b37f97d933cebee216320": {
     "query": "INSERT INTO revocations (lock, secret) VALUES (?, ?)",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Right": 2
+      },
+      "nullable": []
+    }
+  },
+  "f96304a57be9e6935189eed1c2030696c00c42da14ac8d5d922fe48b7b5c508b": {
+    "query": "INSERT INTO customer_channels (label, address, state, clean) VALUES (?, ?, ?, ?)",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Right": 4
+      },
+      "nullable": []
+    }
+  },
+  "fc251426308ae90596746c87a8d598387e9b52eaaecbcd47aa31fb238f2cb759": {
+    "query": "UPDATE customer_channels SET label = ? WHERE label = ?",
     "describe": {
       "columns": [],
       "parameters": {

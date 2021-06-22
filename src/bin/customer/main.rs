@@ -1,7 +1,8 @@
 use {
     async_trait::async_trait,
     rand::{rngs::StdRng, SeedableRng},
-    std::{convert::identity, env, path::Path},
+    sqlx::SqlitePool,
+    std::{convert::identity, env, path::Path, sync::Arc},
     structopt::StructOpt,
 };
 
@@ -9,6 +10,7 @@ use zeekoe::{
     customer::{
         cli::{self, Account::*, Customer::*},
         client::{SessionKey, ZkChannelAddress},
+        database::ErasedQueryCustomer,
         defaults::config_path,
         Chan, Cli, Client, Config,
     },
@@ -81,6 +83,26 @@ pub async fn connect(
     }
 
     Ok(client.connect(address).await?)
+}
+
+pub async fn database(
+    config: &Config,
+) -> Result<Arc<dyn ErasedQueryCustomer + Send + Sync>, anyhow::Error> {
+    use zeekoe::customer::config::DatabaseLocation;
+    Ok(
+        match match config.database.clone() {
+            None => zeekoe::customer::defaults::database_location()?,
+            Some(l) => l,
+        } {
+            DatabaseLocation::InMemory => Arc::new(SqlitePool::connect("file::memory:").await?),
+            DatabaseLocation::Sqlite(ref uri) => Arc::new(SqlitePool::connect(uri).await?),
+            DatabaseLocation::Postgres(_) => {
+                return Err(anyhow::anyhow!(
+                    "Postgres database support is not yet implemented"
+                ))
+            }
+        },
+    )
 }
 
 #[allow(unused)]
