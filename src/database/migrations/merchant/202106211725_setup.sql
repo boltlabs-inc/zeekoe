@@ -20,6 +20,13 @@ CREATE TABLE merchant_config (
 
 CREATE TABLE merchant_channels (
   id SERIAL PRIMARY KEY,
-  channel_id BLOB NOT NULL UNIQUE,
-  status BLOB NOT NULL
+  channel_id BLOB NOT NULL,
+  status TEXT NOT NULL
+    CHECK (status IN (
+      "originated",
+      "customer_funded",
+      "merchant_funded",
+      "active",
+      "closed"
+    ))
 );
