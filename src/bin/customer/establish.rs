@@ -1,9 +1,9 @@
 use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng, std::convert::TryInto};
 
 use zkabacus_crypto::{
-    customer::{Inactive, Requested},
-    ChannelId, Context as ProofContext, CustomerBalance, CustomerRandomness,
-    MerchantBalance, PayToken,
+    customer::{Inactive, Ready, Requested},
+    ChannelId, Context as ProofContext, CustomerBalance, CustomerRandomness, MerchantBalance,
+    PayToken,
 };
 
 use zeekoe::{
@@ -93,8 +93,12 @@ impl Command for Establish {
             todo!("customer tezos account info"),
         );
 
+        // TODO: fetch this.
+        let config: zkabacus_crypto::customer::Config = todo!("Retrieve config from database.");
+
         let (inactive, chan) = zkabacus_initialize(
             rng,
+            config,
             session_key,
             channel_id,
             chan,
@@ -112,7 +116,7 @@ impl Command for Establish {
         offer_abort!(in chan as Customer);
 
         // TODO: check that merchant funding was successful. If not, recommend unilateral close.
-        let merchant_funding_successful: bool = todo!();
+        let merchant_funding_successful: bool = todo!("query tezos to check for merchant funding.");
 
         // for now, assume it was.
         if merchant_funding_successful {
@@ -120,12 +124,9 @@ impl Command for Establish {
         }
         proceed!(in chan);
 
-        // TODO: check which pay token we want
-        let pay_token = zkabacus_activate(chan)
-            .await
-            .context("Failed to activate channel. Unilateral close recommended.");
+        let _ready = zkabacus_activate(config, inactive, chan).await?;
 
-        // TODO: store pay token
+        // TODO: store ready state in db.
 
         Ok(())
     }
@@ -133,15 +134,14 @@ impl Command for Establish {
 
 /// The core zkAbacus.Initialize and zkAbacus.Activate protocols.
 async fn zkabacus_initialize(
-    rng: StdRng,
+    mut rng: StdRng,
+    config: zkabacus_crypto::customer::Config,
     session_key: SessionKey,
     channel_id: ChannelId,
     chan: Chan<establish::Initialize>,
     merchant_balance: MerchantBalance,
     customer_balance: CustomerBalance,
 ) -> Result<(Inactive, Chan<establish::CustomerSupplyContractInfo>), anyhow::Error> {
-    let config: zkabacus_crypto::customer::Config = todo!("Retrieve config from database.");
-
     let context = ProofContext::new(&session_key.to_bytes());
 
     let (requested, proof) = Requested::new(
@@ -173,6 +173,18 @@ async fn zkabacus_initialize(
     }
 }
 
-async fn zkabacus_activate(chan: Chan<establish::Activate>) -> Result<PayToken, anyhow::Error> {
-    todo!();
+async fn zkabacus_activate(
+    config: zkabacus_crypto::customer::Config,
+    inactive: Inactive,
+    chan: Chan<establish::Activate>,
+) -> Result<Ready, anyhow::Error> {
+    let (blinded_pay_token, chan) = chan
+        .recv()
+        .await
+        .context("Failed to receive blinded pay token.")?;
+
+    match inactive.activate(blinded_pay_token) {
+        Ok(ready) => Ok(ready),
+        Err(_) => Err(establish::Error::InvalidPayToken.into()),
+    }
 }
