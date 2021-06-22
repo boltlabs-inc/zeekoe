@@ -2419,6 +2419,7 @@ dependencies = [
 name = "zkabacus-crypto"
 version = "0.1.0"
 dependencies = [
+ "bincode",
  "bls12_381",
  "ff",
  "rand 0.8.4",
@@ -2435,6 +2436,7 @@ name = "zkchannels-crypto"
 version = "0.1.0"
 dependencies = [
  "arrayvec 0.7.1",
+ "bincode",
  "bls12_381",
  "ff",
  "group",
@@ -2444,5 +2446,6 @@ dependencies = [
  "serde",
  "serde-big-array",
  "sha3",
+ "sqlx",
  "thiserror",
 ]

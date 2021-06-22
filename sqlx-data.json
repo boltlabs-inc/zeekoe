@@ -1,5 +1,53 @@
 {
   "db": "SQLite",
+  "2ee6f4e70a91ea95072d9ed09d610ff33ca320c65dccba12d9f1dafdc40196d7": {
+    "query": "\n            SELECT\n                signing_keypair\n                    AS \"signing_keypair: KeyPair\",\n                revocation_commitment_parameters\n                    AS \"revocation_commitment_parameters: CommitmentParameters\",\n                range_proof_parameters\n                    AS \"range_proof_parameters: RangeProofParameters\"\n            FROM\n                merchant_config\n            ",
+    "describe": {
+      "columns": [
+        {
+          "name": "signing_keypair: KeyPair",
+          "ordinal": 0,
+          "type_info": "Blob"
+        },
+        {
+          "name": "revocation_commitment_parameters: CommitmentParameters",
+          "ordinal": 1,
+          "type_info": "Blob"
+        },
+        {
+          "name": "range_proof_parameters: RangeProofParameters",
+          "ordinal": 2,
+          "type_info": "Blob"
+        }
+      ],
+      "parameters": {
+        "Right": 0
+      },
+      "nullable": [
+        false,
+        false,
+        false
+      ]
+    }
+  },
+  "46ea459c9d2e371ace67299de61c55d6e17a6c8b3a8d10e6bfd0771ffc907b0e": {
+    "query": "\n            SELECT secret AS \"secret: RevocationSecret\"\n            FROM revocations\n            WHERE lock = ?\n            ",
+    "describe": {
+      "columns": [
+        {
+          "name": "secret: RevocationSecret",
+          "ordinal": 0,
+          "type_info": "Blob"
+        }
+      ],
+      "parameters": {
+        "Right": 1
+      },
+      "nullable": [
+        true
+      ]
+    }
+  },
   "866f68c59d036e6c895aaaa65aad6b2805ece96bde8a6fc31e4abf4c3de0b0da": {
     "query": "INSERT INTO nonces (data) VALUES (?) ON CONFLICT (data) DO NOTHING",
     "describe": {
@@ -10,28 +58,14 @@
       "nullable": []
     }
   },
-  "9d5edcbcff4ed4c1d16bab23284ae831ef5027cd1aab3e233befcda62a707160": {
-    "query": "\n            SELECT\n                lock AS \"lock: RevocationLock\",\n                secret AS \"secret: RevocationSecret\"\n            FROM revocations\n            WHERE lock = ?\n            ",
+  "aa91a624c3efb7bbda7d2501c6b93f13513b36b9ebbb3410275cb3bd9bb1965e": {
+    "query": "\n            INSERT INTO\n                merchant_config\n            (signing_keypair, revocation_commitment_parameters, range_proof_parameters)\n                VALUES\n            (?, ?, ?)\n            ",
     "describe": {
-      "columns": [
-        {
-          "name": "lock: RevocationLock",
-          "ordinal": 0,
-          "type_info": "Blob"
-        },
-        {
-          "name": "secret: RevocationSecret",
-          "ordinal": 1,
-          "type_info": "Blob"
-        }
-      ],
+      "columns": [],
       "parameters": {
-        "Right": 1
+        "Right": 3
       },
-      "nullable": [
-        false,
-        true
-      ]
+      "nullable": []
     }
   },
   "f85f1798bbf5436cb9036f76cf40f2e90d92527f395b37f97d933cebee216320": {
