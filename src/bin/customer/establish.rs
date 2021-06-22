@@ -1,7 +1,8 @@
 use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng, std::convert::TryInto};
 
 use zkabacus_crypto::{
-    ChannelId, ClosingSignature, CustomerBalance, CustomerRandomness, EstablishProof,
+    customer::{Inactive, Requested},
+    ChannelId, Context as ProofContext, CustomerBalance, CustomerRandomness,
     MerchantBalance, PayToken,
 };
 
@@ -92,7 +93,7 @@ impl Command for Establish {
             todo!("customer tezos account info"),
         );
 
-        let chan = zkabacus_initialize(
+        let (inactive, chan) = zkabacus_initialize(
             rng,
             session_key,
             channel_id,
@@ -110,7 +111,7 @@ impl Command for Establish {
         // Allow the merchant to indicate whether it funded the channel.
         offer_abort!(in chan as Customer);
 
-        // TODO: check that merchant funding was successful. If not, recommend unilateral close. 
+        // TODO: check that merchant funding was successful. If not, recommend unilateral close.
         let merchant_funding_successful: bool = todo!();
 
         // for now, assume it was.
@@ -119,25 +120,59 @@ impl Command for Establish {
         }
         proceed!(in chan);
 
-        zkabacus_activate(chan);
+        // TODO: check which pay token we want
+        let pay_token = zkabacus_activate(chan)
+            .await
+            .context("Failed to activate channel. Unilateral close recommended.");
+
+        // TODO: store pay token
 
         Ok(())
     }
 }
 
-
 /// The core zkAbacus.Initialize and zkAbacus.Activate protocols.
 async fn zkabacus_initialize(
-    mut rng: StdRng,
+    rng: StdRng,
     session_key: SessionKey,
     channel_id: ChannelId,
     chan: Chan<establish::Initialize>,
     merchant_balance: MerchantBalance,
     customer_balance: CustomerBalance,
-) -> Result<Chan<establish::CustomerSupplyContractInfo>, anyhow::Error> {
-    todo!();
+) -> Result<(Inactive, Chan<establish::CustomerSupplyContractInfo>), anyhow::Error> {
+    let config: zkabacus_crypto::customer::Config = todo!("Retrieve config from database.");
+
+    let context = ProofContext::new(&session_key.to_bytes());
+
+    let (requested, proof) = Requested::new(
+        &mut rng,
+        config,
+        channel_id,
+        merchant_balance,
+        customer_balance,
+        &context,
+    );
+
+    let chan = chan.send(proof).await.context("Failed to send proof")?;
+
+    offer_abort!(in chan as Customer);
+
+    let (closing_signature, chan) = chan
+        .recv()
+        .await
+        .context("Failed to receive closing signature")?;
+
+    match requested.complete(closing_signature) {
+        Ok(inactive) => {
+            proceed!(in chan);
+            return Ok((inactive, chan));
+        }
+        Err(_) => {
+            abort!(in chan return establish::Error::InvalidClosingSignature);
+        }
+    }
 }
 
-async fn zkabacus_activate(chan: Chan<establish::Activate>) -> Result<(), anyhow::Error> {
+async fn zkabacus_activate(chan: Chan<establish::Activate>) -> Result<PayToken, anyhow::Error> {
     todo!();
 }
