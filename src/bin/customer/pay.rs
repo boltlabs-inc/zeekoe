@@ -52,7 +52,7 @@ impl Command for Pay {
             .note
             .unwrap_or_else(|| zeekoe::customer::cli::Note::String(String::from("")))
             .read(config.max_note_length)
-            .context("Failed to read payment note from standard input")?;
+            .context("Failed to read payment note from standard input or command line")?;
 
         // Send the payment amount and note to the merchant
         let chan = chan
