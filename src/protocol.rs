@@ -82,6 +82,16 @@ pub enum Party {
     Merchant,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, sqlx::Type)]
+#[sqlx(rename_all = "snake_case", type_name = "text")]
+pub enum ChannelStatus {
+    Originated,
+    CustomerFunded,
+    MerchantFunded,
+    Active,
+    Closed,
+}
+
 impl Party {
     pub fn opposite(self) -> Self {
         use Party::*;

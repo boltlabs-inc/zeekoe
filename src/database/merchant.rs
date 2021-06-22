@@ -1,10 +1,10 @@
 use {async_trait::async_trait, futures::StreamExt, rand::rngs::StdRng};
 
 use crate::database::SqlitePool;
-
+use crate::protocol::ChannelStatus;
 use zkabacus_crypto::{
     revlock::{RevocationLock, RevocationSecret},
-    CommitmentParameters, KeyPair, Nonce, RangeProofParameters,
+    ChannelId, CommitmentParameters, KeyPair, Nonce, RangeProofParameters,
 };
 
 #[async_trait]
@@ -24,10 +24,21 @@ pub trait QueryMerchant {
         secret: Option<&RevocationSecret>,
     ) -> sqlx::Result<Vec<Option<RevocationSecret>>>;
 
+    /// Fetch a singleton merchant config, creating it if it doesn't already exist.
     async fn fetch_or_create_config(
         &self,
         rng: &mut StdRng,
     ) -> sqlx::Result<zkabacus_crypto::merchant::Config>;
+
+    /// Create a new merchant channel.
+    async fn create_merchant_channel(&self, channel_id: &ChannelId) -> sqlx::Result<()>;
+
+    /// Update an existing merchant channel's status.
+    async fn update_merchant_channel_status(
+        &self,
+        channel_id: &ChannelId,
+        status: &ChannelStatus,
+    ) -> sqlx::Result<()>;
 }
 
 #[async_trait]
@@ -142,6 +153,35 @@ impl QueryMerchant for SqlitePool {
         transaction.commit().await?;
         Ok(new_config)
     }
+
+    async fn create_merchant_channel(&self, channel_id: &ChannelId) -> sqlx::Result<()> {
+        sqlx::query!(
+            "INSERT INTO merchant_channels (channel_id, status) VALUES (?, ?)",
+            channel_id,
+            ChannelStatus::Originated
+        )
+        .execute(self)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn update_merchant_channel_status(
+        &self,
+        channel_id: &ChannelId,
+        status: &ChannelStatus,
+    ) -> sqlx::Result<()> {
+        sqlx::query!(
+            "UPDATE merchant_channels
+            SET status = ?
+            WHERE channel_id = ?",
+            status,
+            channel_id
+        )
+        .execute(self)
+        .await?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -153,7 +193,7 @@ mod tests {
     use zkabacus_crypto::internal::{
         test_new_nonce, test_new_revocation_lock, test_new_revocation_secret, test_verify_pair,
     };
-    use zkabacus_crypto::Verification;
+    use zkabacus_crypto::{CustomerRandomness, MerchantRandomness, Verification};
 
     fn assert_valid_pair(lock: &RevocationLock, secret: &RevocationSecret) {
         assert!(
@@ -241,6 +281,23 @@ mod tests {
             config1.range_proof_parameters(),
             config1.range_proof_parameters()
         );
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_merchant_channels() -> Result<(), anyhow::Error> {
+        let conn = create_migrated_db().await?;
+        let mut rng = StdRng::from_entropy();
+
+        let cid_m = MerchantRandomness::new(&mut rng);
+        let cid_c = CustomerRandomness::new(&mut rng);
+        let pk = KeyPair::new(&mut rng).public_key().clone();
+        let channel_id = ChannelId::new(cid_m, cid_c, &pk, &[], &[]);
+
+        conn.create_merchant_channel(&channel_id).await?;
+        conn.update_merchant_channel_status(&channel_id, &ChannelStatus::CustomerFunded)
+            .await?;
 
         Ok(())
     }
