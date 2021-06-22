@@ -20,6 +20,6 @@ CREATE TABLE merchant_config (
 
 CREATE TABLE merchant_channels (
   id SERIAL PRIMARY KEY,
-  channel_id BLOB NOT NULL,
+  channel_id BLOB NOT NULL UNIQUE,
   status BLOB NOT NULL
 );

@@ -114,7 +114,7 @@ impl QueryMerchant for SqlitePool {
                     existing.range_proof_parameters,
                 ));
             }
-            Some(Err(err)) => Err(err)?,
+            Some(Err(err)) => return Err(err),
             None => {}
         }
 
