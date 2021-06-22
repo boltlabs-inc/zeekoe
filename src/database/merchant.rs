@@ -3,7 +3,11 @@ use zkabacus_crypto::{
     revlock::{RevocationLock, RevocationSecret},
     CommitmentParameters, KeyPair, Nonce, RangeProofParameters,
 };
-use {async_trait::async_trait, futures::StreamExt, rand::rngs::StdRng};
+use {
+    async_trait::async_trait,
+    futures::StreamExt,
+    rand::{rngs::StdRng, SeedableRng},
+};
 
 #[async_trait]
 pub trait QueryMerchant {
@@ -85,6 +89,7 @@ impl QueryMerchant for SqlitePool {
         rng: &mut StdRng,
     ) -> sqlx::Result<zkabacus_crypto::merchant::Config> {
         let mut transaction = self.begin().await?;
+
         let existing = sqlx::query!(
             r#"
             SELECT
@@ -95,7 +100,7 @@ impl QueryMerchant for SqlitePool {
                 range_proof_parameters
                     AS "range_proof_parameters: RangeProofParameters"
             FROM
-                config
+                merchant_config
             "#,
         )
         .fetch(&mut transaction)
@@ -112,6 +117,7 @@ impl QueryMerchant for SqlitePool {
         }
 
         let new_config = zkabacus_crypto::merchant::Config::new(rng);
+
         let signing_keypair = new_config.signing_keypair();
         let revocation_commitment_parameters = new_config.revocation_commitment_parameters();
         let range_proof_parameters = new_config.range_proof_parameters();
@@ -119,7 +125,7 @@ impl QueryMerchant for SqlitePool {
         sqlx::query!(
             r#"
             INSERT INTO
-                config
+                merchant_config
             (signing_keypair, revocation_commitment_parameters, range_proof_parameters)
                 VALUES
             (?, ?, ?)
@@ -206,6 +212,31 @@ mod tests {
         let lock2 = test_new_revocation_lock(&secret2);
         let result = conn.insert_revocation(&lock2, Some(&secret2)).await?;
         assert_eq!(result.len(), 0);
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_merchant_config() -> Result<(), anyhow::Error> {
+        let conn = create_migrated_db().await?;
+        let mut rng = StdRng::from_entropy();
+
+        let config1 = conn.fetch_or_create_config(&mut rng).await?;
+        let config2 = conn.fetch_or_create_config(&mut rng).await?;
+
+        // The two configs should be equal, because the first is now permanently the config
+        assert_eq!(
+            config1.signing_keypair().public_key(),
+            config2.signing_keypair().public_key()
+        );
+        assert_eq!(
+            config1.revocation_commitment_parameters(),
+            config2.revocation_commitment_parameters()
+        );
+        assert_eq!(
+            config1.range_proof_parameters(),
+            config1.range_proof_parameters()
+        );
 
         Ok(())
     }

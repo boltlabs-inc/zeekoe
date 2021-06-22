@@ -11,9 +11,15 @@ CREATE TABLE revocations (
 );
 CREATE INDEX revocations_lock on revocations (lock);
 
-CREATE TABLE config (
-  id SERIAL PRIMARY KEY,
+CREATE TABLE merchant_config (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
   signing_keypair BLOB NOT NULL,
   revocation_commitment_parameters BLOB NOT NULL,
   range_proof_parameters BLOB NOT NULL
+);
+
+CREATE TABLE merchant_channels (
+  id SERIAL PRIMARY KEY,
+  channel_id BLOB NOT NULL,
+  status BLOB NOT NULL
 );
