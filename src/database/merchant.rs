@@ -31,10 +31,10 @@ pub trait QueryMerchant {
     ) -> sqlx::Result<zkabacus_crypto::merchant::Config>;
 
     /// Create a new merchant channel.
-    async fn create_merchant_channel(&self, channel_id: &ChannelId) -> sqlx::Result<()>;
+    async fn new_channel(&self, channel_id: &ChannelId) -> sqlx::Result<()>;
 
     /// Update an existing merchant channel's status.
-    async fn update_merchant_channel_status(
+    async fn update_channel_status(
         &self,
         channel_id: &ChannelId,
         status: &ChannelStatus,
@@ -154,7 +154,7 @@ impl QueryMerchant for SqlitePool {
         Ok(new_config)
     }
 
-    async fn create_merchant_channel(&self, channel_id: &ChannelId) -> sqlx::Result<()> {
+    async fn new_channel(&self, channel_id: &ChannelId) -> sqlx::Result<()> {
         sqlx::query!(
             "INSERT INTO merchant_channels (channel_id, status) VALUES (?, ?)",
             channel_id,
@@ -166,7 +166,7 @@ impl QueryMerchant for SqlitePool {
         Ok(())
     }
 
-    async fn update_merchant_channel_status(
+    async fn update_channel_status(
         &self,
         channel_id: &ChannelId,
         status: &ChannelStatus,
@@ -295,8 +295,8 @@ mod tests {
         let pk = KeyPair::new(&mut rng).public_key().clone();
         let channel_id = ChannelId::new(cid_m, cid_c, &pk, &[], &[]);
 
-        conn.create_merchant_channel(&channel_id).await?;
-        conn.update_merchant_channel_status(&channel_id, &ChannelStatus::CustomerFunded)
+        conn.new_channel(&channel_id).await?;
+        conn.update_channel_status(&channel_id, &ChannelStatus::CustomerFunded)
             .await?;
 
         Ok(())
