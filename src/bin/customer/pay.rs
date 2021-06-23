@@ -5,14 +5,18 @@ use {
     std::fmt::{self, Display, Formatter},
 };
 
-use zkabacus_crypto::{customer::Ready, Context as ProofContext, PaymentAmount};
+use zkabacus_crypto::{
+    customer::{Ready, StartMessage},
+    Context as ProofContext, PaymentAmount,
+};
 
 use zeekoe::{
     abort,
     customer::{
         cli::{Pay, Refund},
         client::SessionKey,
-        Chan, Config,
+        database::{QueryCustomer, State},
+        Chan, ChannelName, Config,
     },
     offer_abort, proceed,
     protocol::{pay, Party::Customer},
@@ -34,11 +38,17 @@ impl Command for Pay {
         })(minor_units.abs() as u64)
         .context("Payment amount out of range")?;
 
-        let db = database(&config).await?;
+        let database = database(&config)
+            .await
+            .context("Failed to connect to local database")?;
 
         // Look up the address and current local customer state for this merchant in the database
-        let address = match db.channel_address(&self.label).await? {
-            None => return Err(anyhow::anyhow!("Unknown label: {}", self.label)),
+        let address = match database
+            .channel_address(&self.label)
+            .await
+            .context("Failed to look up channel address in local database")?
+        {
+            None => return Err(anyhow::anyhow!("Unknown channel label: {}", self.label)),
             Some(address) => address,
         };
 
@@ -49,7 +59,7 @@ impl Command for Pay {
         let chan = chan
             .choose::<1>()
             .await
-            .context("Failed selecting Pay session with merchant")?;
+            .context("Failed selecting pay session with merchant")?;
 
         // Read the contents of the note, if any
         let note = self
@@ -71,10 +81,15 @@ impl Command for Pay {
         offer_abort!(in chan as Customer);
 
         // Run the core zkAbacus.Pay protocol
-        let mut state = State::Ready;
-        let chan = zkabacus_pay(rng, session_key, chan, payment_amount, ready, &mut state)
-            .await
-            .with_context(|| format!("Payment failed: channel is in {} state", state))?;
+        let chan = zkabacus_pay(
+            rng,
+            &*database,
+            &self.label,
+            session_key,
+            chan,
+            payment_amount,
+        )
+        .await;
 
         // Receive the response note (i.e. the fulfillment of the service)
         let (response_note, chan) = chan
@@ -94,51 +109,67 @@ impl Command for Pay {
     }
 }
 
-/// Enumeration of the states the channel can be in.
-#[derive(Debug, Clone, Copy)]
-enum State {
-    /// Ready for a new payment.
-    Ready,
-    /// Payment initiated: can close on either new or old balance.
-    Started,
-    /// Can close on new balance only, but is not yet ready for a new payment.
-    Locked,
-}
+// /// Enumeration of the states the channel can be in.
+// #[derive(Debug, Clone, Copy)]
+// enum State {
+//     /// Ready for a new payment.
+//     Ready,
+//     /// Payment initiated: can close on either new or old balance.
+//     Started,
+//     /// Can close on new balance only, but is not yet ready for a new payment.
+//     Locked,
+// }
 
-impl Display for State {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        use State::*;
-        write!(
-            f,
-            "{}",
-            match self {
-                Ready => "ready",
-                Started => "started",
-                Locked => "locked",
-            }
-        )
-    }
-}
+// impl Display for State {
+//     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+//         use State::*;
+//         write!(
+//             f,
+//             "{}",
+//             match self {
+//                 Ready => "ready",
+//                 Started => "started",
+//                 Locked => "locked",
+//             }
+//         )
+//     }
+// }
 
 /// The core zkAbacus.Pay protocol.
 async fn zkabacus_pay(
     mut rng: StdRng,
+    database: &(impl QueryCustomer + Send + Sync),
+    label: &ChannelName,
     session_key: SessionKey,
     chan: Chan<pay::CustomerStartPayment>,
     payment_amount: PaymentAmount,
-    ready: Ready,
-    state: &mut State,
 ) -> Result<Chan<pay::MerchantProvideService>, anyhow::Error> {
     // Generate the shared context for proofs
     let context = ProofContext::new(&session_key.to_bytes());
 
     // Start the zkAbacus core payment and get fresh proofs and commitments
-    let (started, start_message) = ready
-        .start(&mut rng, payment_amount, &context)
-        .context("Failed to generate nonce and payment proof")?;
-
-    // Record that we are now in the started state
-    *state = State::Started;
+    let start_message: Option<Result<StartMessage, anyhow::Error>> = database
+        .with_channel_state(
+            label,
+            |state| {
+                state.as_mut().map(|state| match state.ready() {
+                    Ok(ready) => {
+                        let (started, start_message) = ready
+                            .start(&mut rng, payment_amount, &context)
+                            .context("Failed to generate nonce and payment proof")?;
+                        *state = State::Started(started);
+                        Ok(start_message)
+                    }
+                    Err(other_state) => {
+                        *state = other_state;
+                        Err(anyhow::anyhow!("wrong state"))
+                    }
+                })
+            },
+            |state| todo!("handle dirty state"),
+        )
+        .await
+        .context("Database error while fetching initial pay state")?;
 
     // Send the initial proofs and commitments to the merchant
     let chan = chan

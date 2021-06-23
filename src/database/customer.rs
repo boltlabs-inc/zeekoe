@@ -112,12 +112,12 @@ pub trait QueryCustomer {
     ///
     /// **Important:** Operations performed in this function should be pure, aside from the side
     /// effect of modifying their given `&mut Option<State>`.
-    async fn with_channel_state<'a, T: Send + 'static, E: Send + 'static>(
+    async fn with_channel_state<'a, T: Send + 'static>(
         &'a self,
         label: &ChannelName,
         with_clean_state: impl for<'s> Fn(&'s mut Option<State>) -> T + Send + Sync + 'a,
-        with_dirty_state: impl for<'s> Fn(&'s mut Option<State>) -> E + Send + Sync + 'a,
-    ) -> sqlx::Result<Option<Result<T, E>>>;
+        with_dirty_state: impl for<'s> Fn(&'s mut Option<State>) -> T + Send + Sync + 'a,
+    ) -> sqlx::Result<Option<T>>;
 }
 
 /// Trait-object safe version of [`QueryCustomer`]: use this type in trait objects and implement it
@@ -166,7 +166,7 @@ pub trait ErasedQueryCustomer {
         label: &ChannelName,
         with_clean_state: &(dyn for<'a> Fn(&'a mut Option<State>) -> Box<dyn Any + Send> + Sync),
         with_dirty_state: &(dyn for<'a> Fn(&'a mut Option<State>) -> Box<dyn Any + Send> + Sync),
-    ) -> sqlx::Result<Option<Result<Box<dyn Any>, Box<dyn Any>>>>;
+    ) -> sqlx::Result<Option<Box<dyn Any>>>;
 }
 
 #[async_trait]
@@ -243,7 +243,7 @@ impl ErasedQueryCustomer for SqlitePool {
         label: &ChannelName,
         with_clean_state: &(dyn for<'a> Fn(&'a mut Option<State>) -> Box<dyn Any + Send> + Sync),
         with_dirty_state: &(dyn for<'a> Fn(&'a mut Option<State>) -> Box<dyn Any + Send> + Sync),
-    ) -> sqlx::Result<Option<Result<Box<dyn Any>, Box<dyn Any>>>> {
+    ) -> sqlx::Result<Option<Box<dyn Any>>> {
         let mut transaction = self.begin().await?;
 
         // Determine if the state was clean
@@ -296,7 +296,7 @@ impl ErasedQueryCustomer for SqlitePool {
         // Commit the transaction
         transaction.commit().await?;
 
-        Ok(Some(Ok(output)))
+        Ok(Some(output))
     }
 }
 
@@ -332,12 +332,12 @@ impl<P: ErasedQueryCustomer + Sync> QueryCustomer for P {
         <Self as ErasedQueryCustomer>::readdress_channel(self, label, new_address).await
     }
 
-    async fn with_channel_state<'a, T: Send + 'static, E: Send + 'static>(
+    async fn with_channel_state<'a, T: Send + 'static>(
         &'a self,
         label: &ChannelName,
         with_clean_state: impl for<'s> Fn(&'s mut Option<State>) -> T + Send + Sync + 'a,
-        with_dirty_state: impl for<'s> Fn(&'s mut Option<State>) -> E + Send + Sync + 'a,
-    ) -> sqlx::Result<Option<Result<T, E>>> {
+        with_dirty_state: impl for<'s> Fn(&'s mut Option<State>) -> T + Send + Sync + 'a,
+    ) -> sqlx::Result<Option<T>> {
         <Self as ErasedQueryCustomer>::with_channel_state(
             self,
             label,
@@ -345,12 +345,6 @@ impl<P: ErasedQueryCustomer + Sync> QueryCustomer for P {
             &|state| Box::new(with_dirty_state(state)),
         )
         .await
-        .map(|option| {
-            option.map(|result| {
-                result
-                    .map(|t| *t.downcast().unwrap())
-                    .map_err(|e| *e.downcast().unwrap())
-            })
-        })
+        .map(|option| option.map(|t| *t.downcast().unwrap()))
     }
 }
