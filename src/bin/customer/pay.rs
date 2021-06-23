@@ -280,46 +280,28 @@ async fn unlock_payment(
         })?
 }
 
-/// Given a mutable reference to a state, set it to the [`State::PendingClose`] state and return the
-/// [`StateName`] of its previous state, or continue to keep it in the [`State::PendingClose`] or
-/// [`State::Closed`] states if it is already in one of those.
-///
-/// This implicitly invokes the appropriate `close` method for the contained state, using the
-/// supplied random number generator.
-fn set_pending_close(rng: &mut StdRng, state: &mut Option<State>) -> StateName {
-    let (old_state_name, new_state) = match state.take() {
-        None => (StateName::Closed, None),
-        Some(state) => (
-            state.name(),
-            match state {
-                State::Inactive(inactive) => Some(State::PendingClose(inactive.close(rng))),
-                State::Ready(ready) => Some(State::PendingClose(ready.close(rng))),
-                State::Started(started) => Some(State::PendingClose(started.close(rng))),
-                State::Locked(locked) => Some(State::PendingClose(locked.close(rng))),
-                State::PendingClose(closing_message) => Some(State::PendingClose(closing_message)),
-            },
-        ),
-    };
-    *state = new_state;
-    old_state_name
-}
-
 /// Try to match the specified case of a state, or generate an error if it doesn't match.
 fn take_state<T: NameState>(
     label: &ChannelName,
     getter: impl FnOnce(State) -> Result<T, State>,
     state: &mut Option<State>,
 ) -> Result<T, UnexpectedState> {
-    // Ensure state is not closed
+    // Ensure state is not closed, throwing an error describing the situation if so
     let open_state = state.take().ok_or_else(|| UnexpectedState {
         label: label.clone(),
         actual_state: StateName::Closed,
         expected_state: T::name(),
     })?;
 
+    // Try to get the state using the getter
     let t = getter(open_state).map_err(|other_state| {
+        // What was the actual state we encountered?
         let actual_state = other_state.name();
-        *state = Some(other_state); // Restore the other state
+
+        // Restore the state back to the reference
+        *state = Some(other_state);
+
+        // Return an error describing the discrepancy
         UnexpectedState {
             label: label.clone(),
             actual_state,
