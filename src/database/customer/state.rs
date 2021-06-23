@@ -1,6 +1,7 @@
 use {
     serde::{Deserialize, Serialize},
     std::fmt::{Display, Formatter},
+    thiserror::Error,
 };
 
 use zkchannels_crypto::impl_sqlx_for_bincode_ty;
@@ -109,4 +110,42 @@ impl State {
             State::PendingClose(_) => StateName::PendingClose,
         }
     }
+}
+
+/// Try to match the specified case of a state, or generate an error if it doesn't match.
+pub fn take_state<T: NameState>(
+    getter: impl FnOnce(State) -> Result<T, State>,
+    state: &mut Option<State>,
+) -> Result<T, UnexpectedState> {
+    // Ensure state is not closed, throwing an error describing the situation if so
+    let open_state = state.take().ok_or(UnexpectedState {
+        expected_state: T::name(),
+        actual_state: StateName::Closed,
+    })?;
+
+    // Try to get the state using the getter
+    let t = getter(open_state).map_err(|other_state| {
+        // What was the actual state we encountered?
+        let actual_state = other_state.name();
+
+        // Restore the state back to the reference
+        *state = Some(other_state);
+
+        // Return an error describing the discrepancy
+        UnexpectedState {
+            expected_state: T::name(),
+            actual_state,
+        }
+    })?;
+
+    Ok(t)
+}
+
+/// Error thrown when an operation requires a channel to be in a particular state, but it is in a
+/// different one instead.
+#[derive(Debug, Serialize, Deserialize, Error)]
+#[error("Expected channel in {expected_state} state, but it was in {actual_state} state")]
+pub struct UnexpectedState {
+    expected_state: StateName,
+    actual_state: StateName,
 }

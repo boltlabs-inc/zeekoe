@@ -16,7 +16,7 @@ use zeekoe::{
     customer::{
         cli::{Pay, Refund},
         client::SessionKey,
-        database::{NameState, QueryCustomer, QueryCustomerExt, State, StateName},
+        database::{take_state, QueryCustomer, QueryCustomerExt, State},
         Chan, ChannelName, Config,
     },
     offer_abort, proceed,
@@ -190,7 +190,12 @@ async fn start_payment(
     database
         .with_channel_state(label, |state| {
             // Ensure the channel is in ready state
-            let ready = take_state(label, State::ready, state)?;
+            let ready = take_state(State::ready, state).with_context(|| {
+                format!(
+                    "Expecting the channel \"{}\" to be in a different state",
+                    label
+                )
+            })?;
 
             // Attempt to start the payment using the payment amount and proof context
             let (started, start_message) = ready
@@ -218,7 +223,12 @@ async fn lock_payment(
     database
         .with_channel_state(label, |state| {
             // Ensure the channel is in started state
-            let started = take_state(label, State::started, state)?;
+            let started = take_state(State::started, state).with_context(|| {
+                format!(
+                    "Expecting the channel \"{}\" to be in a different state",
+                    label
+                )
+            })?;
 
             // Attempt to lock the state using the closing signature
             match started.lock(closing_signature) {
@@ -253,7 +263,12 @@ async fn unlock_payment(
     database
         .with_channel_state(label, |state| {
             // Ensure the channel is in locked state
-            let locked = take_state(label, State::locked, state)?;
+            let locked = take_state(State::locked, state).with_context(|| {
+                format!(
+                    "Expecting the channel \"{}\" to be in a different state",
+                    label
+                )
+            })?;
 
             // Attempt to unlock the state using the pay token
             match locked.unlock(pay_token) {
@@ -278,53 +293,6 @@ async fn unlock_payment(
         .ok_or_else(|| NoSuchChannel {
             label: label.clone(),
         })?
-}
-
-/// Try to match the specified case of a state, or generate an error if it doesn't match.
-fn take_state<T: NameState>(
-    label: &ChannelName,
-    getter: impl FnOnce(State) -> Result<T, State>,
-    state: &mut Option<State>,
-) -> Result<T, UnexpectedState> {
-    // Ensure state is not closed, throwing an error describing the situation if so
-    let open_state = state.take().ok_or_else(|| UnexpectedState {
-        label: label.clone(),
-        actual_state: StateName::Closed,
-        expected_state: T::name(),
-    })?;
-
-    // Try to get the state using the getter
-    let t = getter(open_state).map_err(|other_state| {
-        // What was the actual state we encountered?
-        let actual_state = other_state.name();
-
-        // Restore the state back to the reference
-        *state = Some(other_state);
-
-        // Return an error describing the discrepancy
-        UnexpectedState {
-            label: label.clone(),
-            actual_state,
-            expected_state: T::name(),
-        }
-    })?;
-
-    Ok(t)
-}
-
-#[derive(Debug, Serialize, Deserialize, Error)]
-#[error("Prior session for channel \"{label}\" left it in a dirty {state_name} state, so the it must now be closed")]
-struct DirtyState {
-    state_name: StateName,
-    label: ChannelName,
-}
-
-#[derive(Debug, Serialize, Deserialize, Error)]
-#[error("Expected channel \"{label}\" to be in {expected_state} state, but it was in {actual_state} state")]
-struct UnexpectedState {
-    expected_state: StateName,
-    actual_state: StateName,
-    label: ChannelName,
 }
 
 #[derive(Debug, Serialize, Deserialize, Error)]

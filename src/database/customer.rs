@@ -5,7 +5,7 @@ use zkabacus_crypto::customer::Inactive;
 use crate::customer::{client::ZkChannelAddress, ChannelName};
 
 mod state;
-pub use state::{NameState, State, StateName};
+pub use state::{take_state, NameState, State, StateName};
 
 /// Extension trait augmenting the customer database [`QueryCustomer`] with extra methods.
 ///
