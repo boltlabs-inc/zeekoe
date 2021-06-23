@@ -154,6 +154,24 @@
       "nullable": []
     }
   },
+  "f3232a1d8e4638fa240320ac67333beeacf4528bb2b61189ac4f7501b93c378f": {
+    "query": "\n            SELECT address AS \"address: ZkChannelAddress\"\n            FROM customer_channels\n            WHERE label = ?",
+    "describe": {
+      "columns": [
+        {
+          "name": "address: ZkChannelAddress",
+          "ordinal": 0,
+          "type_info": "Blob"
+        }
+      ],
+      "parameters": {
+        "Right": 1
+      },
+      "nullable": [
+        false
+      ]
+    }
+  },
   "f85f1798bbf5436cb9036f76cf40f2e90d92527f395b37f97d933cebee216320": {
     "query": "INSERT INTO revocations (lock, secret) VALUES (?, ?)",
     "describe": {

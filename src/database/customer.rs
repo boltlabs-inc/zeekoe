@@ -10,7 +10,7 @@ use zkchannels_crypto::impl_sqlx_for_bincode_ty;
 
 use zkabacus_crypto::customer::{ClosingMessage, Inactive, Locked, Ready, Requested, Started};
 
-use crate::customer::client::ZkChannelAddress;
+use crate::customer::{client::ZkChannelAddress, ChannelName};
 
 /// The current state of the channel, from the perspective of the customer.
 #[derive(Debug, Serialize, Deserialize)]
@@ -71,24 +71,34 @@ impl State {
 pub trait QueryCustomer {
     /// Insert a newly initialized [`Requested`] channel into the customer database, associated with
     /// a unique label and [`ZkChannelAddress`].
+    ///
+    /// If the [`Requested`] could not be inserted, it is returned along with the error that
+    /// prevented its insertion.
     async fn new_channel(
         &self,
-        label: &str,
+        label: &ChannelName,
         address: &ZkChannelAddress,
         requested: Requested,
     ) -> Result<(), (Requested, sqlx::Error)>;
 
+    /// Get the address of a given channel, or `None` if the label does not exist in the database.
+    async fn channel_address(&self, label: &ChannelName) -> sqlx::Result<Option<ZkChannelAddress>>;
+
     /// Relabel an existing channel from a given label to a new one.
     ///
     /// Returns `true` if the label existed and `false` if it did not.
-    async fn relabel_channel(&self, label: &str, new_label: &str) -> sqlx::Result<bool>;
+    async fn relabel_channel(
+        &self,
+        label: &ChannelName,
+        new_label: &ChannelName,
+    ) -> sqlx::Result<bool>;
 
     /// Assign a new [`ZkChannelAddress`] to an existing channel.
     ///
     /// Returns `true` if the label existed and `false` if it did not.
     async fn readdress_channel(
         &self,
-        label: &str,
+        label: &ChannelName,
         new_address: &ZkChannelAddress,
     ) -> sqlx::Result<bool>;
 
@@ -104,7 +114,7 @@ pub trait QueryCustomer {
     /// effect of modifying their given `&mut Option<State>`.
     async fn with_channel_state<'a, T: Send + 'static, E: Send + 'static>(
         &'a self,
-        label: &str,
+        label: &ChannelName,
         with_clean_state: impl for<'s> Fn(&'s mut Option<State>) -> T + Send + Sync + 'a,
         with_dirty_state: impl for<'s> Fn(&'s mut Option<State>) -> E + Send + Sync + 'a,
     ) -> sqlx::Result<Option<Result<T, E>>>;
@@ -118,18 +128,25 @@ pub trait ErasedQueryCustomer {
     /// See [`QueryCustomer::new_channel`].
     async fn new_channel(
         &self,
-        label: &str,
+        label: &ChannelName,
         address: &ZkChannelAddress,
         requested: Requested,
     ) -> Result<(), (Requested, sqlx::Error)>;
 
+    /// See [`QueryCustomer::address`].
+    async fn channel_address(&self, label: &ChannelName) -> sqlx::Result<Option<ZkChannelAddress>>;
+
     /// See [`QueryCustomer::relabel_channel`].
-    async fn relabel_channel(&self, label: &str, new_label: &str) -> sqlx::Result<bool>;
+    async fn relabel_channel(
+        &self,
+        label: &ChannelName,
+        new_label: &ChannelName,
+    ) -> sqlx::Result<bool>;
 
     /// See [`QueryCustomer::readdress_channel`].
     async fn readdress_channel(
         &self,
-        label: &str,
+        label: &ChannelName,
         new_address: &ZkChannelAddress,
     ) -> sqlx::Result<bool>;
 
@@ -146,7 +163,7 @@ pub trait ErasedQueryCustomer {
     /// Any>, Box<dyn Any>>`.
     async fn with_channel_state(
         &self,
-        label: &str,
+        label: &ChannelName,
         with_clean_state: &(dyn for<'a> Fn(&'a mut Option<State>) -> Box<dyn Any + Send> + Sync),
         with_dirty_state: &(dyn for<'a> Fn(&'a mut Option<State>) -> Box<dyn Any + Send> + Sync),
     ) -> sqlx::Result<Option<Result<Box<dyn Any>, Box<dyn Any>>>>;
@@ -156,7 +173,7 @@ pub trait ErasedQueryCustomer {
 impl ErasedQueryCustomer for SqlitePool {
     async fn new_channel(
         &self,
-        label: &str,
+        label: &ChannelName,
         address: &ZkChannelAddress,
         requested: Requested,
     ) -> Result<(), (Requested, sqlx::Error)> {
@@ -176,7 +193,26 @@ impl ErasedQueryCustomer for SqlitePool {
         .map_err(|e| (state.requested().unwrap(), e))
     }
 
-    async fn relabel_channel(&self, label: &str, new_label: &str) -> sqlx::Result<bool> {
+    async fn channel_address(&self, label: &ChannelName) -> sqlx::Result<Option<ZkChannelAddress>> {
+        sqlx::query!(
+            r#"
+            SELECT address AS "address: ZkChannelAddress"
+            FROM customer_channels
+            WHERE label = ?"#,
+            label,
+        )
+        .fetch(self)
+        .next()
+        .await
+        .transpose()
+        .map(|option| option.map(|r| r.address))
+    }
+
+    async fn relabel_channel(
+        &self,
+        label: &ChannelName,
+        new_label: &ChannelName,
+    ) -> sqlx::Result<bool> {
         sqlx::query!(
             "UPDATE customer_channels SET label = ? WHERE label = ?",
             new_label,
@@ -189,7 +225,7 @@ impl ErasedQueryCustomer for SqlitePool {
 
     async fn readdress_channel(
         &self,
-        label: &str,
+        label: &ChannelName,
         new_address: &ZkChannelAddress,
     ) -> sqlx::Result<bool> {
         sqlx::query!(
@@ -204,7 +240,7 @@ impl ErasedQueryCustomer for SqlitePool {
 
     async fn with_channel_state(
         &self,
-        label: &str,
+        label: &ChannelName,
         with_clean_state: &(dyn for<'a> Fn(&'a mut Option<State>) -> Box<dyn Any + Send> + Sync),
         with_dirty_state: &(dyn for<'a> Fn(&'a mut Option<State>) -> Box<dyn Any + Send> + Sync),
     ) -> sqlx::Result<Option<Result<Box<dyn Any>, Box<dyn Any>>>> {
@@ -269,20 +305,28 @@ impl ErasedQueryCustomer for SqlitePool {
 impl<P: ErasedQueryCustomer + Sync> QueryCustomer for P {
     async fn new_channel(
         &self,
-        label: &str,
+        label: &ChannelName,
         address: &ZkChannelAddress,
         requested: Requested,
     ) -> Result<(), (Requested, sqlx::Error)> {
         <Self as ErasedQueryCustomer>::new_channel(self, label, address, requested).await
     }
 
-    async fn relabel_channel(&self, label: &str, new_label: &str) -> sqlx::Result<bool> {
+    async fn channel_address(&self, label: &ChannelName) -> sqlx::Result<Option<ZkChannelAddress>> {
+        <Self as ErasedQueryCustomer>::channel_address(self, label).await
+    }
+
+    async fn relabel_channel(
+        &self,
+        label: &ChannelName,
+        new_label: &ChannelName,
+    ) -> sqlx::Result<bool> {
         <Self as ErasedQueryCustomer>::relabel_channel(self, label, new_label).await
     }
 
     async fn readdress_channel(
         &self,
-        label: &str,
+        label: &ChannelName,
         new_address: &ZkChannelAddress,
     ) -> sqlx::Result<bool> {
         <Self as ErasedQueryCustomer>::readdress_channel(self, label, new_address).await
@@ -290,7 +334,7 @@ impl<P: ErasedQueryCustomer + Sync> QueryCustomer for P {
 
     async fn with_channel_state<'a, T: Send + 'static, E: Send + 'static>(
         &'a self,
-        label: &str,
+        label: &ChannelName,
         with_clean_state: impl for<'s> Fn(&'s mut Option<State>) -> T + Send + Sync + 'a,
         with_dirty_state: impl for<'s> Fn(&'s mut Option<State>) -> E + Send + Sync + 'a,
     ) -> sqlx::Result<Option<Result<T, E>>> {

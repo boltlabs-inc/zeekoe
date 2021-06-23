@@ -18,7 +18,7 @@ use zeekoe::{
     protocol::{pay, Party::Customer},
 };
 
-use super::{connect, Command};
+use super::{connect, database, Command};
 
 #[async_trait]
 impl Command for Pay {
@@ -34,9 +34,13 @@ impl Command for Pay {
         })(minor_units.abs() as u64)
         .context("Payment amount out of range")?;
 
+        let db = database(&config).await?;
+
         // Look up the address and current local customer state for this merchant in the database
-        let address = todo!("look up address in database by `self.label`");
-        let ready: Ready = todo!("look up channel state in database by `self.label`");
+        let address = match db.channel_address(&self.label).await? {
+            None => return Err(anyhow::anyhow!("Unknown label: {}", self.label)),
+            Some(address) => address,
+        };
 
         // Connect and select the Pay session
         let (session_key, chan) = connect(&config, address)
