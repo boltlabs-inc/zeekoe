@@ -1,5 +1,6 @@
 use {
     async_trait::async_trait,
+    futures::stream::StreamExt,
     serde::{Deserialize, Serialize},
     sqlx::SqlitePool,
     std::any::Any,
@@ -107,10 +108,8 @@ pub trait QueryCustomer {
     ) -> sqlx::Result<bool>;
 
     /// Given a channel's unique label, mutate its state in the database using one of two provided
-    /// closures, depending on whether that state is dirty or clean.
-    ///
-    /// Each closure may return some result value which will be returned from the function as a
-    /// whole.
+    /// closures, depending on whether that state is dirty or clean. Returns `Ok(None)` if the label
+    /// did not exist in the database, otherwise the result of whichever closure was invoked.
     ///
     /// If this function is interrupted by a panic or crash mid-execution, the state in the database
     /// will be marked dirty, so the next time it is run, the `with_dirty_state` closure will be
@@ -123,7 +122,7 @@ pub trait QueryCustomer {
         label: &str,
         with_clean_state: impl for<'s> Fn(&'s mut Option<State>) -> T + Send + Sync + 'a,
         with_dirty_state: impl for<'s> Fn(&'s mut Option<State>) -> E + Send + Sync + 'a,
-    ) -> sqlx::Result<Result<T, E>>;
+    ) -> sqlx::Result<Option<Result<T, E>>>;
 }
 
 /// Trait-object safe version of [`QueryCustomer`]: use this type in trait objects and implement it
@@ -165,7 +164,7 @@ pub trait ErasedQueryCustomer {
         label: &str,
         with_clean_state: &(dyn for<'a> Fn(&'a mut Option<State>) -> Box<dyn Any + Send> + Sync),
         with_dirty_state: &(dyn for<'a> Fn(&'a mut Option<State>) -> Box<dyn Any + Send> + Sync),
-    ) -> sqlx::Result<Result<Box<dyn Any>, Box<dyn Any>>>;
+    ) -> sqlx::Result<Option<Result<Box<dyn Any>, Box<dyn Any>>>>;
 }
 
 #[async_trait]
@@ -223,14 +222,19 @@ impl ErasedQueryCustomer for SqlitePool {
         label: &str,
         with_clean_state: &(dyn for<'a> Fn(&'a mut Option<State>) -> Box<dyn Any + Send> + Sync),
         with_dirty_state: &(dyn for<'a> Fn(&'a mut Option<State>) -> Box<dyn Any + Send> + Sync),
-    ) -> sqlx::Result<Result<Box<dyn Any>, Box<dyn Any>>> {
+    ) -> sqlx::Result<Option<Result<Box<dyn Any>, Box<dyn Any>>>> {
         let mut transaction = self.begin().await?;
 
         // Determine if the state was clean
-        let clean = sqlx::query!("SELECT clean FROM customer_channels WHERE label = ?", label)
-            .fetch_one(&mut transaction)
-            .await?
-            .clean;
+        let clean = match sqlx::query!("SELECT clean FROM customer_channels WHERE label = ?", label)
+            .fetch(&mut transaction)
+            .next()
+            .await
+        {
+            Some(Ok(r)) => r.clean,
+            Some(Err(e)) => return Err(e),
+            None => return Ok(None), // No such label
+        };
 
         // Set the state to dirty, so if for any reason this operation is interrupted, then we will
         // not be able to re-try any operations on this state
@@ -271,7 +275,7 @@ impl ErasedQueryCustomer for SqlitePool {
         // Commit the transaction
         transaction.commit().await?;
 
-        Ok(Ok(output))
+        Ok(Some(Ok(output)))
     }
 }
 
@@ -304,7 +308,7 @@ impl<P: ErasedQueryCustomer + Sync> QueryCustomer for P {
         label: &str,
         with_clean_state: impl for<'s> Fn(&'s mut Option<State>) -> T + Send + Sync + 'a,
         with_dirty_state: impl for<'s> Fn(&'s mut Option<State>) -> E + Send + Sync + 'a,
-    ) -> sqlx::Result<Result<T, E>> {
+    ) -> sqlx::Result<Option<Result<T, E>>> {
         <Self as ErasedQueryCustomer>::with_channel_state(
             self,
             label,
@@ -312,10 +316,12 @@ impl<P: ErasedQueryCustomer + Sync> QueryCustomer for P {
             &|state| Box::new(with_dirty_state(state)),
         )
         .await
-        .map(|result| {
-            result
-                .map(|t| *t.downcast().unwrap())
-                .map_err(|e| *e.downcast().unwrap())
+        .map(|option| {
+            option.map(|result| {
+                result
+                    .map(|t| *t.downcast().unwrap())
+                    .map_err(|e| *e.downcast().unwrap())
+            })
         })
     }
 }
