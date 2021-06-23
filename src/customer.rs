@@ -1,6 +1,9 @@
-use std::{
-    fmt::{Display, Formatter},
-    str::FromStr,
+use {
+    serde::{Deserialize, Serialize},
+    std::{
+        fmt::{Display, Formatter},
+        str::FromStr,
+    },
 };
 
 pub use crate::cli::{customer as cli, customer::Cli};
@@ -9,7 +12,8 @@ pub use crate::database::customer as database;
 pub use crate::defaults::customer as defaults;
 pub use crate::transport::client::{self as client, Chan, Client};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, sqlx::Type, Serialize, Deserialize)]
+#[sqlx(transparent)]
 pub struct AccountName(String);
 
 impl FromStr for AccountName {
@@ -32,7 +36,7 @@ impl Display for AccountName {
     }
 }
 
-#[derive(Debug, sqlx::Type)]
+#[derive(Debug, Clone, sqlx::Type, Serialize, Deserialize)]
 #[sqlx(transparent)]
 pub struct ChannelName(String);
 

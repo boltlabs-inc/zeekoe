@@ -3,7 +3,10 @@ use {
     futures::stream::StreamExt,
     serde::{Deserialize, Serialize},
     sqlx::SqlitePool,
-    std::any::Any,
+    std::{
+        any::Any,
+        fmt::{Display, Formatter},
+    },
 };
 
 use zkchannels_crypto::impl_sqlx_for_bincode_ty;
@@ -28,6 +31,33 @@ pub enum State {
     Locked(Locked),
     /// Channel has to be closed because of an error, but has not yet been closed.
     PendingClose(ClosingMessage),
+}
+
+/// The names of the different states a channel can be in (does not contain actual state).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum StateName {
+    Requested,
+    Inactive,
+    Ready,
+    Started,
+    Locked,
+    PendingClose,
+    Closed,
+}
+
+impl Display for StateName {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            StateName::Requested => "requested",
+            StateName::Inactive => "inactive",
+            StateName::Ready => "ready",
+            StateName::Started => "started",
+            StateName::Locked => "locked",
+            StateName::PendingClose => "pending close",
+            StateName::Closed => "close",
+        }
+        .fmt(f)
+    }
 }
 
 impl_sqlx_for_bincode_ty!(State);
@@ -60,15 +90,48 @@ impl State {
         PendingClose,
         ClosingMessage,
     );
+
+    pub fn name(&self) -> StateName {
+        match self {
+            State::Requested(_) => StateName::Requested,
+            State::Inactive(_) => StateName::Inactive,
+            State::Ready(_) => StateName::Ready,
+            State::Started(_) => StateName::Started,
+            State::Locked(_) => StateName::Locked,
+            State::PendingClose(_) => StateName::PendingClose,
+        }
+    }
 }
 
-/// Available functions to query the customer database.
+/// Extension trait augmenting the customer database [`QueryCustomer`] with extra methods.
 ///
 /// These are implemented automatically for any database handle which implements
 /// [`ErasedQueryCustomer`]; when passing a trait object, use that trait instead, but prefer to call
 /// the methods of this trait.
 #[async_trait]
-pub trait QueryCustomer {
+pub trait QueryCustomerExt {
+    /// Given a channel's unique label, mutate its state in the database using a provided closure,
+    /// that is given the current state and a flag indicating whether the state is dirty or clean.
+    /// Returns `Ok(None)` if the label did not exist in the database, otherwise the result of
+    /// the closure.
+    ///
+    /// If this function is interrupted by a panic or crash mid-execution, the state in the database
+    /// will be marked dirty.
+    ///
+    /// **Important:** Operations performed in this function should be pure, aside from the side
+    /// effect of modifying their given `&mut Option<State>`.
+    async fn with_channel_state<'a, T: Send + 'static>(
+        &'a self,
+        label: &ChannelName,
+        with_state: impl for<'s> FnOnce(bool, &'s mut Option<State>) -> T + Send + 'a,
+    ) -> sqlx::Result<Option<T>>;
+}
+
+/// Trait-object safe version of [`QueryCustomer`]: use this type in trait objects and implement it
+/// for database backends, but prefer to call the methods from [`QueryCustomer`], since all
+/// [`ErasedQueryCustomer`] are [`QueryCustomer`].
+#[async_trait]
+pub trait QueryCustomer: Send + Sync {
     /// Insert a newly initialized [`Requested`] channel into the customer database, associated with
     /// a unique label and [`ZkChannelAddress`].
     ///
@@ -102,56 +165,9 @@ pub trait QueryCustomer {
         new_address: &ZkChannelAddress,
     ) -> sqlx::Result<bool>;
 
-    /// Given a channel's unique label, mutate its state in the database using one of two provided
-    /// closures, depending on whether that state is dirty or clean. Returns `Ok(None)` if the label
-    /// did not exist in the database, otherwise the result of whichever closure was invoked.
-    ///
-    /// If this function is interrupted by a panic or crash mid-execution, the state in the database
-    /// will be marked dirty, so the next time it is run, the `with_dirty_state` closure will be
-    /// invoked.
-    ///
-    /// **Important:** Operations performed in this function should be pure, aside from the side
-    /// effect of modifying their given `&mut Option<State>`.
-    async fn with_channel_state<'a, T: Send + 'static>(
-        &'a self,
-        label: &ChannelName,
-        with_clean_state: impl for<'s> Fn(&'s mut Option<State>) -> T + Send + Sync + 'a,
-        with_dirty_state: impl for<'s> Fn(&'s mut Option<State>) -> T + Send + Sync + 'a,
-    ) -> sqlx::Result<Option<T>>;
-}
-
-/// Trait-object safe version of [`QueryCustomer`]: use this type in trait objects and implement it
-/// for database backends, but prefer to call the methods from [`QueryCustomer`], since all
-/// [`ErasedQueryCustomer`] are [`QueryCustomer`].
-#[async_trait]
-pub trait ErasedQueryCustomer {
-    /// See [`QueryCustomer::new_channel`].
-    async fn new_channel(
-        &self,
-        label: &ChannelName,
-        address: &ZkChannelAddress,
-        requested: Requested,
-    ) -> Result<(), (Requested, sqlx::Error)>;
-
-    /// See [`QueryCustomer::address`].
-    async fn channel_address(&self, label: &ChannelName) -> sqlx::Result<Option<ZkChannelAddress>>;
-
-    /// See [`QueryCustomer::relabel_channel`].
-    async fn relabel_channel(
-        &self,
-        label: &ChannelName,
-        new_label: &ChannelName,
-    ) -> sqlx::Result<bool>;
-
-    /// See [`QueryCustomer::readdress_channel`].
-    async fn readdress_channel(
-        &self,
-        label: &ChannelName,
-        new_address: &ZkChannelAddress,
-    ) -> sqlx::Result<bool>;
-
-    /// See [`QueryCustomer::with_channel_state`]. Note that this method uses `Box<dyn Any + Send>`
-    /// to avoid the use of generic parameters, which is what allows the trait to be object safe.
+    /// **Don't call this function directly**, instead call [`QueryCustomer::with_channel_state`].
+    /// Note that this method uses `Box<dyn Any + Send>` to avoid the use of generic parameters,
+    /// which is what allows the trait to be object safe.
     ///
     /// # Panics
     ///
@@ -161,16 +177,17 @@ pub trait ErasedQueryCustomer {
     /// does not match the `Err` case of the function's result. It is expected that any
     /// implementation of this function merely forwards these values to the returned `Result<Box<dyn
     /// Any>, Box<dyn Any>>`.
-    async fn with_channel_state(
-        &self,
+    async fn with_channel_state_erased<'a>(
+        &'a self,
         label: &ChannelName,
-        with_clean_state: &(dyn for<'a> Fn(&'a mut Option<State>) -> Box<dyn Any + Send> + Sync),
-        with_dirty_state: &(dyn for<'a> Fn(&'a mut Option<State>) -> Box<dyn Any + Send> + Sync),
+        with_state: Box<
+            dyn for<'s> FnOnce(bool, &'s mut Option<State>) -> Box<dyn Any + Send> + Send + 'a,
+        >,
     ) -> sqlx::Result<Option<Box<dyn Any>>>;
 }
 
 #[async_trait]
-impl ErasedQueryCustomer for SqlitePool {
+impl QueryCustomer for SqlitePool {
     async fn new_channel(
         &self,
         label: &ChannelName,
@@ -238,11 +255,12 @@ impl ErasedQueryCustomer for SqlitePool {
         .map(|r| r.rows_affected() == 1)
     }
 
-    async fn with_channel_state(
-        &self,
+    async fn with_channel_state_erased<'a>(
+        &'a self,
         label: &ChannelName,
-        with_clean_state: &(dyn for<'a> Fn(&'a mut Option<State>) -> Box<dyn Any + Send> + Sync),
-        with_dirty_state: &(dyn for<'a> Fn(&'a mut Option<State>) -> Box<dyn Any + Send> + Sync),
+        with_state: Box<
+            dyn for<'s> FnOnce(bool, &'s mut Option<State>) -> Box<dyn Any + Send> + Send + 'a,
+        >,
     ) -> sqlx::Result<Option<Box<dyn Any>>> {
         let mut transaction = self.begin().await?;
 
@@ -277,11 +295,7 @@ impl ErasedQueryCustomer for SqlitePool {
         .state;
 
         // Perform the operation with the state fetched from the database
-        let output = if clean {
-            with_clean_state(&mut state)
-        } else {
-            with_dirty_state(&mut state)
-        };
+        let output = with_state(clean, &mut state);
 
         // Store the new state to the database and set it to clean again
         sqlx::query!(
@@ -302,47 +316,16 @@ impl ErasedQueryCustomer for SqlitePool {
 
 // Blanket implementation of [`QueryCustomer`] for all [`ErasedQueryCustomer`]
 #[async_trait]
-impl<P: ErasedQueryCustomer + Sync> QueryCustomer for P {
-    async fn new_channel(
-        &self,
-        label: &ChannelName,
-        address: &ZkChannelAddress,
-        requested: Requested,
-    ) -> Result<(), (Requested, sqlx::Error)> {
-        <Self as ErasedQueryCustomer>::new_channel(self, label, address, requested).await
-    }
-
-    async fn channel_address(&self, label: &ChannelName) -> sqlx::Result<Option<ZkChannelAddress>> {
-        <Self as ErasedQueryCustomer>::channel_address(self, label).await
-    }
-
-    async fn relabel_channel(
-        &self,
-        label: &ChannelName,
-        new_label: &ChannelName,
-    ) -> sqlx::Result<bool> {
-        <Self as ErasedQueryCustomer>::relabel_channel(self, label, new_label).await
-    }
-
-    async fn readdress_channel(
-        &self,
-        label: &ChannelName,
-        new_address: &ZkChannelAddress,
-    ) -> sqlx::Result<bool> {
-        <Self as ErasedQueryCustomer>::readdress_channel(self, label, new_address).await
-    }
-
+impl QueryCustomerExt for dyn QueryCustomer + '_ {
     async fn with_channel_state<'a, T: Send + 'static>(
         &'a self,
         label: &ChannelName,
-        with_clean_state: impl for<'s> Fn(&'s mut Option<State>) -> T + Send + Sync + 'a,
-        with_dirty_state: impl for<'s> Fn(&'s mut Option<State>) -> T + Send + Sync + 'a,
+        mut with_state: impl for<'s> FnOnce(bool, &'s mut Option<State>) -> T + Send + 'a,
     ) -> sqlx::Result<Option<T>> {
-        <Self as ErasedQueryCustomer>::with_channel_state(
+        <Self as QueryCustomer>::with_channel_state_erased(
             self,
             label,
-            &|state| Box::new(with_clean_state(state)),
-            &|state| Box::new(with_dirty_state(state)),
+            Box::new(|clean, state| Box::new(with_state(clean, state))),
         )
         .await
         .map(|option| option.map(|t| *t.downcast().unwrap()))

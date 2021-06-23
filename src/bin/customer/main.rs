@@ -10,7 +10,7 @@ use zeekoe::{
     customer::{
         cli::{self, Account::*, Customer::*},
         client::{SessionKey, ZkChannelAddress},
-        database::ErasedQueryCustomer,
+        database::QueryCustomer,
         defaults::config_path,
         Chan, Cli, Client, Config,
     },
@@ -85,9 +85,7 @@ pub async fn connect(
     Ok(client.connect(address).await?)
 }
 
-pub async fn database(
-    config: &Config,
-) -> Result<Arc<dyn ErasedQueryCustomer + Send + Sync>, anyhow::Error> {
+pub async fn database(config: &Config) -> Result<Arc<dyn QueryCustomer>, anyhow::Error> {
     use zeekoe::customer::config::DatabaseLocation;
     Ok(
         match match config.database.clone() {
