@@ -1,10 +1,4 @@
-use {
-    anyhow::Context,
-    async_trait::async_trait,
-    rand::rngs::StdRng,
-    serde::{Deserialize, Serialize},
-    thiserror::Error,
-};
+use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng};
 
 use zkabacus_crypto::{
     customer::{LockMessage, StartMessage},
@@ -180,6 +174,10 @@ async fn zkabacus_pay(
     Ok(chan)
 }
 
+/// Attempt to start the payment for the channel of the given label, using the given
+/// [`PaymentAmount`] and [`ProofContext`].
+///
+/// Returns the [`StartMessage`] for broadcast to the merchant if successful.
 async fn start_payment(
     rng: &mut StdRng,
     database: &dyn QueryCustomer,
@@ -209,12 +207,14 @@ async fn start_payment(
             Ok(start_message)
         })
         .await
-        .context("Database error while fetching initial pay state")?
-        .ok_or_else(|| NoSuchChannel {
-            label: label.clone(),
-        })?
+        .context("Database error while fetching initial pay state")??
 }
 
+/// Attempt to lock a started payment for the channel of the given label, using the given
+/// [`ClosingSignature`].
+///
+/// Returns the [`LockMessage`] for broadcast to the merchant if successful, or `None` if the
+/// database operations succeeded but the closing signature was invalid.
 async fn lock_payment(
     database: &dyn QueryCustomer,
     label: &ChannelName,
@@ -249,12 +249,14 @@ async fn lock_payment(
             }
         })
         .await
-        .context("Database error while fetching started pay state")?
-        .ok_or_else(|| NoSuchChannel {
-            label: label.clone(),
-        })?
+        .context("Database error while fetching started pay state")??
 }
 
+/// Attempt to unlock a locked payment for a channel of the given label, using the given
+/// [`PayToken`].
+///
+/// If successful, this updates the state in the database for the channel so that it is ready for
+/// the next payment.
 async fn unlock_payment(
     database: &dyn QueryCustomer,
     label: &ChannelName,
@@ -289,16 +291,7 @@ async fn unlock_payment(
             }
         })
         .await
-        .context("Database error while fetching locked pay state")?
-        .ok_or_else(|| NoSuchChannel {
-            label: label.clone(),
-        })?
-}
-
-#[derive(Debug, Serialize, Deserialize, Error)]
-#[error("There is no channel by the name of \"{label}\"")]
-struct NoSuchChannel {
-    label: ChannelName,
+        .context("Database error while fetching locked pay state")??
 }
 
 #[async_trait]

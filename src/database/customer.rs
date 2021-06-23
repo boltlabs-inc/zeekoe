@@ -1,4 +1,11 @@
-use {async_trait::async_trait, futures::stream::StreamExt, sqlx::SqlitePool, std::any::Any};
+use {
+    async_trait::async_trait,
+    futures::stream::StreamExt,
+    serde::{Deserialize, Serialize},
+    sqlx::SqlitePool,
+    std::any::Any,
+    thiserror::Error,
+};
 
 use zkabacus_crypto::customer::Inactive;
 
@@ -26,7 +33,7 @@ pub trait QueryCustomerExt {
         &'a self,
         label: &ChannelName,
         with_state: impl for<'s> FnOnce(&'s mut Option<State>) -> T + Send + 'a,
-    ) -> sqlx::Result<Option<T>>;
+    ) -> sqlx::Result<Result<T, NoSuchChannel>>;
 }
 
 /// Trait-object safe version of [`QueryCustomer`]: use this type in trait objects and implement it
@@ -85,7 +92,7 @@ pub trait QueryCustomer: Send + Sync {
         with_state: Box<
             dyn for<'s> FnOnce(&'s mut Option<State>) -> Box<dyn Any + Send> + Send + 'a,
         >,
-    ) -> sqlx::Result<Option<Box<dyn Any>>>;
+    ) -> sqlx::Result<Result<Box<dyn Any>, NoSuchChannel>>;
 }
 
 #[async_trait]
@@ -162,7 +169,7 @@ impl QueryCustomer for SqlitePool {
         with_state: Box<
             dyn for<'s> FnOnce(&'s mut Option<State>) -> Box<dyn Any + Send> + Send + 'a,
         >,
-    ) -> sqlx::Result<Option<Box<dyn Any>>> {
+    ) -> sqlx::Result<Result<Box<dyn Any>, NoSuchChannel>> {
         let mut transaction = self.begin().await?;
 
         // Retrieve the state so that we can modify it
@@ -189,7 +196,7 @@ impl QueryCustomer for SqlitePool {
         // Commit the transaction
         transaction.commit().await?;
 
-        Ok(Some(output))
+        Ok(Ok(output))
     }
 }
 
@@ -200,13 +207,20 @@ impl<Q: QueryCustomer + ?Sized> QueryCustomerExt for Q {
         &'a self,
         label: &ChannelName,
         with_state: impl for<'s> FnOnce(&'s mut Option<State>) -> T + Send + 'a,
-    ) -> sqlx::Result<Option<T>> {
+    ) -> sqlx::Result<Result<T, NoSuchChannel>> {
         <Self as QueryCustomer>::with_channel_state_erased(
             self,
             label,
             Box::new(|state| Box::new(with_state(state))),
         )
         .await
-        .map(|option| option.map(|t| *t.downcast().unwrap()))
+        .map(|result| result.map(|t| *t.downcast().unwrap()))
     }
+}
+
+/// Error indicating that the requested channel label does not exist.
+#[derive(Debug, Serialize, Deserialize, Error)]
+#[error("There is no channel by the name of \"{label}\"")]
+pub struct NoSuchChannel {
+    label: ChannelName,
 }
