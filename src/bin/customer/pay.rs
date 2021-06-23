@@ -111,32 +111,6 @@ impl Command for Pay {
     }
 }
 
-// /// Enumeration of the states the channel can be in.
-// #[derive(Debug, Clone, Copy)]
-// enum State {
-//     /// Ready for a new payment.
-//     Ready,
-//     /// Payment initiated: can close on either new or old balance.
-//     Started,
-//     /// Can close on new balance only, but is not yet ready for a new payment.
-//     Locked,
-// }
-
-// impl Display for State {
-//     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-//         use State::*;
-//         write!(
-//             f,
-//             "{}",
-//             match self {
-//                 Ready => "ready",
-//                 Started => "started",
-//                 Locked => "locked",
-//             }
-//         )
-//     }
-// }
-
 /// The core zkAbacus.Pay protocol.
 async fn zkabacus_pay(
     mut rng: StdRng,
