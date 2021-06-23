@@ -8,7 +8,7 @@ use {
 
 use zkchannels_crypto::impl_sqlx_for_bincode_ty;
 
-use zkabacus_crypto::customer::{Inactive, Locked, Ready, Requested, Started};
+use zkabacus_crypto::customer::{ClosingMessage, Inactive, Locked, Ready, Requested, Started};
 
 use crate::customer::client::ZkChannelAddress;
 
@@ -26,55 +26,40 @@ pub enum State {
     /// Customer has revoked their ability to close on the old balance, but has not yet received the
     /// ability to make a new payment.
     Locked(Locked),
+    /// Channel has to be closed because of an error, but has not yet been closed.
+    PendingClose(ClosingMessage),
 }
 
 impl_sqlx_for_bincode_ty!(State);
 
+/// Declare a function that eliminates one of the cases of the [`State`] struct.
+macro_rules! state_eliminator {
+    ($doc:tt, $method:ident, $constructor:ident, $state:ty $(,)?) => {
+        #[doc = "Get the enclosed [`"]
+        #[doc = $doc]
+        #[doc = "`] state, if this state is one, otherwise returning `Err(self)`."]
+        pub fn $method(self) -> Result<$state, State> {
+            if let State::$constructor(r) = self {
+                Ok(r)
+            } else {
+                Err(self)
+            }
+        }
+    };
+}
+
 impl State {
-    /// Get the [`Requested`] state, if this state is one, otherwise returning `self`.
-    pub fn requested(self) -> Result<Requested, State> {
-        if let State::Requested(r) = self {
-            Ok(r)
-        } else {
-            Err(self)
-        }
-    }
-
-    /// Get the [`Inactive`] state, if this state is one, otherwise returning `self`.
-    pub fn inactive(self) -> Result<Inactive, State> {
-        if let State::Inactive(r) = self {
-            Ok(r)
-        } else {
-            Err(self)
-        }
-    }
-
-    /// Get the [`Ready`] state, if this state is one, otherwise returning `self`.
-    pub fn ready(self) -> Result<Ready, State> {
-        if let State::Ready(r) = self {
-            Ok(r)
-        } else {
-            Err(self)
-        }
-    }
-
-    /// Get the [`Started`] state, if this state is one, otherwise returning `self`.
-    pub fn started(self) -> Result<Started, State> {
-        if let State::Started(r) = self {
-            Ok(r)
-        } else {
-            Err(self)
-        }
-    }
-
-    /// Get the [`Locked`] state, if this state is one, otherwise returning `self`.
-    pub fn locked(self) -> Result<Locked, State> {
-        if let State::Locked(r) = self {
-            Ok(r)
-        } else {
-            Err(self)
-        }
-    }
+    state_eliminator!("Requested", requested, Requested, Requested);
+    state_eliminator!("Inactive", inactive, Inactive, Inactive);
+    state_eliminator!("Ready", ready, Ready, Ready);
+    state_eliminator!("Started", started, Started, Started);
+    state_eliminator!("Locked", locked, Locked, Locked);
+    state_eliminator!(
+        "ClosingMessage",
+        pending_close,
+        PendingClose,
+        ClosingMessage,
+    );
 }
 
 /// Available functions to query the customer database.
