@@ -234,7 +234,7 @@ async fn lock_payment(
                 Err(started) => {
                     // TODO: is this the right thing to do here?
                     *state = Some(State::Started(started));
-                    handle_dirty(rng, state);
+                    set_pending_close(rng, state);
                     Ok(None)
                 }
                 Ok((locked, lock_message)) => {
@@ -272,7 +272,7 @@ async fn unlock_payment(
                 Err(locked) => {
                     // TODO: is this the right thing to do here?
                     *state = Some(State::Locked(locked));
-                    handle_dirty(rng, state);
+                    set_pending_close(rng, state);
                     Err(pay::Error::InvalidPayToken.into())
                 }
                 Ok(ready) => {
@@ -289,7 +289,7 @@ async fn unlock_payment(
         })?
 }
 
-fn handle_dirty(rng: &mut StdRng, state: &mut Option<State>) -> StateName {
+fn set_pending_close(rng: &mut StdRng, state: &mut Option<State>) -> StateName {
     let (old_state_name, new_state) = match state.take() {
         None => (StateName::Closed, None),
         Some(state) => (
@@ -316,7 +316,7 @@ fn ensure_clean(
     state: &mut Option<State>,
 ) -> Result<(), anyhow::Error> {
     if !clean {
-        let state_name = handle_dirty(rng, state);
+        let state_name = set_pending_close(rng, state);
         return Err(DirtyState {
             label: label.clone(),
             state_name,
