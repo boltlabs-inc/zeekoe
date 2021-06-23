@@ -247,7 +247,7 @@ async fn lock_payment(
             }
         })
         .await
-        .context("Database error while fetching initial pay state")?
+        .context("Database error while fetching started pay state")?
         .ok_or_else(|| NoSuchChannel {
             label: label.clone(),
         })?
@@ -283,7 +283,7 @@ async fn unlock_payment(
             }
         })
         .await
-        .context("Database error while fetching initial pay state")?
+        .context("Database error while fetching locked pay state")?
         .ok_or_else(|| NoSuchChannel {
             label: label.clone(),
         })?
