@@ -171,7 +171,6 @@ pub mod establish {
 
     pub type CustomerSupplyInfo = Session! {
         // TODO: send customer-side chain-specific public stuff
-        // TODO: send customer randomness from zkAbacus
         send CustomerRandomness;
         CustomerProposeFunding;
     };

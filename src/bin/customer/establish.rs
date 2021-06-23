@@ -3,7 +3,6 @@ use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng, std::convert
 use zkabacus_crypto::{
     customer::{Inactive, Ready, Requested},
     ChannelId, Context as ProofContext, CustomerBalance, CustomerRandomness, MerchantBalance,
-    PayToken,
 };
 
 use zeekoe::{
@@ -182,6 +181,8 @@ async fn zkabacus_activate(
         .recv()
         .await
         .context("Failed to receive blinded pay token.")?;
+
+    chan.close(); 
 
     match inactive.activate(blinded_pay_token) {
         Ok(ready) => Ok(ready),
