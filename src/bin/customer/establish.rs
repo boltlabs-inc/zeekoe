@@ -94,11 +94,12 @@ impl Command for Establish {
         );
 
         // TODO: fetch this.
-        let config: zkabacus_crypto::customer::Config = todo!("Retrieve config from database.");
+        let zkabacus_config: zkabacus_crypto::customer::Config =
+            todo!("Retrieve config from database.");
 
         let (inactive, chan) = zkabacus_initialize(
             rng,
-            config,
+            zkabacus_config,
             session_key,
             channel_id,
             chan,
@@ -124,7 +125,7 @@ impl Command for Establish {
         }
         proceed!(in chan);
 
-        let _ready = zkabacus_activate(config, inactive, chan).await?;
+        let _ready = zkabacus_activate(zkabacus_config, inactive, chan).await?;
 
         // TODO: store ready state in db.
 
