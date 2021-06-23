@@ -115,10 +115,16 @@ pub type ZkChannels = Session! {
 };
 
 pub mod parameters {
+    use zkabacus_crypto::{CommitmentParameters, PublicKey, RangeProofParameters};
+
     use super::*;
 
     /// Get the public parameters for the merchant.
-    pub type Parameters = Session! {};
+    pub type Parameters = Session! {
+        recv PublicKey;
+        recv CommitmentParameters;
+        recv RangeProofParameters;
+    };
 }
 
 pub mod pay {

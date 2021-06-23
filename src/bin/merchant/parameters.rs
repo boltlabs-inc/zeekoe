@@ -15,18 +15,23 @@ impl Method for Parameters {
 
     async fn run(
         &self,
-        rng: StdRng,
-        client: &reqwest::Client,
-        config: &Service,
+        _rng: StdRng,
+        _client: &reqwest::Client,
+        _config: &Service,
         merchant_config: &zkabacus_crypto::merchant::Config,
-        database: &(dyn QueryMerchant + Send + Sync),
-        session_key: SessionKey,
+        _database: &(dyn QueryMerchant + Send + Sync),
+        _session_key: SessionKey,
         chan: Chan<Self::Protocol>,
     ) -> Result<(), anyhow::Error> {
-        let customer_config = merchant_config.to_customer_config();
-        // chan.send(customer_config.merchant_public_key()).await?;
-        // chan.send(customer_config.revocation_commitment_parameters())
-        //     .await?;
+        let (public_key, commitment_parameters, range_proof_parameters) =
+            merchant_config.extract_customer_config_parts();
+        chan.send(public_key)
+            .await?
+            .send(commitment_parameters)
+            .await?
+            .send(range_proof_parameters)
+            .await?
+            .close();
         Ok(())
     }
 }
