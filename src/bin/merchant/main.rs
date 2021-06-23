@@ -27,9 +27,11 @@ use zeekoe::{
     protocol::ZkChannels,
 };
 
+mod establish;
 mod parameters;
 mod pay;
 
+use establish::Establish;
 use parameters::Parameters;
 use pay::Pay;
 
@@ -130,6 +132,16 @@ impl Command for Run {
                                     session_key,
                                     chan,
                                 ).await?,
+                                2 => Establish.run(
+                                    rng,
+                                    &client,
+                                    &service,
+                                    &merchant_config,
+                                    database.as_ref(),
+                                    session_key,
+                                    chan,
+                                ).await?,
+
                             })?;
                             Ok::<_, anyhow::Error>(())
                         }
