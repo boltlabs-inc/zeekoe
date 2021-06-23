@@ -2,7 +2,7 @@ use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng, url::Url};
 
 use zkabacus_crypto::{
     merchant::Config as ZkAbacusConfig, ChannelId, Context as ProofContext, CustomerBalance,
-    MerchantBalance, MerchantRandomness,
+    MerchantBalance, MerchantRandomness, StateCommitment,
 };
 
 use zeekoe::{
@@ -31,7 +31,7 @@ impl Method for Establish {
         client: &reqwest::Client,
         service: &Service,
         zkabacus_config: &ZkAbacusConfig,
-        database: &(dyn QueryMerchant + Send + Sync),
+        _database: &(dyn QueryMerchant + Send + Sync),
         session_key: SessionKey,
         chan: Chan<Self::Protocol>,
     ) -> Result<(), anyhow::Error> {
@@ -88,7 +88,7 @@ impl Method for Establish {
             todo!("customer tezos account info"),
         );
 
-        let chan = zkabacus_initialize(
+        let (chan, state_commitment) = zkabacus_initialize(
             rng,
             zkabacus_config,
             session_key,
@@ -107,14 +107,24 @@ impl Method for Establish {
 
         proceed!(in chan);
         offer_abort!(in chan as Merchant);
-        zkabacus_activate(zkabacus_config, chan).await?;
+        zkabacus_activate(rng, zkabacus_config, chan, state_commitment).await?;
 
-        // TODO: if successful, send alert to response_url
+        // TODO: send alert to response_url that channel successfully established?
 
         Ok(())
     }
 }
 
+/// Ask the specified approver to approve the new channel balances and note (or not), returning
+/// either `Ok` if it is approved, and `Err` if it is not approved.
+///
+/// Approved channels may refer to an `Option<Url>`, where the *result* of the established
+/// channel may be located, once the pay session completes successfully.
+///
+/// Rejected channels may provide an `Option<String>` indicating the reason for the channel's
+/// rejection, where `None` indicates that it was rejected due to an internal error in the approver
+/// service. This information is forwarded directly to the customer, so we do not provide further
+/// information about the nature of the internal error, to prevent internal state leakage.
 async fn approve_channel_establish(
     _client: &reqwest::Client,
     _approver: &Approver,
@@ -125,7 +135,7 @@ async fn approve_channel_establish(
     todo!()
 }
 
-/// The core zkAbacus.Initialize and zkAbacus.Activate protocols.
+/// The core zkAbacus.Initialize protocol.
 async fn zkabacus_initialize(
     mut rng: StdRng,
     config: &ZkAbacusConfig,
@@ -134,7 +144,7 @@ async fn zkabacus_initialize(
     chan: Chan<establish::Initialize>,
     merchant_balance: MerchantBalance,
     customer_balance: CustomerBalance,
-) -> Result<Chan<establish::CustomerSupplyContractInfo>, anyhow::Error> {
+) -> Result<(Chan<establish::CustomerSupplyContractInfo>, StateCommitment), anyhow::Error> {
     let (proof, chan) = chan
         .recv()
         .await
@@ -149,19 +159,17 @@ async fn zkabacus_initialize(
         proof,
         &context,
     ) {
-        Some((closing_signature, _state_commitment)) => {
-            // TODO: insert (channel_id, state_commitment) into database
-            // If there was already an entry, abort
-
-            // Send closing signature to customer 
+        Some((closing_signature, state_commitment)) => {
+            // Send closing signature to customer
             proceed!(in chan);
-            let chan = chan.send(closing_signature)
+            let chan = chan
+                .send(closing_signature)
                 .await
                 .context("Failed to send initial closing signature.")?;
-            
+
             // Allow customer to reject signature if it's invalid
             offer_abort!(in chan as Merchant);
-            Ok(chan)
+            Ok((chan, state_commitment))
         }
         None => {
             let error = establish::Error::InvalidEstablishProof;
@@ -170,9 +178,19 @@ async fn zkabacus_initialize(
     }
 }
 
+/// The core zkAbacus.Activate protocol.
 async fn zkabacus_activate(
-    _config: &ZkAbacusConfig,
-    _chan: Chan<establish::Activate>,
+    mut rng: StdRng,
+    config: &ZkAbacusConfig,
+    chan: Chan<establish::Activate>,
+    state_commitment: StateCommitment,
 ) -> Result<(), anyhow::Error> {
-    todo!()
+    // Generate and send pay token.
+    let pay_token = config.activate(&mut rng, state_commitment);
+    let chan = chan
+        .send(pay_token)
+        .await
+        .context("Failed to send pay token.")?;
+    chan.close();
+    Ok(())
 }
