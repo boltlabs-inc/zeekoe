@@ -1,7 +1,7 @@
 use {
     anyhow::Context,
     async_trait::async_trait,
-    rand::{rngs::StdRng, SeedableRng},
+    rand::rngs::StdRng,
     serde::{Deserialize, Serialize},
     thiserror::Error,
 };
@@ -16,7 +16,7 @@ use zeekoe::{
     customer::{
         cli::{Pay, Refund},
         client::SessionKey,
-        database::{QueryCustomer, QueryCustomerExt, State, StateName},
+        database::{NameState, QueryCustomer, QueryCustomerExt, State, StateName},
         Chan, ChannelName, Config,
     },
     offer_abort, proceed,
@@ -27,7 +27,7 @@ use super::{connect, database, Command};
 
 #[async_trait]
 impl Command for Pay {
-    async fn run(self, mut rng: StdRng, config: self::Config) -> Result<(), anyhow::Error> {
+    async fn run(self, rng: StdRng, config: self::Config) -> Result<(), anyhow::Error> {
         // Convert the payment amount appropriately
         let minor_units: i64 = self.pay.as_minor_units().ok_or_else(|| {
             anyhow::anyhow!("Payment amount invalid for currency or out of range for channel")
@@ -145,9 +145,7 @@ async fn zkabacus_pay(
         .context("Failed to receive closing signature")?;
 
     // Verify the closing signature and transition into a locked state
-    let chan = if let Some(lock_message) =
-        lock_payment(&mut rng, database, label, closing_signature).await?
-    {
+    let chan = if let Some(lock_message) = lock_payment(database, label, closing_signature).await? {
         proceed!(in chan);
 
         // If the closing signature verifies, reveal our lock, secret, and blinding factor
@@ -177,7 +175,7 @@ async fn zkabacus_pay(
         .context("Failed to receive payment token")?;
 
     // Unlock the payment channel using the pay token
-    unlock_payment(&mut rng, database, label, pay_token).await?;
+    unlock_payment(database, label, pay_token).await?;
 
     Ok(chan)
 }
@@ -190,19 +188,16 @@ async fn start_payment(
     context: ProofContext,
 ) -> Result<StartMessage, anyhow::Error> {
     database
-        .with_channel_state(label, |clean, state| {
-            // Ensure the channel state is clean
-            ensure_clean(rng, label, clean, state)?;
-
+        .with_channel_state(label, |state| {
             // Ensure the channel is in ready state
-            let ready = take_state(label, StateName::Ready, State::ready, state)?;
+            let ready = take_state(label, State::ready, state)?;
 
-            // Attempt to transition the state to the started state
+            // Attempt to start the payment using the payment amount and proof context
             let (started, start_message) = ready
                 .start(rng, payment_amount, &context)
                 .context("Failed to generate nonce and payment proof")?;
 
-            // Set the new state in the database
+            // Set the new started state in the database
             *state = Some(State::Started(started));
 
             // Return the start message
@@ -216,29 +211,26 @@ async fn start_payment(
 }
 
 async fn lock_payment(
-    rng: &mut StdRng,
     database: &dyn QueryCustomer,
     label: &ChannelName,
     closing_signature: ClosingSignature,
 ) -> Result<Option<LockMessage>, anyhow::Error> {
     database
-        .with_channel_state(label, |clean, state| {
-            // Ensure the channel state is clean
-            ensure_clean(rng, label, clean, state)?;
-
+        .with_channel_state(label, |state| {
             // Ensure the channel is in started state
-            let started = take_state(label, StateName::Started, State::started, state)?;
+            let started = take_state(label, State::started, state)?;
 
-            // Attempt to transition the state to the locked state
+            // Attempt to lock the state using the closing signature
             match started.lock(closing_signature) {
                 Err(started) => {
-                    // TODO: is this the right thing to do here?
+                    // Restore the state in the database to the original started state
                     *state = Some(State::Started(started));
-                    set_pending_close(rng, state);
+
+                    // Return no start message, since we failed
                     Ok(None)
                 }
                 Ok((locked, lock_message)) => {
-                    // Set the new state in the database
+                    // Set the new locked state in the database
                     *state = Some(State::Locked(locked));
 
                     // Return the start message
@@ -254,30 +246,29 @@ async fn lock_payment(
 }
 
 async fn unlock_payment(
-    rng: &mut StdRng,
     database: &dyn QueryCustomer,
     label: &ChannelName,
     pay_token: PayToken,
 ) -> Result<(), anyhow::Error> {
     database
-        .with_channel_state(label, |clean, state| {
-            // Ensure the channel state is clean
-            ensure_clean(rng, label, clean, state)?;
-
+        .with_channel_state(label, |state| {
             // Ensure the channel is in locked state
-            let locked = take_state(label, StateName::Locked, State::locked, state)?;
+            let locked = take_state(label, State::locked, state)?;
 
-            // Attempt to unlock the state
+            // Attempt to unlock the state using the pay token
             match locked.unlock(pay_token) {
                 Err(locked) => {
-                    // TODO: is this the right thing to do here?
+                    // Restore the state in the database to the original locked state
                     *state = Some(State::Locked(locked));
-                    set_pending_close(rng, state);
+
+                    // Return an error since the state could not be unlocked
                     Err(pay::Error::InvalidPayToken.into())
                 }
                 Ok(ready) => {
-                    // Set the new state in the database
+                    // Set the new ready state in the database
                     *state = Some(State::Ready(ready));
+
+                    // Success
                     Ok(())
                 }
             }
@@ -289,13 +280,18 @@ async fn unlock_payment(
         })?
 }
 
+/// Given a mutable reference to a state, set it to the [`State::PendingClose`] state and return the
+/// [`StateName`] of its previous state, or continue to keep it in the [`State::PendingClose`] or
+/// [`State::Closed`] states if it is already in one of those.
+///
+/// This implicitly invokes the appropriate `close` method for the contained state, using the
+/// supplied random number generator.
 fn set_pending_close(rng: &mut StdRng, state: &mut Option<State>) -> StateName {
     let (old_state_name, new_state) = match state.take() {
         None => (StateName::Closed, None),
         Some(state) => (
             state.name(),
             match state {
-                State::Requested(_) => None,
                 State::Inactive(inactive) => Some(State::PendingClose(inactive.close(rng))),
                 State::Ready(ready) => Some(State::PendingClose(ready.close(rng))),
                 State::Started(started) => Some(State::PendingClose(started.close(rng))),
@@ -308,37 +304,17 @@ fn set_pending_close(rng: &mut StdRng, state: &mut Option<State>) -> StateName {
     old_state_name
 }
 
-/// Returns `Ok(())` if `clean = true`, otherwise generates an error describing the state as dirty.
-fn ensure_clean(
-    rng: &mut StdRng,
-    label: &ChannelName,
-    clean: bool,
-    state: &mut Option<State>,
-) -> Result<(), anyhow::Error> {
-    if !clean {
-        let state_name = set_pending_close(rng, state);
-        return Err(DirtyState {
-            label: label.clone(),
-            state_name,
-        }
-        .into());
-    }
-
-    Ok(())
-}
-
 /// Try to match the specified case of a state, or generate an error if it doesn't match.
-fn take_state<T>(
+fn take_state<T: NameState>(
     label: &ChannelName,
-    expecting: StateName,
     getter: impl FnOnce(State) -> Result<T, State>,
     state: &mut Option<State>,
-) -> Result<T, anyhow::Error> {
+) -> Result<T, UnexpectedState> {
     // Ensure state is not closed
     let open_state = state.take().ok_or_else(|| UnexpectedState {
         label: label.clone(),
         actual_state: StateName::Closed,
-        expected_state: StateName::Ready,
+        expected_state: T::name(),
     })?;
 
     let t = getter(open_state).map_err(|other_state| {
@@ -347,7 +323,7 @@ fn take_state<T>(
         UnexpectedState {
             label: label.clone(),
             actual_state,
-            expected_state: StateName::Ready,
+            expected_state: T::name(),
         }
     })?;
 

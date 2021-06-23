@@ -20,8 +20,8 @@
       "nullable": []
     }
   },
-  "1b06b279f5e94b49abdb22c41add85c8c3b66cdf5f90cc5c179acab980f16c92": {
-    "query": "UPDATE customer_channels SET clean = ? WHERE label = ?",
+  "25601de5c6748724f92d8a8e18ff3e95321a32b0dc0bb0cac2e0b0eb479dc78a": {
+    "query": "UPDATE customer_channels SET address = ? WHERE label = ?",
     "describe": {
       "columns": [],
       "parameters": {
@@ -30,8 +30,8 @@
       "nullable": []
     }
   },
-  "25601de5c6748724f92d8a8e18ff3e95321a32b0dc0bb0cac2e0b0eb479dc78a": {
-    "query": "UPDATE customer_channels SET address = ? WHERE label = ?",
+  "2aa9bc6bab24f57e733cc46ba040bf8f8cd5c5ff654c69b1bba13c923ef47d68": {
+    "query": "UPDATE customer_channels SET state = ? WHERE label = ?",
     "describe": {
       "columns": [],
       "parameters": {
@@ -88,24 +88,6 @@
       ]
     }
   },
-  "5f5b996527eef064573730fb1be591f68bff04573070e866733004682c5713c0": {
-    "query": "SELECT clean FROM customer_channels WHERE label = ?",
-    "describe": {
-      "columns": [
-        {
-          "name": "clean",
-          "ordinal": 0,
-          "type_info": "Bool"
-        }
-      ],
-      "parameters": {
-        "Right": 1
-      },
-      "nullable": [
-        false
-      ]
-    }
-  },
   "69377cabe38e67da48503697a4f862521c02db27307026e082bfcc042a57f092": {
     "query": "SELECT state AS \"state: State\" FROM customer_channels WHERE label = ?",
     "describe": {
@@ -134,8 +116,8 @@
       "nullable": []
     }
   },
-  "8704951f20ae78f141c2a5d049cc15340a14e9ef6c7f56f8807b615f8db51846": {
-    "query": "UPDATE customer_channels SET clean = ?, state = ? WHERE label = ?",
+  "a7790da586c93d20f5f26d7d927283566efdfe5ee684f4c0fe5d029da0cc6656": {
+    "query": "INSERT INTO customer_channels (label, address, state) VALUES (?, ?, ?)",
     "describe": {
       "columns": [],
       "parameters": {
@@ -178,16 +160,6 @@
       "columns": [],
       "parameters": {
         "Right": 2
-      },
-      "nullable": []
-    }
-  },
-  "f96304a57be9e6935189eed1c2030696c00c42da14ac8d5d922fe48b7b5c508b": {
-    "query": "INSERT INTO customer_channels (label, address, state, clean) VALUES (?, ?, ?, ?)",
-    "describe": {
-      "columns": [],
-      "parameters": {
-        "Right": 4
       },
       "nullable": []
     }
