@@ -6,6 +6,9 @@ use {
     structopt::StructOpt,
 };
 
+#[cfg(feature = "allow_explicit_certificate_trust")]
+use std::{env, path::Path};
+
 use zeekoe::{
     customer::{
         cli::{self, Account::*, Customer::*},

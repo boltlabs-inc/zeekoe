@@ -22,6 +22,7 @@ pub fn read_certificates(path: impl AsRef<Path>) -> Result<Vec<Certificate>, io:
 }
 
 /// Read the file at `path` as a single PEM-encoded `CERTIFICATE`.
+#[cfg(feature = "allow_explicit_certificate_trust")]
 pub fn read_single_certificate(path: impl AsRef<Path>) -> Result<Certificate, io::Error> {
     let mut file = File::open(&path)?;
     let mut contents = Vec::new();
