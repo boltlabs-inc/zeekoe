@@ -182,7 +182,7 @@ async fn zkabacus_activate(
         .await
         .context("Failed to receive blinded pay token.")?;
 
-    chan.close(); 
+    chan.close();
 
     match inactive.activate(blinded_pay_token) {
         Ok(ready) => Ok(ready),

@@ -1,11 +1,19 @@
-use std::str::FromStr;
+use {
+    serde::{Deserialize, Serialize},
+    std::{
+        fmt::{Display, Formatter},
+        str::FromStr,
+    },
+};
 
 pub use crate::cli::{customer as cli, customer::Cli};
 pub use crate::config::{customer as config, customer::Config};
+pub use crate::database::customer as database;
 pub use crate::defaults::customer as defaults;
 pub use crate::transport::client::{self as client, Chan, Client};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, sqlx::Type, Serialize, Deserialize)]
+#[sqlx(transparent)]
 pub struct AccountName(String);
 
 impl FromStr for AccountName {
@@ -22,7 +30,14 @@ impl AccountName {
     }
 }
 
-#[derive(Debug)]
+impl Display for AccountName {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+#[derive(Debug, Clone, sqlx::Type, Serialize, Deserialize)]
+#[sqlx(transparent)]
 pub struct ChannelName(String);
 
 impl FromStr for ChannelName {
@@ -30,6 +45,12 @@ impl FromStr for ChannelName {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(ChannelName(s.to_string()))
+    }
+}
+
+impl Display for ChannelName {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
     }
 }
 

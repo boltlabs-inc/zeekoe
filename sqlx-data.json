@@ -1,5 +1,111 @@
 {
   "db": "SQLite",
+  "16cb588b199fa7c76eb4805b3ace57612984f239e9a7b8cec5107776bad74a4e": {
+    "query": "INSERT INTO merchant_channels (channel_id, status) VALUES (?, ?)",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Right": 2
+      },
+      "nullable": []
+    }
+  },
+  "182d6b86eda32718d534c0cf4f816775c060f8f24923d28a5bdcae5ef534bb87": {
+    "query": "UPDATE merchant_channels\n            SET status = ?\n            WHERE channel_id = ?",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Right": 2
+      },
+      "nullable": []
+    }
+  },
+  "25601de5c6748724f92d8a8e18ff3e95321a32b0dc0bb0cac2e0b0eb479dc78a": {
+    "query": "UPDATE customer_channels SET address = ? WHERE label = ?",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Right": 2
+      },
+      "nullable": []
+    }
+  },
+  "2aa9bc6bab24f57e733cc46ba040bf8f8cd5c5ff654c69b1bba13c923ef47d68": {
+    "query": "UPDATE customer_channels SET state = ? WHERE label = ?",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Right": 2
+      },
+      "nullable": []
+    }
+  },
+  "2ee6f4e70a91ea95072d9ed09d610ff33ca320c65dccba12d9f1dafdc40196d7": {
+    "query": "\n            SELECT\n                signing_keypair\n                    AS \"signing_keypair: KeyPair\",\n                revocation_commitment_parameters\n                    AS \"revocation_commitment_parameters: CommitmentParameters\",\n                range_proof_parameters\n                    AS \"range_proof_parameters: RangeProofParameters\"\n            FROM\n                merchant_config\n            ",
+    "describe": {
+      "columns": [
+        {
+          "name": "signing_keypair: KeyPair",
+          "ordinal": 0,
+          "type_info": "Blob"
+        },
+        {
+          "name": "revocation_commitment_parameters: CommitmentParameters",
+          "ordinal": 1,
+          "type_info": "Blob"
+        },
+        {
+          "name": "range_proof_parameters: RangeProofParameters",
+          "ordinal": 2,
+          "type_info": "Blob"
+        }
+      ],
+      "parameters": {
+        "Right": 0
+      },
+      "nullable": [
+        false,
+        false,
+        false
+      ]
+    }
+  },
+  "46ea459c9d2e371ace67299de61c55d6e17a6c8b3a8d10e6bfd0771ffc907b0e": {
+    "query": "\n            SELECT secret AS \"secret: RevocationSecret\"\n            FROM revocations\n            WHERE lock = ?\n            ",
+    "describe": {
+      "columns": [
+        {
+          "name": "secret: RevocationSecret",
+          "ordinal": 0,
+          "type_info": "Blob"
+        }
+      ],
+      "parameters": {
+        "Right": 1
+      },
+      "nullable": [
+        true
+      ]
+    }
+  },
+  "69377cabe38e67da48503697a4f862521c02db27307026e082bfcc042a57f092": {
+    "query": "SELECT state AS \"state: State\" FROM customer_channels WHERE label = ?",
+    "describe": {
+      "columns": [
+        {
+          "name": "state: State",
+          "ordinal": 0,
+          "type_info": "Blob"
+        }
+      ],
+      "parameters": {
+        "Right": 1
+      },
+      "nullable": [
+        true
+      ]
+    }
+  },
   "866f68c59d036e6c895aaaa65aad6b2805ece96bde8a6fc31e4abf4c3de0b0da": {
     "query": "INSERT INTO nonces (data) VALUES (?) ON CONFLICT (data) DO NOTHING",
     "describe": {
@@ -10,18 +116,33 @@
       "nullable": []
     }
   },
-  "9d5edcbcff4ed4c1d16bab23284ae831ef5027cd1aab3e233befcda62a707160": {
-    "query": "\n            SELECT\n                lock AS \"lock: RevocationLock\",\n                secret AS \"secret: RevocationSecret\"\n            FROM revocations\n            WHERE lock = ?\n            ",
+  "a7790da586c93d20f5f26d7d927283566efdfe5ee684f4c0fe5d029da0cc6656": {
+    "query": "INSERT INTO customer_channels (label, address, state) VALUES (?, ?, ?)",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Right": 3
+      },
+      "nullable": []
+    }
+  },
+  "aa91a624c3efb7bbda7d2501c6b93f13513b36b9ebbb3410275cb3bd9bb1965e": {
+    "query": "\n            INSERT INTO\n                merchant_config\n            (signing_keypair, revocation_commitment_parameters, range_proof_parameters)\n                VALUES\n            (?, ?, ?)\n            ",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Right": 3
+      },
+      "nullable": []
+    }
+  },
+  "f3232a1d8e4638fa240320ac67333beeacf4528bb2b61189ac4f7501b93c378f": {
+    "query": "\n            SELECT address AS \"address: ZkChannelAddress\"\n            FROM customer_channels\n            WHERE label = ?",
     "describe": {
       "columns": [
         {
-          "name": "lock: RevocationLock",
+          "name": "address: ZkChannelAddress",
           "ordinal": 0,
-          "type_info": "Blob"
-        },
-        {
-          "name": "secret: RevocationSecret",
-          "ordinal": 1,
           "type_info": "Blob"
         }
       ],
@@ -29,13 +150,22 @@
         "Right": 1
       },
       "nullable": [
-        false,
-        true
+        false
       ]
     }
   },
   "f85f1798bbf5436cb9036f76cf40f2e90d92527f395b37f97d933cebee216320": {
     "query": "INSERT INTO revocations (lock, secret) VALUES (?, ?)",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Right": 2
+      },
+      "nullable": []
+    }
+  },
+  "fc251426308ae90596746c87a8d598387e9b52eaaecbcd47aa31fb238f2cb759": {
+    "query": "UPDATE customer_channels SET label = ? WHERE label = ?",
     "describe": {
       "columns": [],
       "parameters": {

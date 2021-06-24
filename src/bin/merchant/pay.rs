@@ -1,4 +1,4 @@
-use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng, std::sync::Arc, url::Url};
+use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng, url::Url};
 
 use zeekoe::{
     abort,

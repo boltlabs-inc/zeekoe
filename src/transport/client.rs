@@ -9,7 +9,6 @@ use {
         fmt::{self, Display},
         io,
         marker::PhantomData,
-        path::Path,
         str::FromStr,
         sync::Arc,
         time::Duration,
@@ -20,8 +19,11 @@ use {
     webpki::{DNSNameRef, InvalidDNSNameError},
 };
 
-use super::{channel::TransportError, handshake, pem};
+use super::{channel::TransportError, handshake};
 use crate::customer;
+
+#[cfg(feature = "allow_explicit_certificate_trust")]
+use {super::pem, std::path::Path};
 
 pub use super::channel::ClientChan as Chan;
 pub use dialectic_reconnect::Backoff;
@@ -219,11 +221,13 @@ where
 
 /// The address of a zkChannels merchant: a URI of the form `zkchannel://some.domain.com:2611` with
 /// an optional port number.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde_with::SerializeDisplay, serde_with::DeserializeFromStr)]
 pub struct ZkChannelAddress {
     host: DNSName,
     port: Option<u16>,
 }
+
+zkabacus_crypto::impl_sqlx_for_bincode_ty!(ZkChannelAddress);
 
 #[derive(Debug, Error)]
 #[non_exhaustive]

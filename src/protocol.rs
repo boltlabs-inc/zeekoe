@@ -100,6 +100,16 @@ impl Display for Party {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, sqlx::Type)]
+#[sqlx(rename_all = "snake_case", type_name = "text")]
+pub enum ChannelStatus {
+    Originated,
+    CustomerFunded,
+    MerchantFunded,
+    Active,
+    Closed,
+}
+
 impl Party {
     /// Get the other party.
     ///
