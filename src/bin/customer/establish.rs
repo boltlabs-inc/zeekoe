@@ -10,7 +10,7 @@ use zeekoe::{
     customer::{
         cli::Establish,
         client::{SessionKey, ZkChannelAddress},
-        Chan, Config,
+        Chan, ChannelName, Config,
     },
     offer_abort, proceed,
     protocol::{
@@ -19,7 +19,7 @@ use zeekoe::{
     },
 };
 
-use super::{connect, Command};
+use super::{connect, database, Command};
 
 #[async_trait]
 impl Command for Establish {
@@ -96,7 +96,10 @@ impl Command for Establish {
             todo!("customer tezos account info"),
         );
 
-        // TODO: fetch this.
+        // Connect to the customer database
+        let database = database(&config).await?;
+
+        // Run a **separate** session to get the merchant's public parameters
         let customer_config: zkabacus_crypto::customer::Config =
             get_parameters(&config, &self.merchant).await?;
 
@@ -111,6 +114,21 @@ impl Command for Establish {
         )
         .await
         .context("Failed to initialize channel.")?;
+
+        // Store the inactive channel state in the database
+        match database
+            .new_channel(
+                &self
+                    .label
+                    .unwrap_or_else(|| ChannelName::new(format!("{}", self.merchant))),
+                &self.merchant,
+                inactive,
+            )
+            .await
+        {
+            Ok(_) => todo!(),
+            Err(_) => todo!(),
+        }
 
         // TODO: initialize contract on-chain via escrow agent.
         // TODO: fund contract via escrow agent.
@@ -128,7 +146,7 @@ impl Command for Establish {
         }
         proceed!(in chan);
 
-        let _ready = zkabacus_activate(config, inactive, chan).await?;
+        let _ready = zkabacus_activate(customer_config, inactive, chan).await?;
 
         // TODO: store ready state in db.
 
