@@ -26,8 +26,7 @@ path = "src/bin/merchant/main.rs"
 allow_explicit_certificate_trust = []
 
 [dependencies]
-zkabacus-crypto = { path = "../libzkchannels-crypto/zkabacus-crypto", features = ["sqlite"] }
-zkchannels-crypto = { path = "../libzkchannels-crypto/zkchannels-crypto", features = ["sqlite"] }
+zkabacus-crypto = { git = "ssh://git@github.com/boltlabs-inc/libzkchannels-crypto.git", branch = "main", features = ["sqlite"] }
 tokio = { version = "1", features = ["full"] }
 tokio-rustls = "0.22"
 anyhow = "1"
@@ -63,10 +62,10 @@ url = { version = "2.2", features = ["serde"] }
 rusty-money = { version = "0.4", features = ["crypto"] }
 uuid = { version = "0.8", features = ["serde", "v4"] }
 zeroize = { version = "1.2", features = ["zeroize_derive"] }
-dialectic = { version = "0.4", path = "../dialectic/dialectic" }
-dialectic-tokio-serde = { version = "0.1", path = "../dialectic/dialectic-tokio-serde" }
-dialectic-tokio-serde-bincode = { version = "0.1", path = "../dialectic/dialectic-tokio-serde-bincode" }
-dialectic-reconnect = { version = "0.1", features = ["serde", "humantime-serde"], path = "../dialectic/dialectic-reconnect" }
+dialectic = { git = "ssh://git@github.com/boltlabs-inc/dialectic.git", branch = "main" }
+dialectic-tokio-serde = { git = "ssh://git@github.com/boltlabs-inc/dialectic.git", branch = "main" }
+dialectic-tokio-serde-bincode = { git = "ssh://git@github.com/boltlabs-inc/dialectic.git", branch = "main" }
+dialectic-reconnect = { features = ["serde", "humantime-serde"], git = "ssh://git@github.com/boltlabs-inc/dialectic.git", branch = "main" }
 sqlx = { version = "0.5.2", features = ["any", "migrate", "offline", "runtime-tokio-rustls", "sqlite"] }
 
 [dev-dependencies]
