@@ -49,14 +49,6 @@ impl Command for Establish {
             .await
             .context("Failed to select channel establishment session")?;
 
-        // TODO: send customer chain-specific things
-
-        let customer_randomness = CustomerRandomness::new(&mut rng);
-        let chan = chan
-            .send(customer_randomness)
-            .await
-            .context("Failed to send customer randomness for channel ID")?;
-
         // Format deposit amounts as the correct types
         let customer_deposit = CustomerBalance::try_new(
             self.deposit
@@ -76,14 +68,22 @@ impl Command for Establish {
             })
             .map_err(|_| establish::Error::InvalidDeposit(Merchant))?;
 
-        // Read the contents of the note, if any
+        // Read the contents of the channel establishment note, if any: this is the justification,
+        // if any is needed, for why the channel should be allowed to be established (format
+        // unspecified, specific to merchant)
         let note = self
             .note
             .unwrap_or_else(|| zeekoe::customer::cli::Note::String(String::from("")))
             .read(config.max_note_length)?;
 
+        // Generate and send the customer randomness to the merchant
+        let customer_randomness = CustomerRandomness::new(&mut rng);
+
         // Send the request for the funding of the channel
         let chan = chan
+            .send(customer_randomness)
+            .await
+            .context("Failed to send customer randomness for channel ID")?
             .send(customer_deposit)
             .await
             .context("Failed to send customer deposit amount")?
@@ -94,26 +94,34 @@ impl Command for Establish {
             .await
             .context("Failed to send channel establishment note")?;
 
+        // TODO: customer sends merchant:
+        // - customer's tezos public key (eddsa public key)
+        // - customer's tezos account tz1 address corresponding to that public key
+        // - SHA3-256 of:
+        //   * merchant's pointcheval-sanders public key (`zkabacus_crypto::PublicKey`)
+        //   * tz1 address corresponding to merchant's public key
+        //   * merchant's tezos public key
+
         // Allow the merchant to reject the funding of the channel, else continue
         offer_abort!(in chan as Customer);
 
-        // TODO: receive merchant account info
-
+        // Receive merchant randomness contribution to the channel ID formation
         let (merchant_randomness, chan) = chan
             .recv()
             .await
             .context("Failed to receive merchant randomness for channel ID")?;
 
-        // Generate a channel ID (the merchant will share this)
+        // Generate channel ID (merchant will share this same value since they use the same inputs)
         let channel_id = ChannelId::new(
             merchant_randomness,
             customer_randomness,
             customer_config.merchant_public_key(),
-            &[], // TODO: fill this in with bytes from merchant account info
-            &[], // TODO: fill this in with bytes from customer account info
+            &[], // TODO: fill this in with bytes of merchant's tezos public key
+            &[], // TODO: fill this in with bytes of customer's tezos public key
         );
 
-        // Generate the proof context for the pay proof
+        // Generate the proof context for the establish proof
+        // TODO: the context should actually be formed from a session transcript up to this point
         let context = ProofContext::new(&session_key.to_bytes());
 
         // Use the specified label, or else use the `ZkChannelAddress` as a string
@@ -135,17 +143,19 @@ impl Command for Establish {
         .await
         .context("Failed to initialize the channel")?;
 
+        // TODO: initialize contract on-chain via escrow agent.
+        // TODO: fund contract via escrow agent
+        // TODO: send contract id to merchant (possibly also send block height, check spec)
+
         // Allow the merchant to indicate whether it funded the channel
         offer_abort!(in chan as Customer);
 
-        // TODO: initialize contract on-chain via escrow agent.
-        // TODO: fund contract via escrow agent
-        // TODO: send contract id to merchant
-
-        // TODO: check that merchant funding was successful: if not, recommend unilateral close
+        // TODO: if merchant contribution was non-zero, check that merchant funding was provided
+        // within a configurable timeout and to the desired block depth and that the status of the
+        // contract is locked: if not, recommend unilateral close
         let merchant_funding_successful: bool = true; // TODO: query tezos for merchant funding
 
-        if merchant_funding_successful {
+        if !merchant_funding_successful {
             abort!(in chan return establish::Error::FailedMerchantFunding);
         }
         proceed!(in chan);
@@ -193,10 +203,13 @@ async fn zkabacus_initialize(
         &context,
     );
 
-    // Send the pay proof
-    let chan = chan.send(proof).await.context("Failed to send pay proof")?;
+    // Send the establish proof
+    let chan = chan
+        .send(proof)
+        .await
+        .context("Failed to send establish proof")?;
 
-    // Allow the merchant to reject the pay proof
+    // Allow the merchant to reject the establish proof
     offer_abort!(in chan as Customer);
 
     // Receive a closing signature
@@ -288,11 +301,13 @@ async fn activate_local(
     database
         .with_channel_state(label, |state| {
             let inactive = take_state(State::inactive, state)?;
-            *state = Some(State::Ready(
-                inactive
-                    .activate(pay_token)
-                    .map_err(|_| establish::Error::InvalidPayToken)?,
-            ));
+            match inactive.activate(pay_token) {
+                Ok(ready) => *state = Some(State::Ready(ready)),
+                Err(inactive) => {
+                    *state = Some(State::Inactive(inactive));
+                    Err(establish::Error::InvalidPayToken)?;
+                }
+            }
             Ok(())
         })
         .await??

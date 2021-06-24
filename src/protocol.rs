@@ -150,8 +150,10 @@ pub mod parameters {
     /// Get the public parameters for the merchant.
     pub type Parameters = Session! {
         recv PublicKey;
-        recv CommitmentParameters;
+        recv CommitmentParameters; // TODO: this is a global default, does not need to be sent
         recv RangeProofParameters;
+        // TODO: tz1 address corresponding to merchant's public key
+        // TODO: merchant's tezos eddsa public key
     };
 }
 
@@ -189,11 +191,17 @@ pub mod establish {
         send CustomerBalance;
         send MerchantBalance;
         send String;
+        // TODO: customer sends merchant:
+        // - customer's tezos public key (eddsa public key)
+        // - customer's tezos account tz1 address corresponding to that public key
+        // - SHA3-256 of:
+        //   * merchant's pointcheval-sanders public key (`zkabacus_crypto::PublicKey`)
+        //   * tz1 address corresponding to merchant's public key
+        //   * merchant's tezos public key
         OfferAbort<MerchantSupplyInfo, Error>;
     };
 
     pub type MerchantSupplyInfo = Session! {
-        // TODO: recv merchant-side chain-specific public stuff
         recv MerchantRandomness;
         Initialize;
     };
