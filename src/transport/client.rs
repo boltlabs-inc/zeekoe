@@ -9,7 +9,6 @@ use {
         fmt::{self, Display},
         io,
         marker::PhantomData,
-        path::Path,
         str::FromStr,
         sync::Arc,
         time::Duration,
@@ -20,8 +19,11 @@ use {
     webpki::{DNSNameRef, InvalidDNSNameError},
 };
 
-use super::{channel::TransportError, handshake, pem};
+use super::{channel::TransportError, handshake};
 use crate::customer;
+
+#[cfg(feature = "allow_explicit_certificate_trust")]
+use {super::pem, std::path::Path};
 
 pub use super::channel::ClientChan as Chan;
 pub use dialectic_reconnect::Backoff;
