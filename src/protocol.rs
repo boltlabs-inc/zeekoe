@@ -52,7 +52,7 @@ type ChooseAbort<Next, Err> = Session! {
 
 #[macro_export]
 macro_rules! abort {
-    (in $chan:ident return $err:expr ) => {
+    (in $chan:ident return $err:expr ) => {{
         let $chan = ::anyhow::Context::context(
             $chan.choose::<0>().await,
             "Failure while choosing to abort",
@@ -64,7 +64,7 @@ macro_rules! abort {
         )?;
         $chan.close();
         return ::anyhow::Context::context(Err(err), "Pay protocol aborted");
-    };
+    }};
 }
 
 #[macro_export]

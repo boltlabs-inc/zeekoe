@@ -104,33 +104,46 @@ impl QueryCustomer for SqlitePool {
         inactive: Inactive,
     ) -> Result<(), (Inactive, Result<ChannelExists, sqlx::Error>)> {
         let state = State::Inactive(inactive);
+        (|| async {
+            let mut transaction = self.begin().await.map_err(Err)?;
 
-        let mut transaction = self
-            .begin()
+            // Determine if the channel already exists
+            let already_exists = if let Some(result) =
+                sqlx::query!("SELECT label FROM customer_channels WHERE label = ?", label)
+                    .fetch(&mut transaction)
+                    .next()
+                    .await
+            {
+                result.map_err(Err)?; // rethrow error
+                true // channel by this label already exists
+            } else {
+                false // channel label is fresh
+            };
+
+            // Return an error if it does exist
+            if already_exists {
+                return Err(Ok(ChannelExists {
+                    label: label.clone(),
+                }));
+            }
+
+            let result = sqlx::query!(
+                "INSERT INTO customer_channels (label, address, state) VALUES (?, ?, ?)",
+                label,
+                address,
+                state,
+            )
+            .execute(&mut transaction)
             .await
-            .map_err(|e| (state.inactive().unwrap(), Err(e)))?;
+            .map(|_| ())
+            .map_err(Err);
 
-        let state_ref = &state;
+            transaction.commit().await.map_err(Err)?;
 
-        let result = sqlx::query!(
-            "INSERT INTO customer_channels (label, address, state) VALUES (?, ?, ?)",
-            label,
-            address,
-            state_ref,
-        )
-        .execute(&mut transaction)
+            result
+        })()
         .await
-        .map(|_| ())
-        .map_err(|e| (state.inactive().unwrap(), Err(e)));
-
-        drop(state_ref);
-
-        transaction
-            .commit()
-            .await
-            .map_err(|e| (state.inactive().unwrap(), Err(e)))?;
-
-        result
+        .map_err(|e| (state.inactive().unwrap(), e))
     }
 
     async fn channel_address(&self, label: &ChannelName) -> sqlx::Result<Option<ZkChannelAddress>> {

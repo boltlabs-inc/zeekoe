@@ -141,7 +141,7 @@ where
     /// error if connection and all re-connection attempts failed.
     pub async fn connect(
         &self,
-        ZkChannelAddress { host, port }: ZkChannelAddress,
+        ZkChannelAddress { host, port }: &ZkChannelAddress,
     ) -> Result<(SessionKey, Chan<Protocol>), Error> {
         // Share the TLS config between all times we connect
         let tls_config = Arc::new(self.tls_config.clone());
@@ -201,7 +201,10 @@ where
         .recover_handshake(self.backoff.build(retry::Recovery::ReconnectAfter))
         .timeout(self.timeout)
         .max_pending_retries(self.max_pending_retries)
-        .connect((host, port.unwrap_or_else(customer::defaults::port)))
+        .connect((
+            host.to_owned(),
+            port.unwrap_or_else(customer::defaults::port),
+        ))
         .await
         .map_err(|e| {
             // Convert error into general error type
