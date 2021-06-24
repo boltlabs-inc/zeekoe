@@ -7,7 +7,11 @@ use zkabacus_crypto::{
 
 use zeekoe::{
     abort,
-    customer::{cli::Establish, client::SessionKey, Chan, Config},
+    customer::{
+        cli::Establish,
+        client::{SessionKey, ZkChannelAddress},
+        Chan, Config,
+    },
     offer_abort, proceed,
     protocol::{
         establish,
@@ -93,11 +97,12 @@ impl Command for Establish {
         );
 
         // TODO: fetch this.
-        let config: zkabacus_crypto::customer::Config = todo!("Retrieve config from database.");
+        let customer_config: zkabacus_crypto::customer::Config =
+            get_parameters(&config, &self.merchant).await?;
 
         let (inactive, chan) = zkabacus_initialize(
             rng,
-            config,
+            customer_config,
             session_key,
             channel_id,
             chan,
@@ -129,6 +134,14 @@ impl Command for Establish {
 
         Ok(())
     }
+}
+
+/// Fetch the merchant's public parameters.
+async fn get_parameters(
+    config: &Config,
+    address: &ZkChannelAddress,
+) -> Result<zkabacus_crypto::customer::Config, anyhow::Error> {
+    todo!()
 }
 
 /// The core zkAbacus.Initialize and zkAbacus.Activate protocols.
