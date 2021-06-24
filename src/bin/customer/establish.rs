@@ -10,6 +10,7 @@ use zeekoe::{
     customer::{
         cli::Establish,
         client::{SessionKey, ZkChannelAddress},
+        database::QueryCustomer,
         Chan, ChannelName, Config,
     },
     offer_abort, proceed,
@@ -103,32 +104,20 @@ impl Command for Establish {
         let customer_config: zkabacus_crypto::customer::Config =
             get_parameters(&config, &self.merchant).await?;
 
-        let (inactive, chan) = zkabacus_initialize(
+        let chan = zkabacus_initialize(
             rng,
             customer_config,
+            database.as_ref(),
             session_key,
             channel_id,
             chan,
+            self.label,
+            &self.merchant,
             merchant_deposit,
             customer_deposit,
         )
         .await
         .context("Failed to initialize channel.")?;
-
-        // Store the inactive channel state in the database
-        match database
-            .new_channel(
-                &self
-                    .label
-                    .unwrap_or_else(|| ChannelName::new(format!("{}", self.merchant))),
-                &self.merchant,
-                inactive,
-            )
-            .await
-        {
-            Ok(_) => todo!(),
-            Err(_) => todo!(),
-        }
 
         // TODO: initialize contract on-chain via escrow agent.
         // TODO: fund contract via escrow agent.
@@ -146,9 +135,7 @@ impl Command for Establish {
         }
         proceed!(in chan);
 
-        let _ready = zkabacus_activate(customer_config, inactive, chan).await?;
-
-        // TODO: store ready state in db.
+        zkabacus_activate(customer_config, database, chan).await?;
 
         Ok(())
     }
@@ -166,12 +153,15 @@ async fn get_parameters(
 async fn zkabacus_initialize(
     mut rng: StdRng,
     config: zkabacus_crypto::customer::Config,
+    database: &dyn QueryCustomer,
     session_key: SessionKey,
     channel_id: ChannelId,
     chan: Chan<establish::Initialize>,
+    label: Option<ChannelName>,
+    address: &ZkChannelAddress,
     merchant_balance: MerchantBalance,
     customer_balance: CustomerBalance,
-) -> Result<(Inactive, Chan<establish::CustomerSupplyContractInfo>), anyhow::Error> {
+) -> Result<Chan<establish::CustomerSupplyContractInfo>, anyhow::Error> {
     let context = ProofContext::new(&session_key.to_bytes());
 
     let (requested, proof) = Requested::new(
@@ -193,9 +183,23 @@ async fn zkabacus_initialize(
         .context("Failed to receive closing signature")?;
 
     match requested.complete(closing_signature) {
-        Ok(inactive) => {
+        Ok(mut inactive) => {
+            // Store the inactive channel state in the database
+            let mut label = label.unwrap_or_else(|| ChannelName::new(format!("{}", address)));
+            let mut count = 0;
+            loop {
+                // TODO: prepend count if count is not 0 to label
+                match database.new_channel(&label, address, inactive).await {
+                    Ok(()) => break,
+                    Err((returned_inactive, error)) => {
+                        inactive = returned_inactive;
+                    }
+                }
+                count += 1;
+            }
+
             proceed!(in chan);
-            return Ok((inactive, chan));
+            return Ok(chan);
         }
         Err(_) => {
             abort!(in chan return establish::Error::InvalidClosingSignature);
@@ -205,9 +209,9 @@ async fn zkabacus_initialize(
 
 async fn zkabacus_activate(
     config: zkabacus_crypto::customer::Config,
-    inactive: Inactive,
+    database: &dyn QueryCustomer,
     chan: Chan<establish::Activate>,
-) -> Result<Ready, anyhow::Error> {
+) -> Result<(), anyhow::Error> {
     let (blinded_pay_token, chan) = chan
         .recv()
         .await
@@ -215,8 +219,9 @@ async fn zkabacus_activate(
 
     chan.close();
 
-    match inactive.activate(blinded_pay_token) {
-        Ok(ready) => Ok(ready),
-        Err(_) => Err(establish::Error::InvalidPayToken.into()),
-    }
+    todo!()
+    // match inactive.activate(blinded_pay_token) {
+    //     Ok(ready) => Ok(()),
+    //     Err(_) => Err(establish::Error::InvalidPayToken.into()),
+    // }
 }

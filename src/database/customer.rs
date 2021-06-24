@@ -51,7 +51,7 @@ pub trait QueryCustomer: Send + Sync {
         label: &ChannelName,
         address: &ZkChannelAddress,
         inactive: Inactive,
-    ) -> Result<(), (Inactive, sqlx::Error)>;
+    ) -> Result<(), (Inactive, Result<ChannelExists, sqlx::Error>)>;
 
     /// Get the address of a given channel, or `None` if the label does not exist in the database.
     async fn channel_address(&self, label: &ChannelName) -> sqlx::Result<Option<ZkChannelAddress>>;
@@ -102,20 +102,35 @@ impl QueryCustomer for SqlitePool {
         label: &ChannelName,
         address: &ZkChannelAddress,
         inactive: Inactive,
-    ) -> Result<(), (Inactive, sqlx::Error)> {
+    ) -> Result<(), (Inactive, Result<ChannelExists, sqlx::Error>)> {
         let state = State::Inactive(inactive);
+
+        let mut transaction = self
+            .begin()
+            .await
+            .map_err(|e| (state.inactive().unwrap(), Err(e)))?;
+
         let state_ref = &state;
 
-        sqlx::query!(
+        let result = sqlx::query!(
             "INSERT INTO customer_channels (label, address, state) VALUES (?, ?, ?)",
             label,
             address,
             state_ref,
         )
-        .execute(self)
+        .execute(&mut transaction)
         .await
         .map(|_| ())
-        .map_err(|e| (state.inactive().unwrap(), e))
+        .map_err(|e| (state.inactive().unwrap(), Err(e)));
+
+        drop(state_ref);
+
+        transaction
+            .commit()
+            .await
+            .map_err(|e| (state.inactive().unwrap(), Err(e)))?;
+
+        result
     }
 
     async fn channel_address(&self, label: &ChannelName) -> sqlx::Result<Option<ZkChannelAddress>> {
@@ -222,5 +237,11 @@ impl<Q: QueryCustomer + ?Sized> QueryCustomerExt for Q {
 #[derive(Debug, Serialize, Deserialize, Error)]
 #[error("There is no channel by the name of \"{label}\"")]
 pub struct NoSuchChannel {
+    label: ChannelName,
+}
+
+#[derive(Debug, Serialize, Deserialize, Error)]
+#[error("There is already a channel by the name of \"{label}\"")]
+pub struct ChannelExists {
     label: ChannelName,
 }
