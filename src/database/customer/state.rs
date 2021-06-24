@@ -72,8 +72,8 @@ impl_name_state!(Locked, StateName::Locked);
 
 impl_sqlx_for_bincode_ty!(State);
 
-/// Declare a function that eliminates one of the cases of the [`State`] struct.
-macro_rules! impl_state_eliminator {
+/// Declare a function that tries to unwrap a particular constructor of the [`State`] enum.
+macro_rules! impl_state_try_getter {
     ($doc:tt, $method:ident, $constructor:ident, $state:ty $(,)?) => {
         #[doc = "Get the enclosed [`"]
         #[doc = $doc]
@@ -89,11 +89,11 @@ macro_rules! impl_state_eliminator {
 }
 
 impl State {
-    impl_state_eliminator!("Inactive", inactive, Inactive, Inactive);
-    impl_state_eliminator!("Ready", ready, Ready, Ready);
-    impl_state_eliminator!("Started", started, Started, Started);
-    impl_state_eliminator!("Locked", locked, Locked, Locked);
-    impl_state_eliminator!(
+    impl_state_try_getter!("Inactive", inactive, Inactive, Inactive);
+    impl_state_try_getter!("Ready", ready, Ready, Ready);
+    impl_state_try_getter!("Started", started, Started, Started);
+    impl_state_try_getter!("Locked", locked, Locked, Locked);
+    impl_state_try_getter!(
         "ClosingMessage",
         pending_close,
         PendingClose,
