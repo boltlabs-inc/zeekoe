@@ -133,9 +133,9 @@ impl Party {
 // All protocols are from the perspective of the customer.
 
 pub use establish::Establish;
+pub use close::Close;
 pub use parameters::Parameters;
 pub use pay::Pay;
-pub use close::Close;
 
 pub type ZkChannels = Session! {
     choose {
@@ -234,9 +234,31 @@ pub mod establish {
     };
 }
 pub mod close {
+    use dialectic::types::Done;
+    use zkabacus_crypto::{CloseState, CloseStateSignature};
+
     use super::*;
-    
-    pub type Close = Session! {};
+
+    #[derive(Debug, Clone, Serialize, Error)]
+    pub enum Error {
+        #[error("Customer sent an invalid signature")]
+        InvalidCloseStateSignature
+    }
+
+    /// Mutual close session.
+    pub type Close = CustomerSendSignature;
+
+    pub type CustomerSendSignature = Session! {
+        send CloseStateSignature;
+        send CloseState;
+        OfferAbort<MerchantSendAuthorization, Error>
+    };
+
+    pub type MerchantSendAuthorization = Session! {
+       // TODO: Send auth signature from tezos. 
+       ChooseAbort<Done, Error>
+    };
+
 }
 
 pub mod pay {
