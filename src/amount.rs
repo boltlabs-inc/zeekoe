@@ -1,13 +1,13 @@
 use {
     rust_decimal::Decimal,
-    rusty_money::{crypto, FormattableCurrency, Money, MoneyError},
+    rusty_money::{define_currency_set, FormattableCurrency, Money, MoneyError},
     std::{convert::TryInto, str::FromStr},
     thiserror::Error,
 };
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Amount {
-    pub(crate) money: Money<'static, crypto::Currency>,
+    pub(crate) money: Money<'static, supported::Currency>,
 }
 
 impl FromStr for Amount {
@@ -16,7 +16,7 @@ impl FromStr for Amount {
     /// Parse an amount specified like "100.00 XTZ"
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if let Some((amount, currency)) = s.split_once(' ') {
-            let currency = crypto::find(currency).ok_or(MoneyError::InvalidCurrency)?;
+            let currency = supported::find(currency).ok_or(MoneyError::InvalidCurrency)?;
             let money = Money::from_str(amount, currency)?;
             if money.is_positive() {
                 Ok(Amount { money })
@@ -76,3 +76,19 @@ mod test {
         assert_eq!(12_340_000, minor_amount);
     }
 }
+
+// Define only the currencies supported by this application
+define_currency_set!(
+    supported {
+        // Copied from the rusty_money crypto-currency definitions
+        XTZ: {
+            code: "XTZ",
+            exponent: 6,
+            locale: EnUs,
+            minor_units: 1_000_000,
+            name: "Tezos",
+            symbol: "XTZ",
+            symbol_first: false,
+        }
+    }
+);

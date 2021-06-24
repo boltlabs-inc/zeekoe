@@ -52,7 +52,7 @@ type ChooseAbort<Next, Err> = Session! {
 
 #[macro_export]
 macro_rules! abort {
-    (in $chan:ident return $err:expr ) => {
+    (in $chan:ident return $err:expr ) => {{
         let $chan = ::anyhow::Context::context(
             $chan.choose::<0>().await,
             "Failure while choosing to abort",
@@ -64,7 +64,7 @@ macro_rules! abort {
         )?;
         $chan.close();
         return ::anyhow::Context::context(Err(err), "Pay protocol aborted");
-    };
+    }};
 }
 
 #[macro_export]
@@ -98,6 +98,16 @@ impl Display for Party {
             }
         )
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, sqlx::Type)]
+#[sqlx(rename_all = "snake_case", type_name = "text")]
+pub enum ChannelStatus {
+    Originated,
+    CustomerFunded,
+    MerchantFunded,
+    Active,
+    Closed,
 }
 
 impl Party {
@@ -171,7 +181,6 @@ pub mod establish {
 
     pub type CustomerSupplyInfo = Session! {
         // TODO: send customer-side chain-specific public stuff
-        // TODO: send customer randomness from zkAbacus
         send CustomerRandomness;
         CustomerProposeFunding;
     };

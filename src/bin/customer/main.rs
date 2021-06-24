@@ -1,14 +1,19 @@
 use {
     async_trait::async_trait,
     rand::{rngs::StdRng, SeedableRng},
-    std::{convert::identity, env, path::Path},
+    sqlx::SqlitePool,
+    std::{convert::identity, sync::Arc},
     structopt::StructOpt,
 };
+
+#[cfg(feature = "allow_explicit_certificate_trust")]
+use std::{env, path::Path};
 
 use zeekoe::{
     customer::{
         cli::{self, Account::*, Customer::*},
         client::{SessionKey, ZkChannelAddress},
+        database::QueryCustomer,
         defaults::config_path,
         Chan, Cli, Client, Config,
     },
@@ -26,6 +31,8 @@ mod pay;
 /// to start with a valid loaded configuration.
 #[async_trait]
 pub trait Command {
+    /// Run the command to completion using the given random number generator for all randomness and
+    /// the given customer configuration.
     async fn run(self, rng: StdRng, config: Config) -> Result<(), anyhow::Error>;
 }
 
@@ -55,7 +62,7 @@ pub async fn main_with_cli(cli: Cli) -> Result<(), anyhow::Error> {
 /// Connect to a given [`ZkChannelAddress`], configured using the parameters in the [`Config`].
 pub async fn connect(
     config: &Config,
-    address: ZkChannelAddress,
+    address: &ZkChannelAddress,
 ) -> Result<(SessionKey, Chan<protocol::ZkChannels>), anyhow::Error> {
     let Config {
         backoff,
@@ -81,6 +88,26 @@ pub async fn connect(
     }
 
     Ok(client.connect(address).await?)
+}
+
+/// Connect to the database specified by the configuration.
+pub async fn database(config: &Config) -> Result<Arc<dyn QueryCustomer>, anyhow::Error> {
+    let location = match config.database.clone() {
+        None => zeekoe::customer::defaults::database_location()?,
+        Some(l) => l,
+    };
+
+    use zeekoe::customer::config::DatabaseLocation;
+    let database = match location {
+        DatabaseLocation::InMemory => Arc::new(SqlitePool::connect("file::memory:").await?),
+        DatabaseLocation::Sqlite(ref uri) => Arc::new(SqlitePool::connect(uri).await?),
+        DatabaseLocation::Postgres(_) => {
+            return Err(anyhow::anyhow!(
+                "Postgres database support is not yet implemented"
+            ))
+        }
+    };
+    Ok(database)
 }
 
 #[allow(unused)]

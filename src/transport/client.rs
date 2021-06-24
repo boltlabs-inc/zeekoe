@@ -9,7 +9,6 @@ use {
         fmt::{self, Display},
         io,
         marker::PhantomData,
-        path::Path,
         str::FromStr,
         sync::Arc,
         time::Duration,
@@ -20,8 +19,11 @@ use {
     webpki::{DNSNameRef, InvalidDNSNameError},
 };
 
-use super::{channel::TransportError, handshake, pem};
+use super::{channel::TransportError, handshake};
 use crate::customer;
+
+#[cfg(feature = "allow_explicit_certificate_trust")]
+use {super::pem, std::path::Path};
 
 pub use super::channel::ClientChan as Chan;
 pub use dialectic_reconnect::Backoff;
@@ -139,7 +141,7 @@ where
     /// error if connection and all re-connection attempts failed.
     pub async fn connect(
         &self,
-        ZkChannelAddress { host, port }: ZkChannelAddress,
+        ZkChannelAddress { host, port }: &ZkChannelAddress,
     ) -> Result<(SessionKey, Chan<Protocol>), Error> {
         // Share the TLS config between all times we connect
         let tls_config = Arc::new(self.tls_config.clone());
@@ -199,7 +201,10 @@ where
         .recover_handshake(self.backoff.build(retry::Recovery::ReconnectAfter))
         .timeout(self.timeout)
         .max_pending_retries(self.max_pending_retries)
-        .connect((host, port.unwrap_or_else(customer::defaults::port)))
+        .connect((
+            host.to_owned(),
+            port.unwrap_or_else(customer::defaults::port),
+        ))
         .await
         .map_err(|e| {
             // Convert error into general error type
@@ -219,11 +224,13 @@ where
 
 /// The address of a zkChannels merchant: a URI of the form `zkchannel://some.domain.com:2611` with
 /// an optional port number.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde_with::SerializeDisplay, serde_with::DeserializeFromStr)]
 pub struct ZkChannelAddress {
     host: DNSName,
     port: Option<u16>,
 }
+
+zkabacus_crypto::impl_sqlx_for_bincode_ty!(ZkChannelAddress);
 
 #[derive(Debug, Error)]
 #[non_exhaustive]
