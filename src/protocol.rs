@@ -139,12 +139,14 @@ impl Party {
 pub use establish::Establish;
 pub use parameters::Parameters;
 pub use pay::Pay;
+pub use close::Close;
 
 pub type ZkChannels = Session! {
     choose {
         0 => Parameters,
         1 => Establish,
         2 => Pay,
+        3 => Close,
     }
 };
 
@@ -239,6 +241,11 @@ pub mod establish {
     pub type Activate = Session! {
         recv PayToken;
     };
+}
+pub mod close {
+    use super::*;
+    
+    pub type Close = Session! {};
 }
 
 pub mod pay {
