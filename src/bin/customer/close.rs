@@ -1,17 +1,22 @@
 use {async_trait::async_trait, rand::rngs::StdRng};
 
 use zeekoe::{
-    customer::{cli::Close, Chan, ChannelName, Config},
-    proceed,
-    protocol::close,
+    customer::{
+        cli::Close,
+        database::{QueryCustomer, QueryCustomerExt, State},
+        Chan, ChannelName, Config,
+    },
+    offer_abort, proceed,
+    protocol::{close, Party::Customer},
 };
+use zkabacus_crypto::customer::ClosingMessage;
 
 use super::{connect, database, Command};
 use anyhow::Context;
 
 #[async_trait]
 impl Command for Close {
-    async fn run(self, mut rng: StdRng, config: self::Config) -> Result<(), anyhow::Error> {
+    async fn run(self, rng: StdRng, config: self::Config) -> Result<(), anyhow::Error> {
         if self.force {
             unilateral_close(&self, rng, config)
                 .await
@@ -26,16 +31,16 @@ impl Command for Close {
 }
 
 async fn unilateral_close(
-    close: &Close,
-    mut rng: StdRng,
-    config: self::Config,
+    _close: &Close,
+    _rng: StdRng,
+    _config: self::Config,
 ) -> Result<(), anyhow::Error> {
     todo!()
 }
 
 async fn mutual_close(
     close: &Close,
-    mut rng: StdRng,
+    rng: StdRng,
     config: self::Config,
 ) -> Result<(), anyhow::Error> {
     let database = database(&config)
@@ -62,13 +67,13 @@ async fn mutual_close(
         .await
         .context("Failed selecting close session with merchant")?;
 
-    let chan = zkabacus_close(rng, &close.label, chan)
+    let chan = zkabacus_close(rng, database.as_ref(), &close.label, chan)
         .await
         .context("zkAbacus close failed.")?;
 
     // TODO: get auth signature from merchant
     /*
-    let authorization_signature = chan
+    let merchant_authorization_signature = chan
         .recv()
         .await
         .context("Failed to receive authorization signature from the merchant.")?;
@@ -88,16 +93,58 @@ async fn mutual_close(
 }
 
 async fn zkabacus_close(
-    _rng: StdRng,
-    _label: &ChannelName,
-    _chan: Chan<close::Close>,
+    rng: StdRng,
+    database: &dyn QueryCustomer,
+    label: &ChannelName,
+    chan: Chan<close::Close>,
 ) -> Result<Chan<close::MerchantSendAuthorization>, anyhow::Error> {
-    // Get out current state from the db - doesn't matter what it is.
+    let closing_message = get_close_message(rng, database, label)
+        .await
+        .context("Failed to retrieve close state and corresponding signature.")?;
 
-    // call close() to get the CloseMessage.
+    let (close_signature, close_state) = closing_message.into_parts();
 
     // send the pieces of the CloseMessage.
+    let chan = chan
+        .send(close_signature)
+        .await
+        .context("Failed to send close state signature")?
+        .send(close_state)
+        .await
+        .context("Failed to send close state")?;
 
     // offer abort to merchant.
-    todo!()
+    offer_abort!(in chan as Customer);
+
+    Ok(chan)
+}
+
+async fn get_close_message(
+    mut rng: StdRng,
+    database: &dyn QueryCustomer,
+    label: &ChannelName,
+) -> Result<ClosingMessage, anyhow::Error> {
+    // Extract current state from the db.
+    database
+        .with_channel_state(label, |state| {
+            // Extract the close message.
+            let closing_message = match state.take() {
+                Some(State::Inactive(inactive)) => inactive.close(&mut rng),
+                Some(State::Ready(ready)) => ready.close(&mut rng),
+                Some(State::Started(started)) => started.close(&mut rng),
+                Some(State::Locked(locked)) => locked.close(&mut rng),
+                // TODO: name the state (Pending vs Closed)
+                _ => return Err(anyhow::anyhow!("Expected closeable state")),
+            };
+
+            // Set the new PendingClose state in the database.
+            *state = Some(State::PendingClose(closing_message));
+            // @Kenny / @Mukund: do we need to store the pending close message in the db? Or
+            // do we only need to know that we *tried* to close?
+
+            //Ok(closing_message)
+            todo!()
+        })
+        .await
+        .context("Database error while fetching initial pay state")??
 }

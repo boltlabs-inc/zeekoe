@@ -26,7 +26,8 @@ path = "src/bin/merchant/main.rs"
 allow_explicit_certificate_trust = []
 
 [dependencies]
-zkabacus-crypto = { git = "ssh://git@github.com/boltlabs-inc/libzkchannels-crypto.git", branch = "main", features = ["sqlite"] }
+# TODO: put this back to main before merging!
+zkabacus-crypto = { git = "ssh://git@github.com/boltlabs-inc/libzkchannels-crypto.git", branch = "decompose-close-message", features = ["sqlite"] }
 tokio = { version = "1", features = ["full"] }
 tokio-rustls = "0.22"
 anyhow = "1"
