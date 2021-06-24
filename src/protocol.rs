@@ -215,7 +215,7 @@ pub mod establish {
     };
 
     pub type CustomerSupplyContractInfo = Session! {
-        // TODO send contract id
+        // TODO: send contract id
         OfferAbort<CustomerVerifyMerchantFunding, Error>;
     };
 
