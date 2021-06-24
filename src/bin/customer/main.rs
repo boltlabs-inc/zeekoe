@@ -2,7 +2,7 @@ use {
     async_trait::async_trait,
     rand::{rngs::StdRng, SeedableRng},
     sqlx::SqlitePool,
-    std::{convert::identity, env, path::Path, sync::Arc},
+    std::{convert::identity, sync::Arc},
     structopt::StructOpt,
 };
 
