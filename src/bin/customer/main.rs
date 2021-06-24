@@ -28,6 +28,8 @@ mod pay;
 /// to start with a valid loaded configuration.
 #[async_trait]
 pub trait Command {
+    /// Run the command to completion using the given random number generator for all randomness and
+    /// the given customer configuration.
     async fn run(self, rng: StdRng, config: Config) -> Result<(), anyhow::Error>;
 }
 
@@ -85,22 +87,24 @@ pub async fn connect(
     Ok(client.connect(address).await?)
 }
 
+/// Connect to the database specified by the configuration.
 pub async fn database(config: &Config) -> Result<Arc<dyn QueryCustomer>, anyhow::Error> {
+    let location = match config.database.clone() {
+        None => zeekoe::customer::defaults::database_location()?,
+        Some(l) => l,
+    };
+
     use zeekoe::customer::config::DatabaseLocation;
-    Ok(
-        match match config.database.clone() {
-            None => zeekoe::customer::defaults::database_location()?,
-            Some(l) => l,
-        } {
-            DatabaseLocation::InMemory => Arc::new(SqlitePool::connect("file::memory:").await?),
-            DatabaseLocation::Sqlite(ref uri) => Arc::new(SqlitePool::connect(uri).await?),
-            DatabaseLocation::Postgres(_) => {
-                return Err(anyhow::anyhow!(
-                    "Postgres database support is not yet implemented"
-                ))
-            }
-        },
-    )
+    let database = match location {
+        DatabaseLocation::InMemory => Arc::new(SqlitePool::connect("file::memory:").await?),
+        DatabaseLocation::Sqlite(ref uri) => Arc::new(SqlitePool::connect(uri).await?),
+        DatabaseLocation::Postgres(_) => {
+            return Err(anyhow::anyhow!(
+                "Postgres database support is not yet implemented"
+            ))
+        }
+    };
+    Ok(database)
 }
 
 #[allow(unused)]
