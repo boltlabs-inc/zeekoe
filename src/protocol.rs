@@ -251,7 +251,11 @@ pub mod close {
     #[derive(Debug, Clone, Serialize, Error)]
     pub enum Error {
         #[error("Customer sent an invalid signature")]
-        InvalidCloseStateSignature
+        InvalidCloseStateSignature,
+        #[error("Merchant send an invalid authorization signature")]
+        InvalidMerchantAuthSignature,
+        #[error("Arbiter failed to accept mutual close")]
+        ArbiterRejectedMutualClose,
     }
 
     /// Mutual close session.
@@ -264,10 +268,9 @@ pub mod close {
     };
 
     pub type MerchantSendAuthorization = Session! {
-       // TODO: Send auth signature from tezos. 
+       // TODO: Send auth signature from tezos.
        ChooseAbort<Done, Error>
     };
-
 }
 
 pub mod pay {
