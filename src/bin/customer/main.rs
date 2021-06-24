@@ -1,9 +1,12 @@
 use {
     async_trait::async_trait,
     rand::{rngs::StdRng, SeedableRng},
-    std::{convert::identity, env, path::Path},
+    std::convert::identity,
     structopt::StructOpt,
 };
+
+#[cfg(feature = "allow_explicit_certificate_trust")]
+use std::{env, path::Path};
 
 use zeekoe::{
     customer::{
