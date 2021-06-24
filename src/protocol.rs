@@ -248,7 +248,7 @@ pub mod close {
 
     use super::*;
 
-    #[derive(Debug, Clone, Serialize, Error)]
+    #[derive(Debug, Clone, Serialize, Deserialize, Error)]
     pub enum Error {
         #[error("Customer sent an invalid signature")]
         InvalidCloseStateSignature,
