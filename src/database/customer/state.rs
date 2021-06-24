@@ -4,9 +4,10 @@ use {
     thiserror::Error,
 };
 
-use zkchannels_crypto::impl_sqlx_for_bincode_ty;
-
-use zkabacus_crypto::customer::{ClosingMessage, Inactive, Locked, Ready, Started};
+use zkabacus_crypto::{
+    customer::{ClosingMessage, Inactive, Locked, Ready, Started},
+    impl_sqlx_for_bincode_ty,
+};
 
 /// The current state of the channel, from the perspective of the customer.
 ///

@@ -225,7 +225,7 @@ pub struct ZkChannelAddress {
     port: Option<u16>,
 }
 
-zkchannels_crypto::impl_sqlx_for_bincode_ty!(ZkChannelAddress);
+zkabacus_crypto::impl_sqlx_for_bincode_ty!(ZkChannelAddress);
 
 #[derive(Debug, Error)]
 #[non_exhaustive]
