@@ -1,0 +1,45 @@
+name: Rust
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - uses: actions/checkout@v2
+
+      - uses: webfactory/ssh-agent@v0.5.3
+        with:
+          ssh-private-key: ${{ secrets.BOLT_CI_SSH_PRIVATEKEY }}
+
+      - name: Format check
+        run: cargo fmt -- --check
+
+      # temporarily cmment this out to see if we can run everything else.
+      # - name: Clippy lint
+      #   run: cargo clippy --all-features --all-targets --verbose -- -Dwarnings
+
+      - name: Build
+        run: cargo build --all-features --all-targets --verbose
+
+      - name: Run all tests except doctests
+        run: cargo test --all-features --all-targets --verbose
+ 
+      - name: Run all doctests
+        run: cargo test --all-features --doc --verbose
+
+      - name: Build documentation
+        run: cargo doc --all-features --no-deps --verbose

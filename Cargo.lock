@@ -303,6 +303,7 @@ dependencies = [
 [[package]]
 name = "dialectic"
 version = "0.4.1"
+source = "git+ssh://git@github.com/boltlabs-inc/dialectic.git?branch=main#0d545aceb4a204b4d412e8fcf877ff2a41e35c3b"
 dependencies = [
  "call-by",
  "derivative",
@@ -317,6 +318,7 @@ dependencies = [
 [[package]]
 name = "dialectic-compiler"
 version = "0.1.0"
+source = "git+ssh://git@github.com/boltlabs-inc/dialectic.git?branch=main#0d545aceb4a204b4d412e8fcf877ff2a41e35c3b"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -329,6 +331,7 @@ dependencies = [
 [[package]]
 name = "dialectic-macro"
 version = "0.1.0"
+source = "git+ssh://git@github.com/boltlabs-inc/dialectic.git?branch=main#0d545aceb4a204b4d412e8fcf877ff2a41e35c3b"
 dependencies = [
  "dialectic-compiler",
  "proc-macro2",
@@ -339,6 +342,7 @@ dependencies = [
 [[package]]
 name = "dialectic-reconnect"
 version = "0.1.0"
+source = "git+ssh://git@github.com/boltlabs-inc/dialectic.git?branch=main#0d545aceb4a204b4d412e8fcf877ff2a41e35c3b"
 dependencies = [
  "call-by",
  "dashmap",
@@ -353,6 +357,7 @@ dependencies = [
 [[package]]
 name = "dialectic-tokio-serde"
 version = "0.1.0"
+source = "git+ssh://git@github.com/boltlabs-inc/dialectic.git?branch=main#0d545aceb4a204b4d412e8fcf877ff2a41e35c3b"
 dependencies = [
  "dialectic",
  "futures",
@@ -365,6 +370,7 @@ dependencies = [
 [[package]]
 name = "dialectic-tokio-serde-bincode"
 version = "0.1.0"
+source = "git+ssh://git@github.com/boltlabs-inc/dialectic.git?branch=main#0d545aceb4a204b4d412e8fcf877ff2a41e35c3b"
 dependencies = [
  "bincode",
  "bytes",
@@ -2418,6 +2424,7 @@ dependencies = [
 [[package]]
 name = "zkabacus-crypto"
 version = "0.1.0"
+source = "git+ssh://git@github.com/boltlabs-inc/libzkchannels-crypto.git?branch=main#dfd9620b8a775bf0b759520811f5f2d51e6e871a"
 dependencies = [
  "bincode",
  "bls12_381",
@@ -2434,6 +2441,7 @@ dependencies = [
 [[package]]
 name = "zkchannels-crypto"
 version = "0.1.0"
+source = "git+ssh://git@github.com/boltlabs-inc/libzkchannels-crypto.git?branch=main#dfd9620b8a775bf0b759520811f5f2d51e6e871a"
 dependencies = [
  "arrayvec 0.7.1",
  "bincode",
