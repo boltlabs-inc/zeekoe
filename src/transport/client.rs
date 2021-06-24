@@ -221,11 +221,13 @@ where
 
 /// The address of a zkChannels merchant: a URI of the form `zkchannel://some.domain.com:2611` with
 /// an optional port number.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde_with::SerializeDisplay, serde_with::DeserializeFromStr)]
 pub struct ZkChannelAddress {
     host: DNSName,
     port: Option<u16>,
 }
+
+zkabacus_crypto::impl_sqlx_for_bincode_ty!(ZkChannelAddress);
 
 #[derive(Debug, Error)]
 #[non_exhaustive]
