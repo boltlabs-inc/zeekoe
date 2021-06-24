@@ -1,7 +1,11 @@
-use zkabacus_crypto::{revlock::*, ClosingSignature, Nonce, PayProof, PayToken};
+use zkabacus_crypto::{
+    revlock::*, ClosingSignature, CommitmentParameters, CustomerRandomness, MerchantRandomness,
+    Nonce, PayProof, PayToken, PublicKey, RangeProofParameters,
+};
 use {
     dialectic::prelude::*,
     serde::{Deserialize, Serialize},
+    std::fmt::{self, Display, Formatter},
     thiserror::Error,
 };
 
@@ -48,7 +52,7 @@ type ChooseAbort<Next, Err> = Session! {
 
 #[macro_export]
 macro_rules! abort {
-    (in $chan:ident return $err:expr ) => {
+    (in $chan:ident return $err:expr ) => {{
         let $chan = ::anyhow::Context::context(
             $chan.choose::<0>().await,
             "Failure while choosing to abort",
@@ -60,7 +64,7 @@ macro_rules! abort {
         )?;
         $chan.close();
         return ::anyhow::Context::context(Err(err), "Pay protocol aborted");
-    };
+    }};
 }
 
 #[macro_export]
@@ -74,12 +78,26 @@ macro_rules! proceed {
 }
 
 /// The two parties in the protocol.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, Ord, PartialEq, PartialOrd, Hash, Serialize, Deserialize)]
 pub enum Party {
     /// The customer client.
     Customer,
     /// The merchant server.
     Merchant,
+}
+
+impl Display for Party {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        use Party::*;
+        write!(
+            f,
+            "{}",
+            match self {
+                Customer => "customer",
+                Merchant => "merchant",
+            }
+        )
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, sqlx::Type)]
@@ -93,7 +111,17 @@ pub enum ChannelStatus {
 }
 
 impl Party {
-    pub fn opposite(self) -> Self {
+    /// Get the other party.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use zeekoe::protocol::Party::*;
+    ///
+    /// assert_eq!(Customer.opposite(), Merchant);
+    /// assert_eq!(Merchant.opposite(), Customer);
+    /// ```
+    pub const fn opposite(self) -> Self {
         use Party::*;
         match self {
             Customer => Merchant,
@@ -104,6 +132,7 @@ impl Party {
 
 // All protocols are from the perspective of the customer.
 
+pub use establish::Establish;
 pub use parameters::Parameters;
 pub use pay::Pay;
 
@@ -111,6 +140,7 @@ pub type ZkChannels = Session! {
     choose {
         0 => Parameters,
         1 => Pay,
+        2 => Establish,
     }
 };
 
@@ -118,7 +148,88 @@ pub mod parameters {
     use super::*;
 
     /// Get the public parameters for the merchant.
-    pub type Parameters = Session! {};
+    pub type Parameters = Session! {
+        recv PublicKey;
+        recv CommitmentParameters; // TODO: this is a global default, does not need to be sent
+        recv RangeProofParameters;
+        // TODO: tz1 address corresponding to merchant's public key
+        // TODO: merchant's tezos eddsa public key
+    };
+}
+
+pub mod establish {
+    use super::*;
+    use zkabacus_crypto::{
+        ClosingSignature, CustomerBalance, EstablishProof, MerchantBalance, PayToken,
+    };
+
+    #[derive(Debug, Clone, Error, Serialize, Deserialize)]
+    pub enum Error {
+        #[error("Invalid {0} deposit amount")]
+        InvalidDeposit(Party),
+        #[error("Channel funding request rejected: {0}")]
+        Rejected(String),
+        #[error("Invalid channel establish proof")]
+        InvalidEstablishProof,
+        #[error("Invalid closing signature")]
+        InvalidClosingSignature,
+        #[error("Invalid payment token")]
+        InvalidPayToken,
+        #[error("Merchant funding not received")]
+        FailedMerchantFunding,
+    }
+
+    pub type Establish = CustomerSupplyInfo;
+
+    pub type CustomerSupplyInfo = Session! {
+        // TODO: send customer-side chain-specific public stuff
+        send CustomerRandomness;
+        CustomerProposeFunding;
+    };
+
+    pub type CustomerProposeFunding = Session! {
+        send CustomerBalance;
+        send MerchantBalance;
+        send String;
+        // TODO: customer sends merchant:
+        // - customer's tezos public key (eddsa public key)
+        // - customer's tezos account tz1 address corresponding to that public key
+        // - SHA3-256 of:
+        //   * merchant's pointcheval-sanders public key (`zkabacus_crypto::PublicKey`)
+        //   * tz1 address corresponding to merchant's public key
+        //   * merchant's tezos public key
+        OfferAbort<MerchantSupplyInfo, Error>;
+    };
+
+    pub type MerchantSupplyInfo = Session! {
+        recv MerchantRandomness;
+        Initialize;
+    };
+
+    pub type Initialize = CustomerSupplyProof;
+
+    pub type CustomerSupplyProof = Session! {
+        send EstablishProof;
+        OfferAbort<MerchantSupplyClosingSignature, Error>;
+    };
+
+    pub type MerchantSupplyClosingSignature = Session! {
+        recv ClosingSignature;
+        ChooseAbort<CustomerSupplyContractInfo, Error>;
+    };
+
+    pub type CustomerSupplyContractInfo = Session! {
+        // TODO: send contract id
+        OfferAbort<CustomerVerifyMerchantFunding, Error>;
+    };
+
+    pub type CustomerVerifyMerchantFunding = Session! {
+        ChooseAbort<Activate, Error>;
+    };
+
+    pub type Activate = Session! {
+        recv PayToken;
+    };
 }
 
 pub mod pay {
@@ -146,7 +257,7 @@ pub mod pay {
     /// The full zkchannels "pay" protocol's session type.
     pub type Pay = Session! {
         send PaymentAmount;
-        send String;
+        send String; // Payment note
         OfferAbort<CustomerStartPayment, Error>;
     };
 

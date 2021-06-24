@@ -136,6 +136,24 @@
       "nullable": []
     }
   },
+  "b3e1ea79364c63e3ecc4b86a880212129785a03c9c47993ef9b7986c83a6cc82": {
+    "query": "SELECT label FROM customer_channels WHERE label = ?",
+    "describe": {
+      "columns": [
+        {
+          "name": "label",
+          "ordinal": 0,
+          "type_info": "Text"
+        }
+      ],
+      "parameters": {
+        "Right": 1
+      },
+      "nullable": [
+        false
+      ]
+    }
+  },
   "f3232a1d8e4638fa240320ac67333beeacf4528bb2b61189ac4f7501b93c378f": {
     "query": "\n            SELECT address AS \"address: ZkChannelAddress\"\n            FROM customer_channels\n            WHERE label = ?",
     "describe": {

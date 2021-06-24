@@ -48,7 +48,7 @@ impl Command for Pay {
         };
 
         // Connect and select the Pay session
-        let (session_key, chan) = connect(&config, address)
+        let (session_key, chan) = connect(&config, &address)
             .await
             .context("Failed to connect to merchant")?;
         let chan = chan

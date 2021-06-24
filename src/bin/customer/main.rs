@@ -62,7 +62,7 @@ pub async fn main_with_cli(cli: Cli) -> Result<(), anyhow::Error> {
 /// Connect to a given [`ZkChannelAddress`], configured using the parameters in the [`Config`].
 pub async fn connect(
     config: &Config,
-    address: ZkChannelAddress,
+    address: &ZkChannelAddress,
 ) -> Result<(SessionKey, Chan<protocol::ZkChannels>), anyhow::Error> {
     let Config {
         backoff,

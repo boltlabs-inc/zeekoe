@@ -51,7 +51,7 @@ pub trait QueryCustomer: Send + Sync {
         label: &ChannelName,
         address: &ZkChannelAddress,
         inactive: Inactive,
-    ) -> Result<(), (Inactive, sqlx::Error)>;
+    ) -> Result<(), (Inactive, Result<ChannelExists, sqlx::Error>)>;
 
     /// Get the address of a given channel, or `None` if the label does not exist in the database.
     async fn channel_address(&self, label: &ChannelName) -> sqlx::Result<Option<ZkChannelAddress>>;
@@ -102,19 +102,47 @@ impl QueryCustomer for SqlitePool {
         label: &ChannelName,
         address: &ZkChannelAddress,
         inactive: Inactive,
-    ) -> Result<(), (Inactive, sqlx::Error)> {
+    ) -> Result<(), (Inactive, Result<ChannelExists, sqlx::Error>)> {
         let state = State::Inactive(inactive);
-        let state_ref = &state;
+        (|| async {
+            let mut transaction = self.begin().await.map_err(Err)?;
 
-        sqlx::query!(
-            "INSERT INTO customer_channels (label, address, state) VALUES (?, ?, ?)",
-            label,
-            address,
-            state_ref,
-        )
-        .execute(self)
+            // Determine if the channel already exists
+            let already_exists = if let Some(result) =
+                sqlx::query!("SELECT label FROM customer_channels WHERE label = ?", label)
+                    .fetch(&mut transaction)
+                    .next()
+                    .await
+            {
+                result.map_err(Err)?; // rethrow error
+                true // channel by this label already exists
+            } else {
+                false // channel label is fresh
+            };
+
+            // Return an error if it does exist
+            if already_exists {
+                return Err(Ok(ChannelExists {
+                    label: label.clone(),
+                }));
+            }
+
+            let result = sqlx::query!(
+                "INSERT INTO customer_channels (label, address, state) VALUES (?, ?, ?)",
+                label,
+                address,
+                state,
+            )
+            .execute(&mut transaction)
+            .await
+            .map(|_| ())
+            .map_err(Err);
+
+            transaction.commit().await.map_err(Err)?;
+
+            result
+        })()
         .await
-        .map(|_| ())
         .map_err(|e| (state.inactive().unwrap(), e))
     }
 
@@ -222,5 +250,11 @@ impl<Q: QueryCustomer + ?Sized> QueryCustomerExt for Q {
 #[derive(Debug, Serialize, Deserialize, Error)]
 #[error("There is no channel by the name of \"{label}\"")]
 pub struct NoSuchChannel {
+    label: ChannelName,
+}
+
+#[derive(Debug, Serialize, Deserialize, Error)]
+#[error("There is already a channel by the name of \"{label}\"")]
+pub struct ChannelExists {
     label: ChannelName,
 }

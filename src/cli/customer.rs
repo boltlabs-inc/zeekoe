@@ -47,7 +47,10 @@ pub struct Configure {}
 #[non_exhaustive]
 pub struct Establish {
     pub merchant: ZkChannelAddress,
+    #[structopt(long)]
     pub deposit: Amount,
+    #[structopt(long)]
+    pub merchant_deposit: Option<Amount>,
     #[structopt(long)]
     pub from: AccountName,
     #[structopt(long)]
