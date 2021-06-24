@@ -143,8 +143,11 @@ impl Command for Establish {
         .await
         .context("Failed to initialize the channel")?;
 
-        // TODO: initialize contract on-chain via escrow agent.
+        // TODO: initialize contract on-chain via escrow agent (this should return a stream of
+        // updates to the contract)
+
         // TODO: fund contract via escrow agent
+
         // TODO: send contract id to merchant (possibly also send block height, check spec)
 
         // Allow the merchant to indicate whether it funded the channel
