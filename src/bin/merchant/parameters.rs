@@ -13,6 +13,7 @@ pub struct Parameters;
 impl Method for Parameters {
     type Protocol = protocol::Parameters;
 
+    #[allow(unused)]
     async fn run(
         &self,
         rng: StdRng,

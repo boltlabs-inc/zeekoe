@@ -1,4 +1,4 @@
-use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng, url::Url};
+use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng};
 
 use zkabacus_crypto::{
     merchant::Config as ZkAbacusConfig, ChannelId, Context as ProofContext, CustomerBalance,
@@ -7,18 +7,12 @@ use zkabacus_crypto::{
 
 use zeekoe::{
     abort,
-    merchant::{
-        config::{Approver, Service},
-        database::QueryMerchant,
-        server::SessionKey,
-        Chan,
-    },
+    merchant::{config::Service, database::QueryMerchant, server::SessionKey, Chan},
     offer_abort, proceed,
     protocol::{self, establish, ChannelStatus, ContractId, Party::Merchant},
 };
 
-use super::approve;
-use super::Method;
+use super::{approve, Method};
 
 pub struct Establish;
 
