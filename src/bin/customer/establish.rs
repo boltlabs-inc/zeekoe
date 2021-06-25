@@ -40,6 +40,16 @@ impl Command for Establish {
         // Run a **separate** session to get the merchant's public parameters
         let zkabacus_customer_config = get_parameters(&config, &address).await?;
 
+        // TODO: ensure that:
+        // - merchant's public key (in the config) is a valid Pointcheval-Sanders public key
+        // - merchant's range proof parameters consist of valid Pointcheval-Sanders public key and
+        //   valid signatures on the correct range
+        // - merchant's commitment parameters are "the right ones" (this check can't currently be
+        //   done because the parameters are randomly generated at first merchant startup)
+        // - merchant's tezos public key is valid
+        // - merchant's tezos public key corresponds to the tezos account that they specified
+        // - that address is actually a tz1 address
+
         // Connect and select the Establish session
         let (session_key, chan) = connect(&config, &address)
             .await
@@ -178,6 +188,7 @@ async fn get_parameters(
     config: &Config,
     address: &ZkChannelAddress,
 ) -> Result<zkabacus_crypto::customer::Config, anyhow::Error> {
+    // TODO: also return the merchant's tz1 address and tezos public key
     todo!("Fill in with get-parameters session from start to finish")
 }
 
