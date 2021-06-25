@@ -7,9 +7,7 @@
 $ ./dev/generate-certificates
 
 # initialize the database
-touch test.db
-sqlite3 test.db < src/database/migrations/merchant/*_setup.sql
-sqlite3 test.db < src/database/migrations/customer/*_setup.sql
+$ ./dev/create-database
 
 # running the server
 $ cargo run --bin zeekoe-server
