@@ -87,9 +87,22 @@ async fn mutual_close(
 
     // TODO: call escrow agent disburse / mutual close endpoint. Raise error if it fails.
 
-    // TODO: Update database channel status from PendingClose to Closed.
+    // Update database channel status from PendingClose to Closed.
+    database
+        .with_channel_state(&close.label, |state| match state.take() {
+            Some(State::PendingClose(cm)) => *state = None,
+            not_pending_state => {
+                *state = not_pending_state;
+                anyhow::anyhow!(format!(
+                    "Expecting the channel \"{}\" to be in a different state",
+                    &close.label
+                ));
+            }
+        })
+        .await
+        .context("Database error while updating state to Closed")??;
 
-    todo!()
+    Ok(())
 }
 
 async fn zkabacus_close(
@@ -134,16 +147,16 @@ async fn get_close_message(
                 Some(State::Started(started)) => started.close(&mut rng),
                 Some(State::Locked(locked)) => locked.close(&mut rng),
                 // TODO: name the state (Pending vs Closed)
-                _ => return Err(anyhow::anyhow!("Expected closeable state")),
+                uncloseable_state => {
+                    *state = uncloseable_state;
+                    return Err(anyhow::anyhow!("Expected closeable state"));
+                }
             };
 
             // Set the new PendingClose state in the database.
-            *state = Some(State::PendingClose(closing_message));
-            // @Kenny / @Mukund: do we need to store the pending close message in the db? Or
-            // do we only need to know that we *tried* to close?
+            *state = Some(State::PendingClose(closing_message.clone()));
 
-            //Ok(closing_message)
-            todo!()
+            Ok(closing_message)
         })
         .await
         .context("Database error while fetching initial pay state")??

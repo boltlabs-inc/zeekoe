@@ -719,9 +719,9 @@ dependencies = [
 
 [[package]]
 name = "hermit-abi"
-version = "0.1.18"
+version = "0.1.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "322f4de77956e22ed0e5032c359a0f1273f1f7f0d79bfa3b8ffbc730d7fbcc5c"
+checksum = "62b467343b94ba476dcb2500d242dadbb39557df889310ac77c5d99100aaac33"
 dependencies = [
  "libc",
 ]
@@ -2501,7 +2501,7 @@ dependencies = [
 [[package]]
 name = "zkabacus-crypto"
 version = "0.1.0"
-source = "git+ssh://git@github.com/boltlabs-inc/libzkchannels-crypto.git?branch=decompose-close-message#25621aab71ae356b478320b794a2bc59a08e4794"
+source = "git+ssh://git@github.com/boltlabs-inc/libzkchannels-crypto.git?branch=main#2dcbf2d098c0121d7634465031274d9cd44b7f3a"
 dependencies = [
  "bincode",
  "bls12_381",
@@ -2518,7 +2518,7 @@ dependencies = [
 [[package]]
 name = "zkchannels-crypto"
 version = "0.1.0"
-source = "git+ssh://git@github.com/boltlabs-inc/libzkchannels-crypto.git?branch=decompose-close-message#25621aab71ae356b478320b794a2bc59a08e4794"
+source = "git+ssh://git@github.com/boltlabs-inc/libzkchannels-crypto.git?branch=main#2dcbf2d098c0121d7634465031274d9cd44b7f3a"
 dependencies = [
  "arrayvec 0.7.1",
  "bincode",

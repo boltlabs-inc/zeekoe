@@ -23,7 +23,7 @@ impl Method for Parameters {
         session_key: SessionKey,
         chan: Chan<Self::Protocol>,
     ) -> Result<(), anyhow::Error> {
-        let customer_config = merchant_config.to_customer_config();
+        //let customer_config = merchant_config.to_customer_config();
         // chan.send(customer_config.merchant_public_key()).await?;
         // chan.send(customer_config.revocation_commitment_parameters())
         //     .await?;
