@@ -2,12 +2,7 @@ use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng};
 
 use zeekoe::{
     abort,
-    merchant::{
-        config::Service,
-        database::QueryMerchant,
-        server::SessionKey,
-        Chan,
-    },
+    merchant::{config::Service, database::QueryMerchant, server::SessionKey, Chan},
     offer_abort, proceed,
     protocol::{self, close, Party::Merchant},
 };
@@ -33,22 +28,22 @@ impl Method for Close {
         chan: Chan<Self::Protocol>,
     ) -> Result<(), anyhow::Error> {
         let chan = zkabacus_close(merchant_config, database, chan)
-		.await
-		.context("Mutual close failed")?;
+            .await
+            .context("Mutual close failed")?;
 
         // TODO: generate authorization signature and send to customer.
 
-	// Give the customer the opportunity to reject an invalid auth signature.
-	offer_abort!(in chan as Merchant);
+        // Give the customer the opportunity to reject an invalid auth signature.
+        offer_abort!(in chan as Merchant);
 
-	// Close the channel - all remaining operations are with the escrow agent.
+        // Close the channel - all remaining operations are with the escrow agent
         chan.close();
 
         // TODO: confirm that arbiter accepted the close request (posted by customer).
 
         // TODO: Update channel status to closed.
 
-	Ok(())
+        Ok(())
     }
 }
 
