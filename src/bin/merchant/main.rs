@@ -27,6 +27,7 @@ use zeekoe::{
     protocol::ZkChannels,
 };
 
+mod close;
 mod parameters;
 mod pay;
 

@@ -132,8 +132,8 @@ impl Party {
 
 // All protocols are from the perspective of the customer.
 
-pub use establish::Establish;
 pub use close::Close;
+pub use establish::Establish;
 pub use parameters::Parameters;
 pub use pay::Pay;
 
@@ -243,6 +243,8 @@ pub mod close {
     pub enum Error {
         #[error("Customer sent an invalid signature")]
         InvalidCloseStateSignature,
+        #[error("Customer sent a close state that has already been seen")]
+        KnownRevocationLock,
         #[error("Merchant send an invalid authorization signature")]
         InvalidMerchantAuthSignature,
         #[error("Arbiter failed to accept mutual close")]
