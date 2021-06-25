@@ -19,7 +19,7 @@ impl Command for Close {
     #[allow(unused)]
     async fn run(self, mut rng: StdRng, config: self::Config) -> Result<(), anyhow::Error> {
         if self.force {
-            unilateral_close(&self, rng, config)
+            initiate_unilateral_close(&self, rng, config)
                 .await
                 .context("Unilateral close failed.")?;
         } else {
@@ -31,12 +31,48 @@ impl Command for Close {
     }
 }
 
-async fn unilateral_close(
-    _close: &Close,
-    _rng: StdRng,
-    _config: self::Config,
+/// Initiate a unilateral close of the channel, either initially or in response to the merchant posting
+/// an expiry to the contract.
+///
+/// **Usage**: this function registers the customer's claim on the funds. It can be called directly
+/// or as a response to an on-chain event.
+async fn initiate_unilateral_close(
+    close: &Close,
+    rng: StdRng,
+    config: self::Config,
 ) -> Result<(), anyhow::Error> {
-    todo!()
+    let database = database(&config)
+        .await
+        .context("Failed to connect to local database")?;
+
+    // Retrieve the close state and update channel status to PENDING_CLOSE.
+    let _close_message = get_close_message(rng, database.as_ref(), &close.label)
+        .await
+        .context("Failed to get closing information.")?;
+
+    // TODO: Produce an authorization signature based on the closing message.
+
+    // TODO: Send a disbursement request to the escrow agent.
+
+    Ok(())
+}
+
+/// Claim final balance of the channel.
+///
+/// **Usage**: this function is called as a response to an on-chain event. It is only called after
+/// the contract claim delay has passed.
+#[allow(unused)]
+async fn claim_channel_balance(close: &Close, config: self::Config) -> Result<(), anyhow::Error> {
+    let database = database(&config)
+        .await
+        .context("Failed to connect to local database")?;
+
+    // TODO: Send claim request to escrow agent (maybe you will have to first extract the ClosingMessage with state
+    // information from the database?)
+
+    // TODO: update state in db from PENDING to CLOSED
+    
+    Ok(())
 }
 
 async fn mutual_close(
