@@ -23,7 +23,7 @@ impl Method for Close {
         _client: &reqwest::Client,
         _service: &Service,
         merchant_config: &MerchantConfig,
-        database: &(dyn QueryMerchant + Send + Sync),
+        database: &dyn QueryMerchant,
         _session_key: SessionKey,
         chan: Chan<Self::Protocol>,
     ) -> Result<(), anyhow::Error> {
@@ -49,7 +49,7 @@ impl Method for Close {
 
 async fn zkabacus_close(
     merchant_config: &MerchantConfig,
-    database: &(dyn QueryMerchant + Send + Sync),
+    database: &dyn QueryMerchant,
     chan: Chan<close::CustomerSendSignature>,
 ) -> Result<Chan<close::MerchantSendAuthorization>, anyhow::Error> {
     // Receive close signature and state from customer.

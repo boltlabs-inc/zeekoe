@@ -82,6 +82,8 @@ async fn mutual_close(
 
     // TODO: verify the signature. Raise error if invalid.
     proceed!(in chan);
+
+    // Close the channel - all remaining operations are with the escrow agent.
     chan.close();
 
     // TODO: generate customer authorization signature.
@@ -112,13 +114,14 @@ async fn zkabacus_close(
     label: &ChannelName,
     chan: Chan<close::Close>,
 ) -> Result<Chan<close::MerchantSendAuthorization>, anyhow::Error> {
+    // Generate the closing message and update state to pending-close.
     let closing_message = get_close_message(rng, database, label)
         .await
-        .context("Failed to retrieve close state and corresponding signature.")?;
+        .context("Failed to generate mutual close data.")?;
 
     let (close_signature, close_state) = closing_message.into_parts();
 
-    // send the pieces of the CloseMessage.
+    // Send the pieces of the CloseMessage.
     let chan = chan
         .send(close_signature)
         .await
@@ -127,7 +130,7 @@ async fn zkabacus_close(
         .await
         .context("Failed to send close state")?;
 
-    // offer abort to merchant.
+    // Let merchant reject an invalid or outdated `CloseMessage`.
     offer_abort!(in chan as Customer);
 
     Ok(chan)
