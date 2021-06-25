@@ -19,7 +19,7 @@ impl Method for Parameters {
         client: &reqwest::Client,
         config: &Service,
         merchant_config: &zkabacus_crypto::merchant::Config,
-        database: &(dyn QueryMerchant + Send + Sync),
+        database: &dyn QueryMerchant,
         session_key: SessionKey,
         chan: Chan<Self::Protocol>,
     ) -> Result<(), anyhow::Error> {

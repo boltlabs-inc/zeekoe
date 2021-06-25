@@ -28,7 +28,7 @@ impl Method for Pay {
         client: &reqwest::Client,
         service: &Service,
         merchant_config: &MerchantConfig,
-        database: &(dyn QueryMerchant + Send + Sync),
+        database: &dyn QueryMerchant,
         session_key: SessionKey,
         chan: Chan<Self::Protocol>,
     ) -> Result<(), anyhow::Error> {
@@ -198,7 +198,7 @@ async fn delete_resource(client: &reqwest::Client, url: Url, success: bool) {
 async fn zkabacus_pay(
     mut rng: StdRng,
     merchant_config: &MerchantConfig,
-    database: &(dyn QueryMerchant + Send + Sync),
+    database: &dyn QueryMerchant,
     session_key: SessionKey,
     chan: Chan<pay::CustomerStartPayment>,
     payment_amount: PaymentAmount,

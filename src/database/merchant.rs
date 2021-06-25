@@ -8,7 +8,7 @@ use zkabacus_crypto::{
 };
 
 #[async_trait]
-pub trait QueryMerchant {
+pub trait QueryMerchant: Send + Sync {
     /// Perform all the DB migrations defined in src/database/migrations/merchant/*.sql
     async fn migrate(&self) -> sqlx::Result<()>;
 
