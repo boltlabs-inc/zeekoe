@@ -194,7 +194,7 @@ pub mod establish {
     pub type CustomerProposeFunding = Session! {
         send CustomerBalance;
         send MerchantBalance;
-        send String;
+        send String; // Channel establishment justification note
         // TODO: customer sends merchant:
         // - customer's tezos public key (eddsa public key)
         // - customer's tezos account tz1 address corresponding to that public key

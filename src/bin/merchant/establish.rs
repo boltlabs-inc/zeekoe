@@ -56,6 +56,14 @@ impl Method for Establish {
             .await
             .context("Failed to receive establish note")?;
 
+        // TODO: customer sends merchant:
+        // - customer's tezos public key (eddsa public key)
+        // - customer's tezos account tz1 address corresponding to that public key
+        // - SHA3-256 of:
+        //   * merchant's pointcheval-sanders public key (`zkabacus_crypto::PublicKey`)
+        //   * tz1 address corresponding to merchant's public key
+        //   * merchant's tezos public key
+
         // Request approval from the approval service.
         if let Err(approval_error) = approve_channel_establish(
             client,
