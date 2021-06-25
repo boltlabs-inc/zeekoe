@@ -93,8 +93,8 @@ impl Method for Establish {
             }
         };
 
-        // Finish the establish protocol, then notify the confirmer after either success or failure
-        match approve_and_establish(
+        // Finish the full Establish protocol
+        let establish_result = approve_and_establish(
             &mut rng,
             database,
             zkabacus_merchant_config,
@@ -104,17 +104,16 @@ impl Method for Establish {
             customer_deposit,
             chan,
         )
-        .await
-        {
-            Ok(()) => {
-                approve::establish_success(client, response_url).await;
-                Ok(())
-            }
-            Err(error) => {
-                approve::failure(client, response_url).await;
-                Err(error)
-            }
+        .await;
+
+        // Report the result of the channel establishment to the approver
+        match establish_result {
+            Ok(()) => approve::establish_success(client, response_url).await,
+            Err(_) => approve::failure(client, response_url).await,
         }
+
+        // Return the result
+        establish_result
     }
 }
 
