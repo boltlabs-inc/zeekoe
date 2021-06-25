@@ -68,15 +68,14 @@ impl Command for Establish {
         )
         .map_err(|_| establish::Error::InvalidDeposit(Customer))?;
 
-        let merchant_deposit: MerchantBalance =
-            MerchantBalance::try_new(match self.merchant_deposit {
-                None => 0,
-                Some(d) => d
-                    .as_minor_units()
-                    .ok_or(establish::Error::InvalidDeposit(Merchant))?
-                    .try_into()?,
-            })
-            .map_err(|_| establish::Error::InvalidDeposit(Merchant))?;
+        let merchant_deposit = MerchantBalance::try_new(match self.merchant_deposit {
+            None => 0,
+            Some(d) => d
+                .as_minor_units()
+                .ok_or(establish::Error::InvalidDeposit(Merchant))?
+                .try_into()?,
+        })
+        .map_err(|_| establish::Error::InvalidDeposit(Merchant))?;
 
         // Read the contents of the channel establishment note, if any: this is the justification,
         // if any is needed, for why the channel should be allowed to be established (format
