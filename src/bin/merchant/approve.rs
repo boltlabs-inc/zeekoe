@@ -138,11 +138,14 @@ pub async fn payment_success(
     response_url: Option<Url>,
 ) -> Result<Option<String>, anyhow::Error> {
     if let Some(response_url) = response_url {
+        // Request the good/service at the url
         let response = client
             .get(response_url.clone())
             .send()
             .await
             .with_context(|| format!("Failed to get resource at {}", response_url.clone()))?;
+
+        // If success, delete the resource and return it
         if response.status().is_success() {
             let body = response.text().await?;
             delete_resource(client, response_url, true).await;
@@ -162,7 +165,7 @@ pub async fn failure(client: &reqwest::Client, response_url: Option<Url>) {
     }
 }
 
-/// Notify the confirmer, if any, of a success (of payment or establishment).
+/// Notify the confirmer, if any, of a successful establishment.
 pub async fn establish_success(client: &reqwest::Client, response_url: Option<Url>) {
     if let Some(response_url) = response_url {
         delete_resource(client, response_url, true).await;

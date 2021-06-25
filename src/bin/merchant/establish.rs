@@ -132,8 +132,10 @@ async fn approve_and_establish(
     // The approval service has approved
     proceed!(in chan);
 
-    // Generate and send merchant's random contribution to the channel ID
+    // Generate the merchant's random contribution to the channel ID
     let merchant_randomness = MerchantRandomness::new(rng);
+
+    // Send the merchant's randomness to the customer
     let chan = chan
         .send(merchant_randomness)
         .await
@@ -268,7 +270,7 @@ async fn zkabacus_initialize(
         .context("Failed to receive establish proof")?;
 
     // Attempt to initialize the channel to produce a closing signature and state commitment
-    match config.initialize(
+    if let Some((closing_signature, state_commitment)) = config.initialize(
         rng,
         channel_id,
         customer_balance,
@@ -276,25 +278,21 @@ async fn zkabacus_initialize(
         proof,
         &context,
     ) {
-        Some((closing_signature, state_commitment)) => {
-            // Continue, because the proof validated
-            proceed!(in chan);
+        // Continue, because the proof validated
+        proceed!(in chan);
 
-            // Send the closing signature to the customer
-            let chan = chan
-                .send(closing_signature)
-                .await
-                .context("Failed to send initial closing signature")?;
+        // Send the closing signature to the customer
+        let chan = chan
+            .send(closing_signature)
+            .await
+            .context("Failed to send initial closing signature")?;
 
-            // Allow customer to reject signature if it is invalid
-            offer_abort!(in chan as Merchant);
+        // Allow customer to reject signature if it is invalid
+        offer_abort!(in chan as Merchant);
 
-            Ok((state_commitment, chan))
-        }
-        None => {
-            let error = establish::Error::InvalidEstablishProof;
-            abort!(in chan return error);
-        }
+        Ok((state_commitment, chan))
+    } else {
+        abort!(in chan return establish::Error::InvalidEstablishProof);
     }
 }
 
