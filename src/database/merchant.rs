@@ -1,7 +1,7 @@
 use {async_trait::async_trait, futures::StreamExt, rand::rngs::StdRng};
 
 use crate::database::SqlitePool;
-use crate::protocol::ChannelStatus;
+use crate::protocol::{ChannelStatus, ContractId};
 use zkabacus_crypto::{
     revlock::{RevocationLock, RevocationSecret},
     ChannelId, CommitmentParameters, KeyPair, Nonce, RangeProofParameters,
@@ -31,7 +31,11 @@ pub trait QueryMerchant {
     ) -> sqlx::Result<zkabacus_crypto::merchant::Config>;
 
     /// Create a new merchant channel.
-    async fn new_channel(&self, channel_id: &ChannelId) -> sqlx::Result<()>;
+    async fn new_channel(
+        &self,
+        channel_id: &ChannelId,
+        contract_id: &ContractId,
+    ) -> sqlx::Result<()>;
 
     /// Update an existing merchant channel's status.
     async fn update_channel_status(
@@ -154,10 +158,15 @@ impl QueryMerchant for SqlitePool {
         Ok(new_config)
     }
 
-    async fn new_channel(&self, channel_id: &ChannelId) -> sqlx::Result<()> {
+    async fn new_channel(
+        &self,
+        channel_id: &ChannelId,
+        contract_id: &ContractId,
+    ) -> sqlx::Result<()> {
         sqlx::query!(
-            "INSERT INTO merchant_channels (channel_id, status) VALUES (?, ?)",
+            "INSERT INTO merchant_channels (channel_id, contract_id, status) VALUES (?, ?, ?)",
             channel_id,
+            contract_id,
             ChannelStatus::Originated
         )
         .execute(self)
@@ -294,8 +303,9 @@ mod tests {
         let cid_c = CustomerRandomness::new(&mut rng);
         let pk = KeyPair::new(&mut rng).public_key().clone();
         let channel_id = ChannelId::new(cid_m, cid_c, &pk, &[], &[]);
+        let contract_id = ContractId {};
 
-        conn.new_channel(&channel_id).await?;
+        conn.new_channel(&channel_id, &contract_id).await?;
         conn.update_channel_status(&channel_id, &ChannelStatus::CustomerFunded)
             .await?;
 

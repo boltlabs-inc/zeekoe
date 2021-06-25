@@ -1,15 +1,5 @@
 {
   "db": "SQLite",
-  "16cb588b199fa7c76eb4805b3ace57612984f239e9a7b8cec5107776bad74a4e": {
-    "query": "INSERT INTO merchant_channels (channel_id, status) VALUES (?, ?)",
-    "describe": {
-      "columns": [],
-      "parameters": {
-        "Right": 2
-      },
-      "nullable": []
-    }
-  },
   "182d6b86eda32718d534c0cf4f816775c060f8f24923d28a5bdcae5ef534bb87": {
     "query": "UPDATE merchant_channels\n            SET status = ?\n            WHERE channel_id = ?",
     "describe": {
@@ -152,6 +142,16 @@
       "nullable": [
         false
       ]
+    }
+  },
+  "de50503397e87da087b33c6b1ba45a26c2765bff0dd0a9c6cc52a1cd15c0e0ea": {
+    "query": "INSERT INTO merchant_channels (channel_id, contract_id, status) VALUES (?, ?, ?)",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Right": 3
+      },
+      "nullable": []
     }
   },
   "f3232a1d8e4638fa240320ac67333beeacf4528bb2b61189ac4f7501b93c378f": {

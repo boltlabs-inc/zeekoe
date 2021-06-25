@@ -100,6 +100,10 @@ impl Display for Party {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct ContractId {/* TODO */}
+zkabacus_crypto::impl_sqlx_for_bincode_ty!(ContractId);
+
 #[derive(Debug, Clone, Copy, PartialEq, sqlx::Type)]
 #[sqlx(rename_all = "snake_case", type_name = "text")]
 pub enum ChannelStatus {

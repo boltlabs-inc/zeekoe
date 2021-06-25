@@ -14,7 +14,7 @@ use zeekoe::{
         Chan,
     },
     offer_abort, proceed,
-    protocol::{self, establish, Party::Merchant},
+    protocol::{self, establish, ChannelStatus, ContractId, Party::Merchant},
 };
 
 use super::Method;
@@ -31,7 +31,7 @@ impl Method for Establish {
         client: &reqwest::Client,
         service: &Service,
         zkabacus_config: &ZkAbacusConfig,
-        _database: &(dyn QueryMerchant + Send + Sync),
+        database: &(dyn QueryMerchant + Send + Sync),
         session_key: SessionKey,
         chan: Chan<Self::Protocol>,
     ) -> Result<(), anyhow::Error> {
@@ -92,7 +92,7 @@ impl Method for Establish {
             rng,
             zkabacus_config,
             session_key,
-            channel_id,
+            &channel_id,
             chan,
             merchant_deposit,
             customer_deposit,
@@ -101,6 +101,13 @@ impl Method for Establish {
         .context("Failed to initialize channel.")?;
 
         // TODO receive contract ID
+        let contract_id = ContractId {};
+
+        database
+            .new_channel(&channel_id, &contract_id)
+            .await
+            .context("Failed to insert new channel_id, contract_id in database")?;
+
         // Look up contract and ensure it is well-formed and correctly funded.
         // Fund if necessary.
         // If not, abort.
@@ -140,7 +147,7 @@ async fn zkabacus_initialize(
     mut rng: StdRng,
     config: &ZkAbacusConfig,
     session_key: SessionKey,
-    channel_id: ChannelId,
+    channel_id: &ChannelId,
     chan: Chan<establish::Initialize>,
     merchant_balance: MerchantBalance,
     customer_balance: CustomerBalance,
@@ -153,7 +160,7 @@ async fn zkabacus_initialize(
     let context = ProofContext::new(&session_key.to_bytes());
     match config.initialize(
         &mut rng,
-        &channel_id,
+        channel_id,
         customer_balance,
         merchant_balance,
         proof,
