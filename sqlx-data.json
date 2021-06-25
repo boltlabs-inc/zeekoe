@@ -1,15 +1,5 @@
 {
   "db": "SQLite",
-  "182d6b86eda32718d534c0cf4f816775c060f8f24923d28a5bdcae5ef534bb87": {
-    "query": "UPDATE merchant_channels\n            SET status = ?\n            WHERE channel_id = ?",
-    "describe": {
-      "columns": [],
-      "parameters": {
-        "Right": 2
-      },
-      "nullable": []
-    }
-  },
   "25601de5c6748724f92d8a8e18ff3e95321a32b0dc0bb0cac2e0b0eb479dc78a": {
     "query": "UPDATE customer_channels SET address = ? WHERE label = ?",
     "describe": {
@@ -96,6 +86,16 @@
       ]
     }
   },
+  "7084769ad62779a278ae538eb0fdc0138d2c220151c3b1928b5fe740b0f3b880": {
+    "query": "UPDATE merchant_channels\n                    SET status = ?\n                    WHERE channel_id = ?",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Right": 2
+      },
+      "nullable": []
+    }
+  },
   "866f68c59d036e6c895aaaa65aad6b2805ece96bde8a6fc31e4abf4c3de0b0da": {
     "query": "INSERT INTO nonces (data) VALUES (?) ON CONFLICT (data) DO NOTHING",
     "describe": {
@@ -152,6 +152,24 @@
         "Right": 3
       },
       "nullable": []
+    }
+  },
+  "ea687226f1c5d6a673bd477103aaacb4ab87504b12898632b203b32b569ccd35": {
+    "query": "SELECT status AS \"status: Option<ChannelStatus>\"\n            FROM merchant_channels\n            WHERE\n                channel_id = ?",
+    "describe": {
+      "columns": [
+        {
+          "name": "status: Option<ChannelStatus>",
+          "ordinal": 0,
+          "type_info": "Text"
+        }
+      ],
+      "parameters": {
+        "Right": 1
+      },
+      "nullable": [
+        false
+      ]
     }
   },
   "f3232a1d8e4638fa240320ac67333beeacf4528bb2b61189ac4f7501b93c378f": {

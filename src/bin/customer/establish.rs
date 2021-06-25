@@ -45,7 +45,7 @@ impl Command for Establish {
             .await
             .context("Failed to connect to merchant")?;
         let chan = chan
-            .choose::<2>()
+            .choose::<1>()
             .await
             .context("Failed to select channel establishment session")?;
 

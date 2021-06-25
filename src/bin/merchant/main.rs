@@ -125,7 +125,7 @@ impl Command for Run {
                                     session_key,
                                     chan,
                                 ).await?,
-                                1 => Pay.run(
+                                1 => Establish.run(
                                     rng,
                                     &client,
                                     &service,
@@ -134,7 +134,7 @@ impl Command for Run {
                                     session_key,
                                     chan,
                                 ).await?,
-                                2 => Establish.run(
+                                2 => Pay.run(
                                     rng,
                                     &client,
                                     &service,

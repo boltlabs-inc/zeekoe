@@ -42,6 +42,7 @@ pub trait QueryMerchant {
         &self,
         channel_id: &ChannelId,
         status: &ChannelStatus,
+        prev_status: &ChannelStatus,
     ) -> sqlx::Result<()>;
 }
 
@@ -179,17 +180,40 @@ impl QueryMerchant for SqlitePool {
         &self,
         channel_id: &ChannelId,
         status: &ChannelStatus,
+        prev_status: &ChannelStatus,
     ) -> sqlx::Result<()> {
-        sqlx::query!(
-            "UPDATE merchant_channels
-            SET status = ?
-            WHERE channel_id = ?",
-            status,
-            channel_id
+        let mut transaction = self.begin().await?;
+
+        let res: Option<ChannelStatus> = sqlx::query!(
+            r#"SELECT status AS "status: Option<ChannelStatus>"
+            FROM merchant_channels
+            WHERE
+                channel_id = ?"#,
+            channel_id,
         )
-        .execute(self)
-        .await?;
-        Ok(())
+        .fetch_one(&mut transaction)
+        .await?
+        .status;
+
+        match res {
+            None => Err(sqlx::error::Error::RowNotFound),
+            Some(s) if &s == prev_status => {
+                sqlx::query!(
+                    "UPDATE merchant_channels
+                    SET status = ?
+                    WHERE channel_id = ?",
+                    status,
+                    channel_id
+                )
+                .execute(&mut transaction)
+                .await?;
+
+                transaction.commit().await?;
+                Ok(())
+            }
+            // TODO: make this return an UnexpectedChannelStatus error.
+            Some(_unexpected_status) => Err(sqlx::error::Error::RowNotFound),
+        }
     }
 }
 
@@ -306,8 +330,12 @@ mod tests {
         let contract_id = ContractId {};
 
         conn.new_channel(&channel_id, &contract_id).await?;
-        conn.update_channel_status(&channel_id, &ChannelStatus::CustomerFunded)
-            .await?;
+        conn.update_channel_status(
+            &channel_id,
+            &ChannelStatus::CustomerFunded,
+            &ChannelStatus::Originated,
+        )
+        .await?;
 
         Ok(())
     }

@@ -1,4 +1,4 @@
-use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng, url::Url};
+use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng};
 
 use zkabacus_crypto::{
     merchant::Config as ZkAbacusConfig, ChannelId, Context as ProofContext, CustomerBalance,
@@ -35,6 +35,7 @@ impl Method for Establish {
         session_key: SessionKey,
         chan: Chan<Self::Protocol>,
     ) -> Result<(), anyhow::Error> {
+        // Receive various pieces of state from the customer.
         let (customer_randomness, chan) = chan
             .recv()
             .await
@@ -55,7 +56,8 @@ impl Method for Establish {
             .await
             .context("Failed to receive establish note")?;
 
-        let _response_url = match approve_channel_establish(
+        // Request approval from the approval service.
+        if let Err(approval_error) = approve_channel_establish(
             client,
             &service.approve,
             &customer_deposit,
@@ -64,16 +66,15 @@ impl Method for Establish {
         )
         .await
         {
-            Ok(response_url) => response_url,
-            Err(approval_error) => {
-                let error =
-                    establish::Error::Rejected(approval_error.unwrap_or("internal error".into()));
-                abort!(in chan return error);
-            }
-        };
+            let error =
+                establish::Error::Rejected(approval_error.unwrap_or("internal error".into()));
+            abort!(in chan return error);
+        }
 
+        // The approval service has approved.
         proceed!(in chan);
 
+        // Construct a ChannelId.
         let merchant_randomness = MerchantRandomness::new(&mut rng);
         let chan = chan
             .send(merchant_randomness)
@@ -84,12 +85,13 @@ impl Method for Establish {
             merchant_randomness,
             customer_randomness,
             zkabacus_config.signing_keypair().public_key(),
-            todo!("merchant tezos account info"),
-            todo!("customer tezos account info"),
+            &[], // TODO: fill this in with bytes from merchant account info
+            &[], // TODO: fill this in with bytes from customer account info
         );
 
+        // Receive the establish proof from the customer and validate it.
         let (chan, state_commitment) = zkabacus_initialize(
-            rng,
+            &mut rng,
             zkabacus_config,
             session_key,
             &channel_id,
@@ -98,9 +100,14 @@ impl Method for Establish {
             customer_deposit,
         )
         .await
-        .context("Failed to initialize channel.")?;
+        .context("Failed to initialize channel")?;
 
-        // TODO receive contract ID
+        // TODO receive and store the following on-chain information:
+        //
+        // - Contract Id
+        // - tz1 address
+        // - Tezos EdDSA PublicKey
+        //
         let contract_id = ContractId {};
 
         database
@@ -109,12 +116,41 @@ impl Method for Establish {
             .context("Failed to insert new channel_id, contract_id in database")?;
 
         // Look up contract and ensure it is well-formed and correctly funded.
+        database
+            .update_channel_status(
+                &channel_id,
+                &ChannelStatus::Originated,
+                &ChannelStatus::CustomerFunded,
+            )
+            .await?;
+
         // Fund if necessary.
+        database
+            .update_channel_status(
+                &channel_id,
+                &ChannelStatus::CustomerFunded,
+                &ChannelStatus::MerchantFunded,
+            )
+            .await?;
+
         // If not, abort.
 
+        // Move forward in the protocol
         proceed!(in chan);
+
+        // The customer verifies on-chain that we've funded and has the chance to abort.
         offer_abort!(in chan as Merchant);
-        zkabacus_activate(rng, zkabacus_config, chan, state_commitment).await?;
+
+        // Set the active state and send the pay_token.
+        zkabacus_activate(
+            database,
+            &mut rng,
+            zkabacus_config,
+            chan,
+            &channel_id,
+            state_commitment,
+        )
+        .await?;
 
         // TODO: send alert to response_url that channel successfully established?
 
@@ -134,17 +170,20 @@ impl Method for Establish {
 /// information about the nature of the internal error, to prevent internal state leakage.
 async fn approve_channel_establish(
     _client: &reqwest::Client,
-    _approver: &Approver,
+    approver: &Approver,
     _customer_balance: &CustomerBalance,
     _merchant_balance: &MerchantBalance,
     _establish_note: String,
-) -> Result<Option<Url>, Option<String>> {
-    todo!()
+) -> Result<(), Option<String>> {
+    match approver {
+        Approver::Automatic => Ok(()),
+        Approver::Url(_) => panic!("External approver support not yet implemented"),
+    }
 }
 
 /// The core zkAbacus.Initialize protocol.
 async fn zkabacus_initialize(
-    mut rng: StdRng,
+    mut rng: &mut StdRng,
     config: &ZkAbacusConfig,
     session_key: SessionKey,
     channel_id: &ChannelId,
@@ -159,7 +198,7 @@ async fn zkabacus_initialize(
 
     let context = ProofContext::new(&session_key.to_bytes());
     match config.initialize(
-        &mut rng,
+        rng,
         channel_id,
         customer_balance,
         merchant_balance,
@@ -187,13 +226,22 @@ async fn zkabacus_initialize(
 
 /// The core zkAbacus.Activate protocol.
 async fn zkabacus_activate(
-    mut rng: StdRng,
+    database: &(dyn QueryMerchant + Send + Sync),
+    mut rng: &mut StdRng,
     config: &ZkAbacusConfig,
     chan: Chan<establish::Activate>,
+    channel_id: &ChannelId,
     state_commitment: StateCommitment,
 ) -> Result<(), anyhow::Error> {
+    database
+        .update_channel_status(
+            channel_id,
+            &ChannelStatus::MerchantFunded,
+            &ChannelStatus::Active,
+        )
+        .await?;
     // Generate and send pay token.
-    let pay_token = config.activate(&mut rng, state_commitment);
+    let pay_token = config.activate(rng, state_commitment);
     let chan = chan
         .send(pay_token)
         .await

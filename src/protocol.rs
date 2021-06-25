@@ -143,8 +143,8 @@ pub use pay::Pay;
 pub type ZkChannels = Session! {
     choose {
         0 => Parameters,
-        1 => Pay,
-        2 => Establish,
+        1 => Establish,
+        2 => Pay,
     }
 };
 

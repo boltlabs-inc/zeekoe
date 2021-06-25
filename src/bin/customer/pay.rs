@@ -52,7 +52,7 @@ impl Command for Pay {
             .await
             .context("Failed to connect to merchant")?;
         let chan = chan
-            .choose::<1>()
+            .choose::<2>()
             .await
             .context("Failed selecting pay session with merchant")?;
 
