@@ -201,6 +201,10 @@ pub mod establish {
         //   * merchant's pointcheval-sanders public key (`zkabacus_crypto::PublicKey`)
         //   * tz1 address corresponding to merchant's public key
         //   * merchant's tezos public key
+        MerchantApproveEstablish;
+    };
+
+    pub type MerchantApproveEstablish = Session! {
         OfferAbort<MerchantSupplyInfo, Error>;
     };
 

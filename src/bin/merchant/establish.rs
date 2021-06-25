@@ -1,8 +1,8 @@
-use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng};
+use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng, url::Url};
 
 use zkabacus_crypto::{
     merchant::Config as ZkAbacusConfig, ChannelId, Context as ProofContext, CustomerBalance,
-    MerchantBalance, MerchantRandomness, StateCommitment,
+    CustomerRandomness, MerchantBalance, MerchantRandomness, StateCommitment,
 };
 
 use zeekoe::{
@@ -75,7 +75,7 @@ impl Method for Establish {
         //   address, and tezos public key
 
         // Request approval from the approval service
-        if let Err(approval_error) = approve_channel_establish(
+        let confirm_url = match approve_channel_establish(
             client,
             &service.approve,
             &customer_deposit,
@@ -84,132 +84,171 @@ impl Method for Establish {
         )
         .await
         {
-            let error = establish::Error::Rejected(approval_error.unwrap_or("".into()));
-            abort!(in chan return error);
-        }
+            Ok(confirm_url) => confirm_url,
+            Err(approval_error) => {
+                let error =
+                    establish::Error::Rejected(approval_error.unwrap_or("internal error".into()));
+                abort!(in chan return error);
+            }
+        };
 
-        // The approval service has approved
-        proceed!(in chan);
-
-        // Generate and send merchant's random contribution to the channel ID
-        let merchant_randomness = MerchantRandomness::new(&mut rng);
-        let chan = chan
-            .send(merchant_randomness)
-            .await
-            .context("Failed to send merchant randomness for channel ID")?;
-
-        // Generate channel ID (customer will share this same value since they use the same inputs)
-        let channel_id = ChannelId::new(
-            merchant_randomness,
-            customer_randomness,
-            // Merchant's Pointcheval-Sanders public key:
-            zkabacus_merchant_config.signing_keypair().public_key(),
-            &[], // TODO: fill this in with bytes from merchant's tezos public key
-            &[], // TODO: fill this in with bytes from customer's tezos public key
-        );
-
-        // Generate the proof context for the establish proof
-        // TODO: the context should actually be formed from a session transcript up to this point
-        let context = ProofContext::new(&session_key.to_bytes());
-
-        // Receive the establish proof from the customer and validate it
-        let (state_commitment, chan) = zkabacus_initialize(
+        // Finish the establish protocol, then notify the confirmer after either success or failure
+        match approve_and_establish(
             &mut rng,
+            database,
             zkabacus_merchant_config,
-            context,
-            &channel_id,
+            customer_randomness,
+            session_key,
             merchant_deposit,
             customer_deposit,
             chan,
         )
         .await
-        .context("Failed to initialize channel")?;
-
-        // TODO: receive contract id from customer (possibly also send block height, check spec)
-        let contract_id = ContractId {};
-
-        // NOTE: This set of on-chain verification checks is **subtly insufficient** unless the
-        // on-chain contract's state machine is acyclic, which at the time of writing of this note
-        // (June 25, 2021), it is not. We anticipate fixing this soon.
-
-        // TODO: check (waiting, if necessary, until a certain configurable timeout) that the
-        // contract has been originated on chain and confirmed to desired block depth, and:
-        // - the originated contract contains the expected zkChannels contract
-        // - the originated contract's on-chain storage is as expected for the zkAbacus channel ID:
-        //   * the contract storage contains the merchant's zkAbacus Pointcheval Sanders public key
-        //   * the merchant's tezos tz1 address and eddsa public key match the fields merch_addr and
-        //     merch_pk, respectively
-        //   * the self_delay field in the contract matches the global default
-        //   * the close field matches the merchant's close flag (constant close curve point)
-        //   * customer deposit and merchant deposit match the initial balances in the contract
-        //     storage bal_cust_0 and bal_merch_0, respectively
-
-        // TODO: otherwise, if any of these checks fail, invoke `abort!`
-
-        // Store the channel information in the database
-        database
-            .new_channel(&channel_id, &contract_id)
-            .await
-            .context("Failed to insert new channel_id, contract_id in database")?;
-
-        // TODO: check (waiting, if necessary, until a certain configurable timeout) that the
-        // contract has been funded by the customer on chain and confirmed to desired block depth:
-        // - if merchant contribution is zero, check contract storage is set to OPEN state for the
-        //   required confirmation depth
-        // - if merchant contribution is greater than zero, check contract storage is set to
-        //   AWAITING FUNDING state for the required confirmation depth
-
-        // TODO: otherwise, if any of these checks fail, invoke `abort!`
-
-        // Transition the contract state in the database from originated to customer-funded
-        database
-            .update_channel_status(
-                &channel_id,
-                &ChannelStatus::Originated,
-                &ChannelStatus::CustomerFunded,
-            )
-            .await
-            .context("Failed to update database to indicate channel was customer-funded")?;
-
-        // TODO: If the merchant contribution was greater than zero, fund the channel on chain, and
-        // await confirmation that the funding has gone through to the required confirmation depth
-
-        // TODO: If anything goes wrong, invoke `abort!`
-
-        // Transition the contract state in the database from customer-funded to merchant-funded
-        // (where merchant-funded means that the contract storage status is OPEN)
-        database
-            .update_channel_status(
-                &channel_id,
-                &ChannelStatus::CustomerFunded,
-                &ChannelStatus::MerchantFunded,
-            )
-            .await
-            .context("Failed to update database to indicate channel was merchant-funded")?;
-
-        // Move forward in the protocol
-        proceed!(in chan);
-
-        // The customer verifies on-chain that we've funded within their desired timeout period and
-        // has the chance to abort
-        offer_abort!(in chan as Merchant);
-
-        // Attempt to activate the off-chain zkChannel, setting the state in the database to the
-        // active state if successful, and forwarding the pay token to the customer
-        zkabacus_activate(
-            &mut rng,
-            database,
-            zkabacus_merchant_config,
-            &channel_id,
-            state_commitment,
-            chan,
-        )
-        .await?;
-
-        // TODO: send alert to response_url that channel successfully established?
-
-        Ok(())
+        {
+            Ok(()) => {
+                // TODO: send notification to confirmation URL indicating success
+                Ok(())
+            }
+            Err(error) => {
+                // TODO: send notification to confirmation URL indicating failure
+                Err(error)
+            }
+        }
     }
+}
+
+/// Signal to the customer that the channel has been approved to be established, and continue to the
+/// end of the channel establishment protocol.
+async fn approve_and_establish(
+    rng: &mut StdRng,
+    database: &dyn QueryMerchant,
+    zkabacus_merchant_config: &zkabacus_crypto::merchant::Config,
+    customer_randomness: CustomerRandomness,
+    session_key: SessionKey,
+    merchant_deposit: MerchantBalance,
+    customer_deposit: CustomerBalance,
+    chan: Chan<establish::MerchantApproveEstablish>,
+) -> Result<(), anyhow::Error> {
+    // The approval service has approved
+    proceed!(in chan);
+
+    // Generate and send merchant's random contribution to the channel ID
+    let merchant_randomness = MerchantRandomness::new(rng);
+    let chan = chan
+        .send(merchant_randomness)
+        .await
+        .context("Failed to send merchant randomness for channel ID")?;
+
+    // Generate channel ID (customer will share this same value since they use the same inputs)
+    let channel_id = ChannelId::new(
+        merchant_randomness,
+        customer_randomness,
+        // Merchant's Pointcheval-Sanders public key:
+        zkabacus_merchant_config.signing_keypair().public_key(),
+        &[], // TODO: fill this in with bytes from merchant's tezos public key
+        &[], // TODO: fill this in with bytes from customer's tezos public key
+    );
+
+    // Generate the proof context for the establish proof
+    // TODO: the context should actually be formed from a session transcript up to this point
+    let context = ProofContext::new(&session_key.to_bytes());
+
+    // Receive the establish proof from the customer and validate it
+    let (state_commitment, chan) = zkabacus_initialize(
+        rng,
+        zkabacus_merchant_config,
+        context,
+        &channel_id,
+        merchant_deposit,
+        customer_deposit,
+        chan,
+    )
+    .await
+    .context("Failed to initialize channel")?;
+
+    // TODO: receive contract id from customer (possibly also send block height, check spec)
+    let contract_id = ContractId {};
+
+    // NOTE: This set of on-chain verification checks is **subtly insufficient** unless the
+    // on-chain contract's state machine is acyclic, which at the time of writing of this note
+    // (June 25, 2021), it is not. We anticipate fixing this soon.
+
+    // TODO: check (waiting, if necessary, until a certain configurable timeout) that the
+    // contract has been originated on chain and confirmed to desired block depth, and:
+    // - the originated contract contains the expected zkChannels contract
+    // - the originated contract's on-chain storage is as expected for the zkAbacus channel ID:
+    //   * the contract storage contains the merchant's zkAbacus Pointcheval Sanders public key
+    //   * the merchant's tezos tz1 address and eddsa public key match the fields merch_addr and
+    //     merch_pk, respectively
+    //   * the self_delay field in the contract matches the global default
+    //   * the close field matches the merchant's close flag (constant close curve point)
+    //   * customer deposit and merchant deposit match the initial balances in the contract
+    //     storage bal_cust_0 and bal_merch_0, respectively
+
+    // TODO: otherwise, if any of these checks fail, invoke `abort!`
+
+    // Store the channel information in the database
+    database
+        .new_channel(&channel_id, &contract_id)
+        .await
+        .context("Failed to insert new channel_id, contract_id in database")?;
+
+    // TODO: check (waiting, if necessary, until a certain configurable timeout) that the
+    // contract has been funded by the customer on chain and confirmed to desired block depth:
+    // - if merchant contribution is zero, check contract storage is set to OPEN state for the
+    //   required confirmation depth
+    // - if merchant contribution is greater than zero, check contract storage is set to
+    //   AWAITING FUNDING state for the required confirmation depth
+
+    // TODO: otherwise, if any of these checks fail, invoke `abort!`
+
+    // Transition the contract state in the database from originated to customer-funded
+    database
+        .update_channel_status(
+            &channel_id,
+            &ChannelStatus::Originated,
+            &ChannelStatus::CustomerFunded,
+        )
+        .await
+        .context("Failed to update database to indicate channel was customer-funded")?;
+
+    // TODO: If the merchant contribution was greater than zero, fund the channel on chain, and
+    // await confirmation that the funding has gone through to the required confirmation depth
+
+    // TODO: If anything goes wrong, invoke `abort!`
+
+    // Transition the contract state in the database from customer-funded to merchant-funded
+    // (where merchant-funded means that the contract storage status is OPEN)
+    database
+        .update_channel_status(
+            &channel_id,
+            &ChannelStatus::CustomerFunded,
+            &ChannelStatus::MerchantFunded,
+        )
+        .await
+        .context("Failed to update database to indicate channel was merchant-funded")?;
+
+    // Move forward in the protocol
+    proceed!(in chan);
+
+    // The customer verifies on-chain that we've funded within their desired timeout period and
+    // has the chance to abort
+    offer_abort!(in chan as Merchant);
+
+    // Attempt to activate the off-chain zkChannel, setting the state in the database to the
+    // active state if successful, and forwarding the pay token to the customer
+    zkabacus_activate(
+        rng,
+        database,
+        zkabacus_merchant_config,
+        &channel_id,
+        state_commitment,
+        chan,
+    )
+    .await
+    .context("Failed to activate channel")?;
+
+    Ok(())
 }
 
 /// Ask the specified approver to approve the new channel balances and note (or not), returning
@@ -225,9 +264,9 @@ async fn approve_channel_establish(
     _customer_balance: &CustomerBalance,
     _merchant_balance: &MerchantBalance,
     _establish_note: String,
-) -> Result<(), Option<String>> {
+) -> Result<Option<Url>, Option<String>> {
     match approver {
-        Approver::Automatic => Ok(()),
+        Approver::Automatic => Ok(None),
         Approver::Url(_) => todo!("External approver support not yet implemented"),
     }
 }
