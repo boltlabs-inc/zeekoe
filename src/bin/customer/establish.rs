@@ -38,7 +38,7 @@ impl Command for Establish {
             .context("Failed to connect to local database")?;
 
         // Run a **separate** session to get the merchant's public parameters
-        let customer_config = get_parameters(&config, &address).await?;
+        let zkabacus_customer_config = get_parameters(&config, &address).await?;
 
         // Connect and select the Establish session
         let (session_key, chan) = connect(&config, &address)
@@ -115,7 +115,8 @@ impl Command for Establish {
         let channel_id = ChannelId::new(
             merchant_randomness,
             customer_randomness,
-            customer_config.merchant_public_key(),
+            // Merchant's Pointcheval-Sanders public key:
+            zkabacus_customer_config.merchant_public_key(),
             &[], // TODO: fill this in with bytes of merchant's tezos public key
             &[], // TODO: fill this in with bytes of customer's tezos public key
         );
@@ -131,7 +132,7 @@ impl Command for Establish {
         let (actual_label, chan) = zkabacus_initialize(
             &mut rng,
             database.as_ref(),
-            customer_config,
+            zkabacus_customer_config,
             label,
             &address,
             channel_id,

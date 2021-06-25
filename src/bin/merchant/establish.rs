@@ -30,27 +30,30 @@ impl Method for Establish {
         mut rng: StdRng,
         client: &reqwest::Client,
         service: &Service,
-        zkabacus_config: &ZkAbacusConfig,
+        zkabacus_merchant_config: &ZkAbacusConfig,
         database: &(dyn QueryMerchant + Send + Sync),
         session_key: SessionKey,
         chan: Chan<Self::Protocol>,
     ) -> Result<(), anyhow::Error> {
-        // Receive various pieces of state from the customer.
+        // Receive the customer's random contribution to the channel ID
         let (customer_randomness, chan) = chan
             .recv()
             .await
             .context("Failed to receive customer randomness")?;
 
+        // Receive the customer's desired deposit into the channel
         let (customer_deposit, chan) = chan
             .recv()
             .await
             .context("Failed to receive customer balance")?;
 
+        // Receive the customer's desired merchant contribution to the channel
         let (merchant_deposit, chan) = chan
             .recv()
             .await
             .context("Failed to receive merchant balance")?;
 
+        // Receive the channel establishment justification note from the customer
         let (note, chan) = chan
             .recv()
             .await
@@ -64,7 +67,14 @@ impl Method for Establish {
         //   * tz1 address corresponding to merchant's public key
         //   * merchant's tezos public key
 
-        // Request approval from the approval service.
+        // TODO: ensure that:
+        // - customer's tezos public key is valid
+        // - customer's tezos public key corresponds to the tezos account that they specified
+        // - that address is actually a tz1 address
+        // - submitted hash verifies against the **merchant's** pointcheval-sanders public key, tz1
+        //   address, and tezos public key
+
+        // Request approval from the approval service
         if let Err(approval_error) = approve_channel_establish(
             client,
             &service.approve,
@@ -74,38 +84,43 @@ impl Method for Establish {
         )
         .await
         {
-            let error =
-                establish::Error::Rejected(approval_error.unwrap_or("internal error".into()));
+            let error = establish::Error::Rejected(approval_error.unwrap_or("".into()));
             abort!(in chan return error);
         }
 
-        // The approval service has approved.
+        // The approval service has approved
         proceed!(in chan);
 
-        // Construct a ChannelId.
+        // Generate and send merchant's random contribution to the channel ID
         let merchant_randomness = MerchantRandomness::new(&mut rng);
         let chan = chan
             .send(merchant_randomness)
             .await
             .context("Failed to send merchant randomness for channel ID")?;
 
+        // Generate channel ID (customer will share this same value since they use the same inputs)
         let channel_id = ChannelId::new(
             merchant_randomness,
             customer_randomness,
-            zkabacus_config.signing_keypair().public_key(),
-            &[], // TODO: fill this in with bytes from merchant account info
-            &[], // TODO: fill this in with bytes from customer account info
+            // Merchant's Pointcheval-Sanders public key:
+            zkabacus_merchant_config.signing_keypair().public_key(),
+            &[], // TODO: fill this in with bytes from merchant's tezos public key
+            &[], // TODO: fill this in with bytes from customer's tezos public key
         );
 
-        // Receive the establish proof from the customer and validate it.
-        let (chan, state_commitment) = zkabacus_initialize(
+        // Generate the proof context for the establish proof
+        // TODO: the context should actually be formed from a session transcript up to this point
+        let context = ProofContext::new(&session_key.to_bytes());
+
+        // Receive the establish proof from the customer and validate it
+        let (state_commitment, chan) = zkabacus_initialize(
             &mut rng,
-            zkabacus_config,
-            session_key,
+            zkabacus_merchant_config,
+            context,
             &channel_id,
-            chan,
             merchant_deposit,
             customer_deposit,
+            chan,
         )
         .await
         .context("Failed to initialize channel")?;
@@ -151,9 +166,9 @@ impl Method for Establish {
 
         // Set the active state and send the pay_token.
         zkabacus_activate(
-            database,
             &mut rng,
-            zkabacus_config,
+            database,
+            zkabacus_merchant_config,
             chan,
             &channel_id,
             state_commitment,
@@ -167,10 +182,7 @@ impl Method for Establish {
 }
 
 /// Ask the specified approver to approve the new channel balances and note (or not), returning
-/// either `Ok` if it is approved, and `Err` if it is not approved.
-///
-/// Approved channels may refer to an `Option<Url>`, where the *result* of the established
-/// channel may be located, once the pay session completes successfully.
+/// either `Ok(())` if it is approved, and `Err` if it is not approved.
 ///
 /// Rejected channels may provide an `Option<String>` indicating the reason for the channel's
 /// rejection, where `None` indicates that it was rejected due to an internal error in the approver
@@ -185,26 +197,26 @@ async fn approve_channel_establish(
 ) -> Result<(), Option<String>> {
     match approver {
         Approver::Automatic => Ok(()),
-        Approver::Url(_) => panic!("External approver support not yet implemented"),
+        Approver::Url(_) => todo!("External approver support not yet implemented"),
     }
 }
 
 /// The core zkAbacus.Initialize protocol.
 async fn zkabacus_initialize(
-    mut rng: &mut StdRng,
+    rng: &mut StdRng,
     config: &ZkAbacusConfig,
-    session_key: SessionKey,
+    context: ProofContext,
     channel_id: &ChannelId,
-    chan: Chan<establish::Initialize>,
     merchant_balance: MerchantBalance,
     customer_balance: CustomerBalance,
-) -> Result<(Chan<establish::CustomerSupplyContractInfo>, StateCommitment), anyhow::Error> {
+    chan: Chan<establish::Initialize>,
+) -> Result<(StateCommitment, Chan<establish::CustomerSupplyContractInfo>), anyhow::Error> {
+    // Receive the establish proof from the customer
     let (proof, chan) = chan
         .recv()
         .await
         .context("Failed to receive establish proof")?;
 
-    let context = ProofContext::new(&session_key.to_bytes());
     match config.initialize(
         rng,
         channel_id,
@@ -219,11 +231,12 @@ async fn zkabacus_initialize(
             let chan = chan
                 .send(closing_signature)
                 .await
-                .context("Failed to send initial closing signature.")?;
+                .context("Failed to send initial closing signature")?;
 
-            // Allow customer to reject signature if it's invalid
+            // Allow customer to reject signature if it is invalid
             offer_abort!(in chan as Merchant);
-            Ok((chan, state_commitment))
+
+            Ok((state_commitment, chan))
         }
         None => {
             let error = establish::Error::InvalidEstablishProof;
@@ -234,8 +247,8 @@ async fn zkabacus_initialize(
 
 /// The core zkAbacus.Activate protocol.
 async fn zkabacus_activate(
+    rng: &mut StdRng,
     database: &(dyn QueryMerchant + Send + Sync),
-    mut rng: &mut StdRng,
     config: &ZkAbacusConfig,
     chan: Chan<establish::Activate>,
     channel_id: &ChannelId,

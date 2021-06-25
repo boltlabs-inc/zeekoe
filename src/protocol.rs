@@ -186,7 +186,6 @@ pub mod establish {
     pub type Establish = CustomerSupplyInfo;
 
     pub type CustomerSupplyInfo = Session! {
-        // TODO: send customer-side chain-specific public stuff
         send CustomerRandomness;
         CustomerProposeFunding;
     };
