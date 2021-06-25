@@ -145,6 +145,8 @@ pub type ZkChannels = Session! {
 };
 
 pub mod parameters {
+    use zkabacus_crypto::{CommitmentParameters, PublicKey, RangeProofParameters};
+
     use super::*;
 
     /// Get the public parameters for the merchant.
