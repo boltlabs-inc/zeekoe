@@ -28,6 +28,7 @@ use zeekoe::{
 };
 
 mod approve;
+mod close;
 mod establish;
 mod parameters;
 mod pay;
