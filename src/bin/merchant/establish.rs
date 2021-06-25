@@ -17,6 +17,7 @@ use zeekoe::{
     protocol::{self, establish, ChannelStatus, ContractId, Party::Merchant},
 };
 
+use super::approve;
 use super::Method;
 
 pub struct Establish;
@@ -75,7 +76,7 @@ impl Method for Establish {
         //   address, and tezos public key
 
         // Request approval from the approval service
-        let confirm_url = match approve_channel_establish(
+        let response_url = match approve::establish(
             client,
             &service.approve,
             &customer_deposit,
@@ -106,11 +107,11 @@ impl Method for Establish {
         .await
         {
             Ok(()) => {
-                // TODO: send notification to confirmation URL indicating success
+                approve::establish_success(client, response_url).await;
                 Ok(())
             }
             Err(error) => {
-                // TODO: send notification to confirmation URL indicating failure
+                approve::failure(client, response_url).await;
                 Err(error)
             }
         }
@@ -249,26 +250,6 @@ async fn approve_and_establish(
     .context("Failed to activate channel")?;
 
     Ok(())
-}
-
-/// Ask the specified approver to approve the new channel balances and note (or not), returning
-/// either `Ok(())` if it is approved, and `Err` if it is not approved.
-///
-/// Rejected channels may provide an `Option<String>` indicating the reason for the channel's
-/// rejection, where `None` indicates that it was rejected due to an internal error in the approver
-/// service. This information is forwarded directly to the customer, so we do not provide further
-/// information about the nature of the internal error, to prevent internal state leakage.
-async fn approve_channel_establish(
-    _client: &reqwest::Client,
-    approver: &Approver,
-    _customer_balance: &CustomerBalance,
-    _merchant_balance: &MerchantBalance,
-    _establish_note: String,
-) -> Result<Option<Url>, Option<String>> {
-    match approver {
-        Approver::Automatic => Ok(None),
-        Approver::Url(_) => todo!("External approver support not yet implemented"),
-    }
 }
 
 /// The core zkAbacus.Initialize protocol.
