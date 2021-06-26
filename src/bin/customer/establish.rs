@@ -40,16 +40,6 @@ impl Command for Establish {
         // Run a **separate** session to get the merchant's public parameters
         let zkabacus_customer_config = get_parameters(&config, &address).await?;
 
-        // TODO: ensure that:
-        // - merchant's public key (in the config) is a valid Pointcheval-Sanders public key
-        // - merchant's range proof parameters consist of valid Pointcheval-Sanders public key and
-        //   valid signatures on the correct range
-        // - merchant's commitment parameters are "the right ones" (this check can't currently be
-        //   done because the parameters are randomly generated at first merchant startup)
-        // - merchant's tezos public key is valid
-        // - merchant's tezos public key corresponds to the tezos account that they specified
-        // - that address is actually a tz1 address
-
         // Connect and select the Establish session
         let (session_key, chan) = connect(&config, &address)
             .await
@@ -187,8 +177,51 @@ async fn get_parameters(
     config: &Config,
     address: &ZkChannelAddress,
 ) -> Result<zkabacus_crypto::customer::Config, anyhow::Error> {
-    // TODO: also return the merchant's tz1 address and tezos public key
-    todo!("Fill in with get-parameters session from start to finish")
+    // Connect to the merchant
+    let (_session_key, chan) = connect(config, address).await?;
+
+    // Select the get-parameters session
+    let chan = chan.choose::<0>().await?;
+
+    // Get the merchant's Pointcheval-Sanders public key
+    let (merchant_public_key, chan) = chan
+        .recv()
+        .await
+        .context("Failed to receive merchant's Pointcheval-Sanders public key")?;
+
+    // Get the merchant's commitment parameters (TODO: these should be a global default)
+    let (revocation_commitment_parameters, chan) = chan
+        .recv()
+        .await
+        .context("Failed to receive merchant's revocation commitment parameters")?;
+
+    // Get the merchant's range proof parameters
+    let (range_proof_parameters, chan) = chan
+        .recv()
+        .await
+        .context("Failed to receive merchant's range proof parameters")?;
+
+    // TODO: get the merchant's tz1 address
+
+    // TODO: get the merchant's tezos public key
+
+    chan.close();
+
+    // TODO: ensure that:
+    // - merchant's public key (in the config) is a valid Pointcheval-Sanders public key
+    // - merchant's range proof parameters consist of valid Pointcheval-Sanders public key and
+    //   valid signatures on the correct range
+    // - merchant's commitment parameters are "the right ones" (this check can't currently be
+    //   done because the parameters are randomly generated at first merchant startup)
+    // - merchant's tezos public key is valid
+    // - merchant's tezos public key corresponds to the tezos account that they specified
+    // - that address is actually a tz1 address
+
+    Ok(zkabacus_crypto::customer::Config::from_parts(
+        merchant_public_key,
+        revocation_commitment_parameters,
+        range_proof_parameters,
+    ))
 }
 
 /// The core zkAbacus.Initialize protocol.
