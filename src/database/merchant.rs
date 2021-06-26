@@ -37,7 +37,8 @@ pub trait QueryMerchant: Send + Sync {
         contract_id: &ContractId,
     ) -> sqlx::Result<()>;
 
-    /// Update an existing merchant channel's status.
+    /// Update an existing merchant channel's status to a new state, only if it is currently in the
+    /// expected state.
     async fn compare_and_swap_channel_status(
         &self,
         channel_id: &ChannelId,
