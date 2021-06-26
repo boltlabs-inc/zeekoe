@@ -100,6 +100,10 @@ impl Display for Party {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct ContractId {/* TODO */}
+zkabacus_crypto::impl_sqlx_for_bincode_ty!(ContractId);
+
 #[derive(Debug, Clone, Copy, PartialEq, sqlx::Type)]
 #[sqlx(rename_all = "snake_case", type_name = "text")]
 pub enum ChannelStatus {
@@ -139,8 +143,8 @@ pub use pay::Pay;
 pub type ZkChannels = Session! {
     choose {
         0 => Parameters,
-        1 => Pay,
-        2 => Establish,
+        1 => Establish,
+        2 => Pay,
     }
 };
 
@@ -182,7 +186,6 @@ pub mod establish {
     pub type Establish = CustomerSupplyInfo;
 
     pub type CustomerSupplyInfo = Session! {
-        // TODO: send customer-side chain-specific public stuff
         send CustomerRandomness;
         CustomerProposeFunding;
     };
@@ -190,7 +193,7 @@ pub mod establish {
     pub type CustomerProposeFunding = Session! {
         send CustomerBalance;
         send MerchantBalance;
-        send String;
+        send String; // Channel establishment justification note
         // TODO: customer sends merchant:
         // - customer's tezos public key (eddsa public key)
         // - customer's tezos account tz1 address corresponding to that public key
@@ -198,6 +201,10 @@ pub mod establish {
         //   * merchant's pointcheval-sanders public key (`zkabacus_crypto::PublicKey`)
         //   * tz1 address corresponding to merchant's public key
         //   * merchant's tezos public key
+        MerchantApproveEstablish;
+    };
+
+    pub type MerchantApproveEstablish = Session! {
         OfferAbort<MerchantSupplyInfo, Error>;
     };
 

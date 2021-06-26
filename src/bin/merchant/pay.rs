@@ -1,20 +1,15 @@
-use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng, url::Url};
+use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng};
 
 use zeekoe::{
     abort,
-    merchant::{
-        config::{Approver, Service},
-        database::QueryMerchant,
-        server::SessionKey,
-        Chan,
-    },
+    merchant::{config::Service, database::QueryMerchant, server::SessionKey, Chan},
     offer_abort, proceed,
     protocol::{self, pay, Party::Merchant},
 };
 
 use zkabacus_crypto::{merchant::Config as MerchantConfig, Context as ProofContext, PaymentAmount};
 
-use super::Method;
+use super::{approve, Method};
 
 pub struct Pay;
 
@@ -28,7 +23,7 @@ impl Method for Pay {
         client: &reqwest::Client,
         service: &Service,
         merchant_config: &MerchantConfig,
-        database: &(dyn QueryMerchant + Send + Sync),
+        database: &dyn QueryMerchant,
         session_key: SessionKey,
         chan: Chan<Self::Protocol>,
     ) -> Result<(), anyhow::Error> {
@@ -43,7 +38,7 @@ impl Method for Pay {
             .context("Failed to receive payment note")?;
 
         // Determine whether to accept the payment
-        let response_url = match approve_payment(client, &service.approve, &payment_amount, note)
+        let response_url = match approve::payment(client, &service.approve, &payment_amount, note)
             .await
         {
             Ok(response_url) => response_url,
@@ -72,7 +67,7 @@ impl Method for Pay {
             Ok(chan) => {
                 // Send the response note (i.e. the fulfillment of the service) and close the
                 // connection to the customer
-                let response_note = payment_success(client, response_url).await;
+                let response_note = approve::payment_success(client, response_url).await;
                 let (note, result) = match response_note {
                     Err(err) => (None, Err(err)),
                     Ok(o) => (o, Ok(())),
@@ -84,121 +79,18 @@ impl Method for Pay {
                 result
             }
             Err(err) => {
-                payment_failure(client, response_url).await;
+                approve::failure(client, response_url).await;
                 Err(err)
             }
         }
     }
 }
 
-/// Ask the specified approver to approve the payment amount and note (or not), returning either
-/// `Ok` if it is approved, and `Err` if it is not approved.
-///
-/// Approved payments may refer to an `Option<Url>`, where the *result* of the payment may be
-/// located, once the pay session completes successfully.
-///
-/// Rejected payments may provide an `Option<String>` indicating the reason for the payment's
-/// rejection, where `None` indicates that it was rejected due to an internal error in the approver
-/// service. This information is forwarded directly to the customer, so we do not provide further
-/// information about the nature of the internal error, to prevent internal state leakage.
-async fn approve_payment(
-    client: &reqwest::Client,
-    approver: &Approver,
-    payment_amount: &PaymentAmount,
-    payment_note: String,
-) -> Result<Option<Url>, Option<String>> {
-    match approver {
-        // The automatic approver approves all non-negative payments
-        Approver::Automatic => {
-            if payment_amount > &PaymentAmount::zero() {
-                Ok(None)
-            } else {
-                Err(Some("amount must be non-negative".into()))
-            }
-        }
-        // A URL-based approver approves a payment iff it returns a success code
-        Approver::Url(approver_url) => {
-            let amount = payment_amount.to_i64().abs();
-            let response = client
-                .post(
-                    approver_url
-                        .join(if payment_amount > &PaymentAmount::zero() {
-                            "pay"
-                        } else {
-                            "refund"
-                        })
-                        .map_err(|_| None)?,
-                )
-                .query(&[("amount", amount)])
-                .body(payment_note)
-                .send()
-                .await
-                .map_err(|_| None)?;
-            if response.status().is_success() {
-                if let Some(response_location) = response.headers().get(reqwest::header::LOCATION) {
-                    let response_location_str = response_location.to_str().map_err(|_| None)?;
-                    let response_url = Url::parse(response_location_str).map_err(|_| None)?;
-                    Ok(Some(response_url))
-                } else {
-                    Ok(None)
-                }
-            } else {
-                Err(response.text().await.map(Some).unwrap_or(None))
-            }
-        }
-    }
-}
-
-/// Notify the confirmer, if any, of a payment success, and fetch a payment result, if any, to
-/// return directly to the customer.
-async fn payment_success(
-    client: &reqwest::Client,
-    response_url: Option<Url>,
-) -> Result<Option<String>, anyhow::Error> {
-    if let Some(response_url) = response_url {
-        let response = client
-            .get(response_url.clone())
-            .send()
-            .await
-            .with_context(|| format!("Failed to get resource at {}", response_url.clone()))?;
-        if response.status().is_success() {
-            let body = response.text().await?;
-            delete_resource(client, response_url, true).await;
-            Ok(Some(body))
-        } else {
-            Ok(None)
-        }
-    } else {
-        Ok(Some(String::new()))
-    }
-}
-
-/// Notify the confirmer, if any, of a payment failure.
-async fn payment_failure(client: &reqwest::Client, response_url: Option<Url>) {
-    if let Some(response_url) = response_url {
-        delete_resource(client, response_url, false).await;
-    }
-}
-
-/// Send a `DELETE` request to a resource at the specified `url`, with the query parameter
-/// `?success=true` or `?success=false`, depending on the value of `success`.
-///
-/// This is common functionality between [`payment_success`] and [`payment_failure`].
-async fn delete_resource(client: &reqwest::Client, url: Url, success: bool) {
-    client
-        .delete(url)
-        .query(&[("success", success)])
-        .send()
-        .await
-        .map(|_| ())
-        .unwrap_or(());
-}
-
 /// The core zkAbacus.Pay protocol.
 async fn zkabacus_pay(
     mut rng: StdRng,
     merchant_config: &MerchantConfig,
-    database: &(dyn QueryMerchant + Send + Sync),
+    database: &dyn QueryMerchant,
     session_key: SessionKey,
     chan: Chan<pay::CustomerStartPayment>,
     payment_amount: PaymentAmount,

@@ -38,14 +38,24 @@ impl Command for Establish {
             .context("Failed to connect to local database")?;
 
         // Run a **separate** session to get the merchant's public parameters
-        let customer_config = get_parameters(&config, &address).await?;
+        let zkabacus_customer_config = get_parameters(&config, &address).await?;
+
+        // TODO: ensure that:
+        // - merchant's public key (in the config) is a valid Pointcheval-Sanders public key
+        // - merchant's range proof parameters consist of valid Pointcheval-Sanders public key and
+        //   valid signatures on the correct range
+        // - merchant's commitment parameters are "the right ones" (this check can't currently be
+        //   done because the parameters are randomly generated at first merchant startup)
+        // - merchant's tezos public key is valid
+        // - merchant's tezos public key corresponds to the tezos account that they specified
+        // - that address is actually a tz1 address
 
         // Connect and select the Establish session
         let (session_key, chan) = connect(&config, &address)
             .await
             .context("Failed to connect to merchant")?;
         let chan = chan
-            .choose::<2>()
+            .choose::<1>()
             .await
             .context("Failed to select channel establishment session")?;
 
@@ -58,15 +68,14 @@ impl Command for Establish {
         )
         .map_err(|_| establish::Error::InvalidDeposit(Customer))?;
 
-        let merchant_deposit: MerchantBalance =
-            MerchantBalance::try_new(match self.merchant_deposit {
-                None => 0,
-                Some(d) => d
-                    .as_minor_units()
-                    .ok_or(establish::Error::InvalidDeposit(Merchant))?
-                    .try_into()?,
-            })
-            .map_err(|_| establish::Error::InvalidDeposit(Merchant))?;
+        let merchant_deposit = MerchantBalance::try_new(match self.merchant_deposit {
+            None => 0,
+            Some(d) => d
+                .as_minor_units()
+                .ok_or(establish::Error::InvalidDeposit(Merchant))?
+                .try_into()?,
+        })
+        .map_err(|_| establish::Error::InvalidDeposit(Merchant))?;
 
         // Read the contents of the channel establishment note, if any: this is the justification,
         // if any is needed, for why the channel should be allowed to be established (format
@@ -115,7 +124,8 @@ impl Command for Establish {
         let channel_id = ChannelId::new(
             merchant_randomness,
             customer_randomness,
-            customer_config.merchant_public_key(),
+            // Merchant's Pointcheval-Sanders public key:
+            zkabacus_customer_config.merchant_public_key(),
             &[], // TODO: fill this in with bytes of merchant's tezos public key
             &[], // TODO: fill this in with bytes of customer's tezos public key
         );
@@ -131,7 +141,7 @@ impl Command for Establish {
         let (actual_label, chan) = zkabacus_initialize(
             &mut rng,
             database.as_ref(),
-            customer_config,
+            zkabacus_customer_config,
             label,
             &address,
             channel_id,
@@ -177,6 +187,7 @@ async fn get_parameters(
     config: &Config,
     address: &ZkChannelAddress,
 ) -> Result<zkabacus_crypto::customer::Config, anyhow::Error> {
+    // TODO: also return the merchant's tz1 address and tezos public key
     todo!("Fill in with get-parameters session from start to finish")
 }
 
