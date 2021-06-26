@@ -6,6 +6,7 @@ use super::Command;
 
 #[async_trait]
 impl Command for Close {
+    #[allow(unused)]
     async fn run(self, mut rng: StdRng, config: self::Config) -> Result<(), anyhow::Error> {
         todo!()
     }

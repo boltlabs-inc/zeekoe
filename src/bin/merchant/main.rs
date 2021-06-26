@@ -27,9 +27,12 @@ use zeekoe::{
     protocol::ZkChannels,
 };
 
+mod approve;
+mod establish;
 mod parameters;
 mod pay;
 
+use establish::Establish;
 use parameters::Parameters;
 use pay::Pay;
 
@@ -45,7 +48,7 @@ pub trait Command {
 #[async_trait]
 impl Command for Run {
     async fn run(self, config: Config) -> Result<(), anyhow::Error> {
-        let database: Arc<dyn QueryMerchant + Send + Sync> = match config.database {
+        let database: Arc<dyn QueryMerchant> = match config.database {
             DatabaseLocation::InMemory => Arc::new(SqlitePool::connect("file::memory:").await?),
             DatabaseLocation::Sqlite(ref uri) => Arc::new(SqlitePool::connect(uri).await?),
             DatabaseLocation::Postgres(_) => {
@@ -123,7 +126,7 @@ impl Command for Run {
                                     session_key,
                                     chan,
                                 ).await?,
-                                1 => Pay.run(
+                                1 => Establish.run(
                                     rng,
                                     &client,
                                     &service,
@@ -132,6 +135,16 @@ impl Command for Run {
                                     session_key,
                                     chan,
                                 ).await?,
+                                2 => Pay.run(
+                                    rng,
+                                    &client,
+                                    &service,
+                                    &merchant_config,
+                                    database.as_ref(),
+                                    session_key,
+                                    chan,
+                                ).await?,
+
                             })?;
                             Ok::<_, anyhow::Error>(())
                         }
@@ -177,7 +190,7 @@ where
         client: &reqwest::Client,
         config: &Service,
         merchant_config: &zkabacus_crypto::merchant::Config,
-        database: &(dyn QueryMerchant + Send + Sync),
+        database: &dyn QueryMerchant,
         session_key: SessionKey,
         chan: Chan<Self::Protocol>,
     ) -> Result<(), anyhow::Error>;

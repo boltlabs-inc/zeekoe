@@ -13,14 +13,15 @@ pub struct Parameters;
 impl Method for Parameters {
     type Protocol = protocol::Parameters;
 
+    #[allow(unused)]
     async fn run(
         &self,
         _rng: StdRng,
         _client: &reqwest::Client,
         _config: &Service,
         merchant_config: &zkabacus_crypto::merchant::Config,
-        _database: &(dyn QueryMerchant + Send + Sync),
-        _session_key: SessionKey,
+        database: &dyn QueryMerchant,
+        session_key: SessionKey,
         chan: Chan<Self::Protocol>,
     ) -> Result<(), anyhow::Error> {
         let (public_key, commitment_parameters, range_proof_parameters) =

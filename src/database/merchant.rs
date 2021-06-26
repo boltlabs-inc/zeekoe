@@ -1,14 +1,14 @@
 use {async_trait::async_trait, futures::StreamExt, rand::rngs::StdRng};
 
 use crate::database::SqlitePool;
-use crate::protocol::ChannelStatus;
+use crate::protocol::{ChannelStatus, ContractId};
 use zkabacus_crypto::{
     revlock::{RevocationLock, RevocationSecret},
     ChannelId, CommitmentParameters, KeyPair, Nonce, RangeProofParameters,
 };
 
 #[async_trait]
-pub trait QueryMerchant {
+pub trait QueryMerchant: Send + Sync {
     /// Perform all the DB migrations defined in src/database/migrations/merchant/*.sql
     async fn migrate(&self) -> sqlx::Result<()>;
 
@@ -31,13 +31,19 @@ pub trait QueryMerchant {
     ) -> sqlx::Result<zkabacus_crypto::merchant::Config>;
 
     /// Create a new merchant channel.
-    async fn new_channel(&self, channel_id: &ChannelId) -> sqlx::Result<()>;
-
-    /// Update an existing merchant channel's status.
-    async fn update_channel_status(
+    async fn new_channel(
         &self,
         channel_id: &ChannelId,
-        status: &ChannelStatus,
+        contract_id: &ContractId,
+    ) -> sqlx::Result<()>;
+
+    /// Update an existing merchant channel's status to a new state, only if it is currently in the
+    /// expected state.
+    async fn compare_and_swap_channel_status(
+        &self,
+        channel_id: &ChannelId,
+        expected: &ChannelStatus,
+        new: &ChannelStatus,
     ) -> sqlx::Result<()>;
 }
 
@@ -154,10 +160,15 @@ impl QueryMerchant for SqlitePool {
         Ok(new_config)
     }
 
-    async fn new_channel(&self, channel_id: &ChannelId) -> sqlx::Result<()> {
+    async fn new_channel(
+        &self,
+        channel_id: &ChannelId,
+        contract_id: &ContractId,
+    ) -> sqlx::Result<()> {
         sqlx::query!(
-            "INSERT INTO merchant_channels (channel_id, status) VALUES (?, ?)",
+            "INSERT INTO merchant_channels (channel_id, contract_id, status) VALUES (?, ?, ?)",
             channel_id,
+            contract_id,
             ChannelStatus::Originated
         )
         .execute(self)
@@ -166,21 +177,47 @@ impl QueryMerchant for SqlitePool {
         Ok(())
     }
 
-    async fn update_channel_status(
+    async fn compare_and_swap_channel_status(
         &self,
         channel_id: &ChannelId,
-        status: &ChannelStatus,
+        expected: &ChannelStatus,
+        new: &ChannelStatus,
     ) -> sqlx::Result<()> {
-        sqlx::query!(
-            "UPDATE merchant_channels
-            SET status = ?
-            WHERE channel_id = ?",
-            status,
-            channel_id
+        // TODO: This should return a different error when the CAS fails
+        let mut transaction = self.begin().await?;
+
+        // Find out the current status
+        let result: Option<ChannelStatus> = sqlx::query!(
+            r#"SELECT status AS "status: Option<ChannelStatus>"
+            FROM merchant_channels
+            WHERE
+                channel_id = ?"#,
+            channel_id,
         )
-        .execute(self)
-        .await?;
-        Ok(())
+        .fetch_one(&mut transaction)
+        .await?
+        .status;
+
+        // Only if the current status is what was expected, update the status to the new status
+        match result {
+            None => Err(sqlx::error::Error::RowNotFound),
+            Some(ref current) if current == expected => {
+                sqlx::query!(
+                    "UPDATE merchant_channels
+                    SET status = ?
+                    WHERE channel_id = ?",
+                    new,
+                    channel_id
+                )
+                .execute(&mut transaction)
+                .await?;
+
+                transaction.commit().await?;
+                Ok(())
+            }
+            // TODO: make this return an UnexpectedChannelStatus error.
+            Some(_unexpected_status) => Err(sqlx::error::Error::RowNotFound),
+        }
     }
 }
 
@@ -294,10 +331,15 @@ mod tests {
         let cid_c = CustomerRandomness::new(&mut rng);
         let pk = KeyPair::new(&mut rng).public_key().clone();
         let channel_id = ChannelId::new(cid_m, cid_c, &pk, &[], &[]);
+        let contract_id = ContractId {};
 
-        conn.new_channel(&channel_id).await?;
-        conn.update_channel_status(&channel_id, &ChannelStatus::CustomerFunded)
-            .await?;
+        conn.new_channel(&channel_id, &contract_id).await?;
+        conn.compare_and_swap_channel_status(
+            &channel_id,
+            &ChannelStatus::Originated,
+            &ChannelStatus::CustomerFunded,
+        )
+        .await?;
 
         Ok(())
     }
