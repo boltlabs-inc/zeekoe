@@ -336,8 +336,8 @@ mod tests {
         conn.new_channel(&channel_id, &contract_id).await?;
         conn.compare_and_swap_channel_status(
             &channel_id,
-            &ChannelStatus::CustomerFunded,
             &ChannelStatus::Originated,
+            &ChannelStatus::CustomerFunded,
         )
         .await?;
 
