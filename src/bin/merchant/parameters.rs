@@ -24,14 +24,18 @@ impl Method for Parameters {
         session_key: SessionKey,
         chan: Chan<Self::Protocol>,
     ) -> Result<(), anyhow::Error> {
+        // Extract the components of the merchant's public zkAbacus parameters
         let (public_key, commitment_parameters, range_proof_parameters) =
             merchant_config.extract_customer_config_parts();
+
+        // Send those parameters to the customer
         chan.send(public_key)
             .await?
             .send(commitment_parameters)
             .await?
             .send(range_proof_parameters)
             .await?
+            // TODO: Send the merchant's tz1 address and tezos public key
             .close();
         Ok(())
     }
