@@ -38,11 +38,11 @@ pub trait QueryMerchant: Send + Sync {
     ) -> sqlx::Result<()>;
 
     /// Update an existing merchant channel's status.
-    async fn update_channel_status(
+    async fn compare_and_swap_channel_status(
         &self,
         channel_id: &ChannelId,
-        status: &ChannelStatus,
-        prev_status: &ChannelStatus,
+        expected: &ChannelStatus,
+        new: &ChannelStatus,
     ) -> sqlx::Result<()>;
 }
 
@@ -176,15 +176,17 @@ impl QueryMerchant for SqlitePool {
         Ok(())
     }
 
-    async fn update_channel_status(
+    async fn compare_and_swap_channel_status(
         &self,
         channel_id: &ChannelId,
-        status: &ChannelStatus,
-        prev_status: &ChannelStatus,
+        expected: &ChannelStatus,
+        new: &ChannelStatus,
     ) -> sqlx::Result<()> {
+        // TODO: This should return a different error when the CAS fails
         let mut transaction = self.begin().await?;
 
-        let res: Option<ChannelStatus> = sqlx::query!(
+        // Find out the current status
+        let result: Option<ChannelStatus> = sqlx::query!(
             r#"SELECT status AS "status: Option<ChannelStatus>"
             FROM merchant_channels
             WHERE
@@ -195,14 +197,15 @@ impl QueryMerchant for SqlitePool {
         .await?
         .status;
 
-        match res {
+        // Only if the current status is what was expected, update the status to the new status
+        match result {
             None => Err(sqlx::error::Error::RowNotFound),
-            Some(s) if &s == prev_status => {
+            Some(ref current) if current == expected => {
                 sqlx::query!(
                     "UPDATE merchant_channels
                     SET status = ?
                     WHERE channel_id = ?",
-                    status,
+                    new,
                     channel_id
                 )
                 .execute(&mut transaction)
@@ -330,7 +333,7 @@ mod tests {
         let contract_id = ContractId {};
 
         conn.new_channel(&channel_id, &contract_id).await?;
-        conn.update_channel_status(
+        conn.compare_and_swap_channel_status(
             &channel_id,
             &ChannelStatus::CustomerFunded,
             &ChannelStatus::Originated,

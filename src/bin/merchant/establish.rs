@@ -200,7 +200,7 @@ async fn approve_and_establish(
 
     // Transition the contract state in the database from originated to customer-funded
     database
-        .update_channel_status(
+        .compare_and_swap_channel_status(
             &channel_id,
             &ChannelStatus::Originated,
             &ChannelStatus::CustomerFunded,
@@ -216,7 +216,7 @@ async fn approve_and_establish(
     // Transition the contract state in the database from customer-funded to merchant-funded
     // (where merchant-funded means that the contract storage status is OPEN)
     database
-        .update_channel_status(
+        .compare_and_swap_channel_status(
             &channel_id,
             &ChannelStatus::CustomerFunded,
             &ChannelStatus::MerchantFunded,
@@ -301,7 +301,7 @@ async fn zkabacus_activate(
 ) -> Result<(), anyhow::Error> {
     // Transition the channel state to active
     database
-        .update_channel_status(
+        .compare_and_swap_channel_status(
             channel_id,
             &ChannelStatus::MerchantFunded,
             &ChannelStatus::Active,
