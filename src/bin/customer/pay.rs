@@ -196,15 +196,21 @@ async fn start_payment(
             })?;
 
             // Attempt to start the payment using the payment amount and proof context
-            let (started, start_message) = ready
-                .start(rng, payment_amount, &context)
-                .context("Failed to generate nonce and payment proof")?;
+            match ready.start(rng, payment_amount, &context) {
+                Ok((started, start_message)) => {
+                    // Set the new started state in the database
+                    *state = Some(State::Started(started));
 
-            // Set the new started state in the database
-            *state = Some(State::Started(started));
+                    // Return the start message
+                    Ok(start_message)
+                }
+                Err((ready, error)) => {
+                    // Put the old ready state back in the database
+                    *state = Some(State::Ready(ready));
 
-            // Return the start message
-            Ok(start_message)
+                    Err(error).context("Failed to generate nonce and pay proof")
+                }
+            }
         })
         .await
         .context("Database error while fetching initial pay state")??
