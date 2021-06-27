@@ -164,9 +164,15 @@ impl Command for Establish {
         proceed!(in chan);
 
         // Run zkAbacus.Activate
-        zkabacus_activate(database.as_ref(), actual_label, chan)
+        zkabacus_activate(database.as_ref(), &actual_label, chan)
             .await
             .context("Failed to activate channel")?;
+
+        // Print success
+        eprintln!(
+            "Successfully established new channel with label \"{}\"",
+            actual_label
+        );
 
         Ok(())
     }
@@ -323,7 +329,7 @@ async fn store_inactive_local(
 /// The core zkAbacus.Initialize protocol.
 async fn zkabacus_activate(
     database: &dyn QueryCustomer,
-    label: ChannelName,
+    label: &ChannelName,
     chan: Chan<establish::Activate>,
 ) -> Result<(), anyhow::Error> {
     // Receive the pay token from the merchant
@@ -336,7 +342,7 @@ async fn zkabacus_activate(
     chan.close();
 
     // Step the local channel state forward to `Ready`
-    activate_local(database, &label, pay_token).await
+    activate_local(database, label, pay_token).await
 }
 
 /// Update the local state for a channel from [`Inactive`] to [`Ready`] in the database.
