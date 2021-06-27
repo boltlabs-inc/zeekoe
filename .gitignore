@@ -3,6 +3,12 @@
 # development certificates
 dev/localhost.crt
 dev/localhost.key
+dev/customer.db
+dev/customer.db-shm
+dev/customer.db-wal
+dev/merchant.db
+dev/merchant.db-shm
+dev/merchant.db-wal
 
 # will have compiled files and executables
 /target/
