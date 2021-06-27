@@ -1,6 +1,5 @@
 use zkabacus_crypto::{
-    revlock::*, ClosingSignature, CommitmentParameters, CustomerRandomness, MerchantRandomness,
-    Nonce, PayProof, PayToken, PublicKey, RangeProofParameters,
+    revlock::*, ClosingSignature, CustomerRandomness, MerchantRandomness, Nonce, PayProof, PayToken,
 };
 use {
     dialectic::prelude::*,

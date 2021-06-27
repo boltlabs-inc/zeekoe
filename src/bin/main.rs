@@ -8,21 +8,15 @@ mod merchant;
 
 #[derive(Debug, StructOpt)]
 pub enum Cli {
-    Customer {
-        #[structopt(subcommand)]
-        customer: zeekoe::customer::Cli,
-    },
-    Merchant {
-        #[structopt(subcommand)]
-        merchant: zeekoe::merchant::Cli,
-    },
+    Customer(zeekoe::customer::Cli),
+    Merchant(zeekoe::merchant::Cli),
 }
 
 #[tokio::main]
 pub async fn main() -> Result<(), anyhow::Error> {
     use Cli::{Customer, Merchant};
     match Cli::from_args() {
-        Merchant { merchant } => merchant::main_with_cli(merchant).await,
-        Customer { customer } => customer::main_with_cli(customer).await,
+        Merchant(cli) => merchant::main_with_cli(cli).await,
+        Customer(cli) => customer::main_with_cli(cli).await,
     }
 }

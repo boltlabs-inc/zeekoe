@@ -1,0 +1,2 @@
+database = { sqlite = "customer.db" }
+trust_certificate = "localhost.crt"

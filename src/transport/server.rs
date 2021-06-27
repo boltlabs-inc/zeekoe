@@ -106,11 +106,20 @@ where
     ///
     /// Note that `initialize` runs sequentially: it can pause the server if desired by
     /// `.await`-ing.
-    pub async fn serve_while<Input, Error, Init, InitFut, Interaction, InteractionFut>(
+    pub async fn serve_while<
+        Input,
+        Error,
+        Init,
+        InitFut,
+        Interaction,
+        InteractionFut,
+        TerminateFut,
+    >(
         &self,
         address: impl Into<SocketAddr>,
         mut initialize: Init,
         interact: Interaction,
+        terminate: TerminateFut,
     ) -> Result<(), io::Error>
     where
         Input: Send + 'static,
@@ -120,6 +129,7 @@ where
         Interaction:
             Fn(SessionKey, Input, Chan<Protocol>) -> InteractionFut + Send + Sync + 'static,
         InteractionFut: Future<Output = Result<(), Error>> + Send + 'static,
+        TerminateFut: Future<Output = ()> + Send + 'static,
     {
         // Configure server-side TLS
         let mut tls_config = rustls::ServerConfig::new(rustls::NoClientAuth::new());
@@ -169,16 +179,30 @@ where
             }
         });
 
+        // Listen for the termination event and forward it to stop the server
+        let (stop_server, mut recv_stop_server) = mpsc::channel(1);
+        tokio::spawn(async move {
+            terminate.await;
+            stop_server.send(()).await.unwrap_or(());
+        });
+
         // Wrap the server function in an `Arc` to share it between threads
         let interact = Arc::new(interact);
 
+        // Bind to the address and serve
         let address = address.into();
         println!("serving on: {:?}", address);
         let listener = TcpListener::bind(address).await?;
 
         // Loop over incoming TCP connections until `initialize` returns `None`
         while let Some(input) = initialize().await {
-            match listener.accept().await {
+            // If the termination future returns before a new connection, stop
+            let accept_result = tokio::select! {
+                result = listener.accept() => result,
+                () = async { recv_stop_server.recv().await.unwrap_or(()) } => break,
+            };
+
+            match accept_result {
                 Err(error) => result_tx.send(Err((None, error))).await.unwrap_or(()),
                 Ok((tcp_stream, address)) => {
                     // Session typed messages may be small; send them immediately
