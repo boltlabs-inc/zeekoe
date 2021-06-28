@@ -42,6 +42,14 @@ pub struct Closed {
 }
 
 impl Closed {
+    /// Create a new [`Closed`] state given balances.
+    pub fn new(customer_balance: CustomerBalance, merchant_balance: MerchantBalance) -> Self {
+        Closed {
+            customer_balance,
+            merchant_balance,
+        }
+    }
+
     /// Get the final [`CustomerBalance`] for this closed channel state.
     pub fn customer_balance(&self) -> &CustomerBalance {
         &self.customer_balance

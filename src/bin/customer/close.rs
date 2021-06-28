@@ -5,18 +5,18 @@
 //* This architecture is flexible; we could alternately allow the customer CLI to wait (hang) until
 //* it receives confirmation (e.g. call `process_mutual_close_confirmation` directly from
 //* `mutual_close()`).
-use {async_trait::async_trait, rand::rngs::StdRng};
+use {async_trait::async_trait, rand::rngs::StdRng, std::convert::Infallible};
 
 use zeekoe::{
     customer::{
         cli::Close,
-        database::{QueryCustomer, QueryCustomerExt, State},
+        database::{self, Closed, QueryCustomer, QueryCustomerExt},
         Chan, ChannelName, Config,
     },
     offer_abort, proceed,
     protocol::{close, Party::Customer},
 };
-use zkabacus_crypto::customer::ClosingMessage;
+use zkabacus_crypto::customer::{ClosingMessage, Inactive, Locked, Ready, Started};
 
 use super::{connect, database, Command};
 use anyhow::Context;
@@ -123,6 +123,7 @@ async fn mutual_close(
 /// It will only be called after a successful execution of [`mutual_close()`].
 #[allow(unused)]
 async fn process_mutual_close_confirmation(
+    rng: &mut StdRng,
     config: self::Config,
     label: ChannelName,
 ) -> Result<(), anyhow::Error> {
@@ -132,20 +133,17 @@ async fn process_mutual_close_confirmation(
 
     // Update database channel status from PendingClose to Closed.
     database
-        .with_channel_state(&label, |state| match state.take() {
-            Some(State::PendingClose(_)) => *state = None,
-            not_pending_state => {
-                *state = not_pending_state;
-                anyhow::anyhow!(format!(
-                    "Expecting the channel \"{}\" to be in a different state",
-                    &label
-                ));
-            }
+        .with_channel_state(&label, |pending: ClosingMessage| {
+            Ok((
+                Closed::new(
+                    pending.customer_balance().clone(),
+                    pending.merchant_balance().clone(),
+                ),
+                (),
+            ))
         })
         .await
-        .context("Database error while updating state to Closed")?;
-
-    Ok(())
+        .context("Database error while updating status to closed")?
 }
 
 async fn zkabacus_close(
@@ -176,32 +174,57 @@ async fn zkabacus_close(
     Ok(chan)
 }
 
+macro_rules! try_close {
+    ($rng:expr, $database:expr, $label:expr, $ty:ty) => {{
+        let result = $database
+            .with_channel_state(&$label, |state: $ty| {
+                let message = state.close(&mut $rng);
+                Ok::<_, Infallible>((message.clone(), message))
+            })
+            .await;
+
+        match result {
+            Ok(message) => match message {
+                Ok(message) => return Ok(message),
+                Err(infallible) => match infallible {},
+            },
+            Err(error) => match error {
+                database::Error::UnexpectedState(_) => {}
+                _ => return Err(error).context("Failed to set state to pending close in database"),
+            },
+        }
+    };};
+}
+
 async fn get_close_message(
     mut rng: StdRng,
     database: &dyn QueryCustomer,
     label: &ChannelName,
 ) -> Result<ClosingMessage, anyhow::Error> {
-    // Extract current state from the db.
-    database
-        .with_channel_state(label, |state| {
-            // Extract the close message.
-            let closing_message = match state.take() {
-                Some(State::Inactive(inactive)) => inactive.close(&mut rng),
-                Some(State::Ready(ready)) => ready.close(&mut rng),
-                Some(State::Started(started)) => started.close(&mut rng),
-                Some(State::Locked(locked)) => locked.close(&mut rng),
-                // TODO: name the state (Pending vs Closed)
-                uncloseable_state => {
-                    *state = uncloseable_state;
-                    return Err(anyhow::anyhow!("Expected closeable state"));
-                }
-            };
+    try_close!(rng, database, label, Inactive);
+    try_close!(rng, database, label, Ready);
+    try_close!(rng, database, label, Started);
+    try_close!(rng, database, label, Locked);
 
-            // Set the new PendingClose state in the database.
-            *state = Some(State::PendingClose(closing_message.clone()));
-
-            Ok(closing_message)
+    let result = database
+        .with_channel_state(&label, |message: ClosingMessage| {
+            Ok::<_, Infallible>((message.clone(), message))
         })
-        .await
-        .context("Database error while fetching state to close on")?
+        .await;
+
+    match result {
+        Ok(message) => match message {
+            Ok(message) => return Ok(message),
+            Err(infallible) => match infallible {},
+        },
+        Err(error) => match error {
+            database::Error::UnexpectedState(_) => {}
+            _ => return Err(error).context("Failed to set state to pending close in database"),
+        },
+    }
+
+    return Err(anyhow::anyhow!(
+        "The channel with label \"{}\" was already closed",
+        label
+    ));
 }

@@ -11,7 +11,7 @@ use zkabacus_crypto::customer::Inactive;
 use crate::customer::{client::ZkChannelAddress, ChannelName};
 
 mod state;
-pub use state::{IsState, State, StateName, UnexpectedState};
+pub use state::{Closed, IsState, State, StateName, UnexpectedState};
 
 type Result<T> = std::result::Result<T, Error>;
 
