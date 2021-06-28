@@ -10,7 +10,7 @@ use zeekoe::{
     customer::{
         cli::{Pay, Refund},
         client::SessionKey,
-        database::{take_state, QueryCustomer, QueryCustomerExt, State},
+        database::{QueryCustomer, QueryCustomerExt, State},
         Chan, ChannelName, Config,
     },
     offer_abort, proceed,
@@ -187,27 +187,17 @@ async fn start_payment(
 ) -> Result<StartMessage, anyhow::Error> {
     database
         .with_channel_state(label, |state| {
-            // Ensure the channel is in ready state
-            let ready = take_state(State::ready, state).with_context(|| {
-                format!(
-                    "Expecting the channel \"{}\" to be in a different state",
-                    label
-                )
-            })?;
+            // Make sure channel is in ready state
+            let ready = state.ready().map_err(|(e, _)| e)?;
 
             // Attempt to start the payment using the payment amount and proof context
             match ready.start(rng, payment_amount, &context) {
                 Ok((started, start_message)) => {
-                    // Set the new started state in the database
-                    *state = Some(State::Started(started));
-
-                    // Return the start message
-                    Ok(start_message)
+                    // Return the start message and new state
+                    Ok((start_message, State::Started(started)))
                 }
-                Err((ready, error)) => {
-                    // Put the old ready state back in the database
-                    *state = Some(State::Ready(ready));
-
+                Err((_, error)) => {
+                    // Return an error describing the failure
                     Err(error).context("Failed to generate nonce and pay proof")
                 }
             }
@@ -226,36 +216,30 @@ async fn lock_payment(
     label: &ChannelName,
     closing_signature: ClosingSignature,
 ) -> Result<Option<LockMessage>, anyhow::Error> {
-    database
+    let result = database
         .with_channel_state(label, |state| {
-            // Ensure the channel is in started state
-            let started = take_state(State::started, state).with_context(|| {
-                format!(
-                    "Expecting the channel \"{}\" to be in a different state",
-                    label
-                )
-            })?;
+            // Ensure channel is in the started state
+            let started = state.started().map_err(|(e, _)| e)?;
 
             // Attempt to lock the state using the closing signature
             match started.lock(closing_signature) {
-                Err(started) => {
-                    // Restore the state in the database to the original started state
-                    *state = Some(State::Started(started));
-
+                Err(_) => {
                     // Return no start message, since we failed
-                    Ok(None)
+                    Err(())
                 }
                 Ok((locked, lock_message)) => {
-                    // Set the new locked state in the database
-                    *state = Some(State::Locked(locked));
-
-                    // Return the start message
-                    Ok(Some(lock_message))
+                    // Return the start message and set the new state
+                    Ok((lock_message, State::Locked(locked)))
                 }
             }
         })
         .await
-        .context("Database error while fetching started pay state")??
+        .context("Database error while fetching started pay state")??;
+
+    match result {
+        Ok(lock_message) => Ok(Some(lock_message)),
+        Err(()) => Ok(None),
+    }
 }
 
 /// Attempt to unlock a locked payment for a channel of the given label, using the given

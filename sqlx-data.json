@@ -82,7 +82,7 @@
         "Right": 1
       },
       "nullable": [
-        true
+        false
       ]
     }
   },

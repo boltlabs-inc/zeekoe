@@ -12,7 +12,7 @@ use zkabacus_crypto::customer::Inactive;
 use crate::customer::{client::ZkChannelAddress, ChannelName};
 
 mod state;
-pub use state::{take_state, NameState, State, StateName};
+pub use state::{NameState, State, StateName, UnexpectedState};
 
 /// Extension trait augmenting the customer database [`QueryCustomer`] with extra methods.
 ///
@@ -29,11 +29,11 @@ pub trait QueryCustomerExt {
     /// **Important:** The given closure should be idempotent on the state of the world aside from
     /// the single side effect of modifying their given `&mut Option<State>`. In particular, the
     /// closure **should not result in communication with the merchant**.
-    async fn with_channel_state<'a, T: Send + 'static>(
+    async fn with_channel_state<'a, T: Send + 'static, E: Send + 'static>(
         &'a self,
         label: &ChannelName,
-        with_state: impl for<'s> FnOnce(&'s mut Option<State>) -> T + Send + 'a,
-    ) -> sqlx::Result<Result<T, NoSuchChannel>>;
+        with_state: impl for<'s> FnOnce(State) -> Result<(T, State), E> + Send + 'a,
+    ) -> sqlx::Result<Result<Result<T, E>, NoSuchChannel>>;
 }
 
 /// Trait-object safe version of [`QueryCustomer`]: use this type in trait objects and implement it
@@ -90,9 +90,11 @@ pub trait QueryCustomer: Send + Sync {
         &'a self,
         label: &ChannelName,
         with_state: Box<
-            dyn for<'s> FnOnce(&'s mut Option<State>) -> Box<dyn Any + Send> + Send + 'a,
+            dyn for<'s> FnOnce(State) -> Result<(Box<dyn Any + Send>, State), Box<dyn Any + Send>>
+                + Send
+                + 'a,
         >,
-    ) -> sqlx::Result<Result<Box<dyn Any>, NoSuchChannel>>;
+    ) -> sqlx::Result<Result<Result<Box<dyn Any + Send>, Box<dyn Any + Send>>, NoSuchChannel>>;
 }
 
 #[async_trait]
@@ -195,13 +197,15 @@ impl QueryCustomer for SqlitePool {
         &'a self,
         label: &ChannelName,
         with_state: Box<
-            dyn for<'s> FnOnce(&'s mut Option<State>) -> Box<dyn Any + Send> + Send + 'a,
+            dyn for<'s> FnOnce(State) -> Result<(Box<dyn Any + Send>, State), Box<dyn Any + Send>>
+                + Send
+                + 'a,
         >,
-    ) -> sqlx::Result<Result<Box<dyn Any>, NoSuchChannel>> {
+    ) -> sqlx::Result<Result<Result<Box<dyn Any + Send>, Box<dyn Any + Send>>, NoSuchChannel>> {
         let mut transaction = self.begin().await?;
 
         // Retrieve the state so that we can modify it
-        let mut state: Option<State> = sqlx::query!(
+        let state: State = sqlx::query!(
             r#"SELECT state AS "state: State" FROM customer_channels WHERE label = ?"#,
             label,
         )
@@ -210,39 +214,51 @@ impl QueryCustomer for SqlitePool {
         .state;
 
         // Perform the operation with the state fetched from the database
-        let output = with_state(&mut state);
+        let result = match with_state(state) {
+            Ok((output, state)) => {
+                // Store the new state to the database and set it to clean again
+                sqlx::query!(
+                    "UPDATE customer_channels SET state = ? WHERE label = ?",
+                    state,
+                    label
+                )
+                .execute(&mut transaction)
+                .await?;
 
-        // Store the new state to the database and set it to clean again
-        sqlx::query!(
-            "UPDATE customer_channels SET state = ? WHERE label = ?",
-            state,
-            label
-        )
-        .execute(&mut transaction)
-        .await?;
+                Ok(output)
+            }
+            Err(error) => Err(error),
+        };
 
         // Commit the transaction
         transaction.commit().await?;
 
-        Ok(Ok(output))
+        Ok(Ok(result))
     }
 }
 
 // Blanket implementation of [`QueryCustomerExt`] for all [`QueryCustomer`]
 #[async_trait]
 impl<Q: QueryCustomer + ?Sized> QueryCustomerExt for Q {
-    async fn with_channel_state<'a, T: Send + 'static>(
+    async fn with_channel_state<'a, T: Send + 'static, E: Send + 'static>(
         &'a self,
         label: &ChannelName,
-        with_state: impl for<'s> FnOnce(&'s mut Option<State>) -> T + Send + 'a,
-    ) -> sqlx::Result<Result<T, NoSuchChannel>> {
+        with_state: impl for<'s> FnOnce(State) -> Result<(T, State), E> + Send + 'a,
+    ) -> sqlx::Result<Result<Result<T, E>, NoSuchChannel>> {
         <Self as QueryCustomer>::with_channel_state_erased(
             self,
             label,
-            Box::new(|state| Box::new(with_state(state))),
+            Box::new(|state| match with_state(state) {
+                Ok((t, state)) => Ok((Box::new(t), state)),
+                Err(e) => Err(Box::new(e)),
+            }),
         )
         .await
-        .map(|result| result.map(|t| *t.downcast().unwrap()))
+        .map(|result| {
+            result.map(|result| {
+                result.map_or_else(|t| *t.downcast().unwrap(), |e| *e.downcast().unwrap())
+            })
+        })
     }
 }
 

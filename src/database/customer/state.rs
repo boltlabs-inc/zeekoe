@@ -6,7 +6,7 @@ use {
 
 use zkabacus_crypto::{
     customer::{ClosingMessage, Inactive, Locked, Ready, Started},
-    impl_sqlx_for_bincode_ty,
+    impl_sqlx_for_bincode_ty, CustomerBalance, MerchantBalance,
 };
 
 /// The current state of the channel, from the perspective of the customer.
@@ -25,6 +25,27 @@ pub enum State {
     Locked(Locked),
     /// Channel has to be closed because of an error, but has not yet been closed.
     PendingClose(ClosingMessage),
+    /// Channel has been closed on chain.
+    Closed(Closed),
+}
+
+/// The final balances of a channel closed on chain.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Closed {
+    merchant_balance: MerchantBalance,
+    customer_balance: CustomerBalance,
+}
+
+impl Closed {
+    /// Get the final [`CustomerBalance`] for this closed channel state.
+    pub fn customer_balance(&self) -> &CustomerBalance {
+        &self.customer_balance
+    }
+
+    /// Get the final [`MerchantBalance`] for this closed channel state.
+    pub fn merchant_balance(&self) -> &MerchantBalance {
+        &self.merchant_balance
+    }
 }
 
 /// The names of the different states a channel can be in (does not contain actual state).
@@ -46,20 +67,22 @@ impl Display for StateName {
             StateName::Started => "started",
             StateName::Locked => "locked",
             StateName::PendingClose => "pending close",
-            StateName::Closed => "close",
+            StateName::Closed => "closed",
         }
         .fmt(f)
     }
 }
 
+/// The set of states which have a name.
 pub trait NameState {
-    fn name() -> StateName;
+    /// Get the [`StateName`] for this state.
+    fn state_name() -> StateName;
 }
 
 macro_rules! impl_name_state {
     ($t:ty, $name:expr) => {
         impl NameState for $t {
-            fn name() -> StateName {
+            fn state_name() -> StateName {
                 $name
             }
         }
@@ -70,6 +93,8 @@ impl_name_state!(Inactive, StateName::Inactive);
 impl_name_state!(Ready, StateName::Ready);
 impl_name_state!(Started, StateName::Started);
 impl_name_state!(Locked, StateName::Locked);
+impl_name_state!(ClosingMessage, StateName::PendingClose);
+impl_name_state!(Closed, StateName::Closed);
 
 impl_sqlx_for_bincode_ty!(State);
 
@@ -78,12 +103,18 @@ macro_rules! impl_state_try_getter {
     ($doc:tt, $method:ident, $constructor:ident, $state:ty $(,)?) => {
         #[doc = "Get the enclosed [`"]
         #[doc = $doc]
-        #[doc = "`] state, if this state is one, otherwise returning `Err(self)`."]
-        pub fn $method(self) -> Result<$state, State> {
+        #[doc = "`] state, if this state is one, otherwise returning an error describing the mismatch, paired with `self`."]
+        pub fn $method(self) -> Result<$state, (UnexpectedState, State)> {
             if let State::$constructor(r) = self {
                 Ok(r)
             } else {
-                Err(self)
+                Err((
+                    UnexpectedState {
+                        expected_state: <$state as NameState>::state_name(),
+                        actual_state: self.name(),
+                    },
+                    self,
+                ))
             }
         }
     };
@@ -100,6 +131,7 @@ impl State {
         PendingClose,
         ClosingMessage,
     );
+    impl_state_try_getter!("Closed", closed, Closed, Closed);
 
     /// Get the [`StateName`] of this state.
     pub fn name(&self) -> StateName {
@@ -109,37 +141,32 @@ impl State {
             State::Started(_) => StateName::Started,
             State::Locked(_) => StateName::Locked,
             State::PendingClose(_) => StateName::PendingClose,
+            State::Closed(_) => StateName::Closed,
         }
     }
-}
 
-/// Try to match the specified case of a state, or generate an error if it doesn't match.
-pub fn take_state<T: NameState>(
-    getter: impl FnOnce(State) -> Result<T, State>,
-    state: &mut Option<State>,
-) -> Result<T, UnexpectedState> {
-    // Ensure state is not closed, throwing an error describing the situation if so
-    let open_state = state.take().ok_or(UnexpectedState {
-        expected_state: T::name(),
-        actual_state: StateName::Closed,
-    })?;
-
-    // Try to get the state using the getter
-    let t = getter(open_state).map_err(|other_state| {
-        // What was the actual state we encountered?
-        let actual_state = other_state.name();
-
-        // Restore the state back to the reference
-        *state = Some(other_state);
-
-        // Return an error describing the discrepancy
-        UnexpectedState {
-            expected_state: T::name(),
-            actual_state,
+    /// Get the current [`CustomerBalance`] of this state.
+    pub fn customer_balance(&self) -> &CustomerBalance {
+        match self {
+            State::Inactive(inactive) => inactive.customer_balance(),
+            State::Ready(ready) => ready.customer_balance(),
+            State::Started(started) => started.customer_balance(),
+            State::Locked(locked) => locked.customer_balance(),
+            State::PendingClose(closing_message) => closing_message.customer_balance(),
+            State::Closed(closed) => closed.customer_balance(),
         }
-    })?;
+    }
 
-    Ok(t)
+    pub fn merchant_balance(&self) -> &MerchantBalance {
+        match self {
+            State::Inactive(inactive) => inactive.merchant_balance(),
+            State::Ready(ready) => ready.merchant_balance(),
+            State::Started(started) => started.merchant_balance(),
+            State::Locked(locked) => locked.merchant_balance(),
+            State::PendingClose(closing_message) => closing_message.merchant_balance(),
+            State::Closed(closed) => closed.merchant_balance(),
+        }
+    }
 }
 
 /// Error thrown when an operation requires a channel to be in a particular state, but it is in a
