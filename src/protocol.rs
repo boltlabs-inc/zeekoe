@@ -1,6 +1,5 @@
 use zkabacus_crypto::{
-    revlock::*, ClosingSignature, CommitmentParameters, CustomerRandomness, MerchantRandomness,
-    Nonce, PayProof, PayToken, PublicKey, RangeProofParameters,
+    revlock::*, ClosingSignature, CustomerRandomness, MerchantRandomness, Nonce, PayProof, PayToken,
 };
 use {
     dialectic::prelude::*,
@@ -112,6 +111,22 @@ pub enum ChannelStatus {
     MerchantFunded,
     Active,
     Closed,
+}
+
+impl Display for ChannelStatus {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Originated => "originated",
+                Self::CustomerFunded => "customer funded",
+                Self::MerchantFunded => "merchant and customer funded",
+                Self::Active => "active",
+                Self::Closed => "closed",
+            }
+        )
+    }
 }
 
 impl Party {
