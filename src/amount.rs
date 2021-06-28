@@ -5,6 +5,8 @@ use {
     thiserror::Error,
 };
 
+pub use supported::*;
+
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Amount {
     pub(crate) money: Money<'static, supported::Currency>,
@@ -61,18 +63,19 @@ impl Amount {
     }
 
     /// Convert a unitless signed number into an [`Amount`] in the given currency equal to that
-    /// number of the smallest denomination of the currency, or fail if it is not representable as
-    /// such.
-    pub fn try_from_minor_units_of_currency(
+    /// number of the smallest denomination of the currency.
+    ///
+    /// For example, one cent is the smallest denomination of the USD, so this function would
+    /// interpret the number `1` as "0.01 USD", if the currency was USD.
+    pub fn from_minor_units_of_currency(
         minor_units: i64,
         currency: &'static supported::Currency,
-    ) -> Option<Self> {
+    ) -> Self {
         let minor_units: Decimal = minor_units.into();
-        let major_units =
-            minor_units.checked_div(Decimal::from(10u32.checked_pow(currency.exponent())?))?;
-        Some(Self {
+        let major_units = minor_units / Decimal::from(10u32.pow(currency.exponent()));
+        Self {
             money: Money::from_decimal(major_units, currency),
-        })
+        }
     }
 }
 
@@ -83,20 +86,6 @@ pub enum AmountParseError {
     UnknownCurrency(String),
     #[error("Invalid format for currency amount")]
     InvalidFormat,
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn parse_and_extract_tezos() {
-        let tezos_amount = Amount::from_str("12.34 XTZ").expect("failed to parse");
-        let minor_amount = tezos_amount
-            .try_into_minor_units()
-            .expect("failed to get minor amount");
-        assert_eq!(12_340_000, minor_amount);
-    }
 }
 
 // Define only the currencies supported by this application
@@ -114,3 +103,23 @@ define_currency_set!(
         }
     }
 );
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn parse_and_extract_tezos() {
+        let tezos_amount = Amount::from_str("12.34 XTZ").expect("failed to parse");
+        let minor_amount = tezos_amount
+            .try_into_minor_units()
+            .expect("failed to get minor amount");
+        assert_eq!(12_340_000, minor_amount);
+    }
+
+    #[test]
+    fn round_trip_minor_units_tezos() {
+        let microtez = Amount::from_minor_units_of_currency(1, XTZ);
+        assert_eq!(1, microtez.try_into_minor_units().unwrap());
+    }
+}
