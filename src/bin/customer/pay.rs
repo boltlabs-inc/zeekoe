@@ -1,7 +1,7 @@
-use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng};
+use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng, std::convert::TryInto};
 
 use zkabacus_crypto::{
-    customer::{LockMessage, StartMessage},
+    customer::{LockMessage, Locked, Ready, StartMessage, Started},
     ClosingSignature, Context as ProofContext, PayToken, PaymentAmount,
 };
 
@@ -10,7 +10,7 @@ use zeekoe::{
     customer::{
         cli::{Pay, Refund},
         client::SessionKey,
-        database::{QueryCustomer, QueryCustomerExt, State},
+        database::{QueryCustomer, QueryCustomerExt, State, UnexpectedState},
         Chan, ChannelName, Config,
     },
     offer_abort, proceed,
@@ -191,7 +191,7 @@ async fn start_payment(
     database
         .with_channel_state(label, |state| {
             // Make sure channel is in ready state
-            let ready = state.ready().map_err(|(e, _)| e)?;
+            let ready: Ready = state.try_into().map_err(|(e, _)| e)?;
 
             // Attempt to start the payment using the payment amount and proof context
             match ready.start(rng, payment_amount, &context) {
@@ -222,7 +222,9 @@ async fn lock_payment(
     let result = database
         .with_channel_state(label, |state| {
             // Ensure channel is in the started state
-            let started = state.started().map_err(|(e, _)| Err(e.into()))?;
+            let started: Started = state
+                .try_into()
+                .map_err(|(e, _): (UnexpectedState, _)| Err(e.into()))?;
 
             // Attempt to lock the state using the closing signature
             match started.lock(closing_signature) {
@@ -262,7 +264,7 @@ async fn unlock_payment(
     database
         .with_channel_state(label, |state| {
             // Ensure the channel is in locked state
-            let locked = state.locked().map_err(|(e, _)| e)?;
+            let locked: Locked = state.try_into().map_err(|(e, _)| e)?;
 
             // Attempt to unlock the state using the pay token
             match locked.unlock(pay_token) {

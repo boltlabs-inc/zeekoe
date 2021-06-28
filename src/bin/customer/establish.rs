@@ -353,7 +353,7 @@ async fn activate_local(
 ) -> Result<(), anyhow::Error> {
     database
         .with_channel_state(label, |state| {
-            let inactive = state.inactive().map_err(|(e, _)| e)?;
+            let inactive: Inactive = state.try_into().map_err(|(e, _)| e)?;
             let ready = inactive
                 .activate(pay_token)
                 .map_err(|_| establish::Error::InvalidPayToken)?;

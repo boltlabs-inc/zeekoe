@@ -1,6 +1,9 @@
 use {
     serde::{Deserialize, Serialize},
-    std::fmt::{Display, Formatter},
+    std::{
+        convert::TryFrom,
+        fmt::{Display, Formatter},
+    },
     thiserror::Error,
 };
 
@@ -28,6 +31,8 @@ pub enum State {
     /// Channel has been closed on chain.
     Closed(Closed),
 }
+
+impl_sqlx_for_bincode_ty!(State);
 
 /// The final balances of a channel closed on chain.
 #[derive(Debug, Serialize, Deserialize)]
@@ -74,67 +79,55 @@ impl Display for StateName {
 }
 
 /// The set of states which have a name.
-pub trait NameState {
+pub trait IsState: Into<State> + TryFrom<State, Error = (UnexpectedState, State)> {
     /// Get the [`StateName`] for this state.
     fn state_name() -> StateName;
 }
 
-macro_rules! impl_name_state {
-    ($t:ty, $name:expr) => {
-        impl NameState for $t {
+macro_rules! impl_is_state {
+    ($name:ident($ty:ident)) => {
+        impl IsState for $ty {
             fn state_name() -> StateName {
-                $name
+                StateName::$name
+            }
+        }
+
+        impl Into<State> for $ty {
+            fn into(self) -> State {
+                State::$name(self)
+            }
+        }
+
+        impl TryFrom<State> for $ty {
+            type Error = (UnexpectedState, State);
+
+            fn try_from(state: State) -> Result<Self, (UnexpectedState, State)> {
+                if let State::$name(s) = state {
+                    Ok(s)
+                } else {
+                    Err((
+                        UnexpectedState {
+                            expected_state: <$ty as IsState>::state_name(),
+                            actual_state: state.state_name(),
+                        },
+                        state,
+                    ))
+                }
             }
         }
     };
 }
 
-impl_name_state!(Inactive, StateName::Inactive);
-impl_name_state!(Ready, StateName::Ready);
-impl_name_state!(Started, StateName::Started);
-impl_name_state!(Locked, StateName::Locked);
-impl_name_state!(ClosingMessage, StateName::PendingClose);
-impl_name_state!(Closed, StateName::Closed);
-
-impl_sqlx_for_bincode_ty!(State);
-
-/// Declare a function that tries to unwrap a particular constructor of the [`State`] enum.
-macro_rules! impl_state_try_getter {
-    ($doc:tt, $method:ident, $constructor:ident, $state:ty $(,)?) => {
-        #[doc = "Get the enclosed [`"]
-        #[doc = $doc]
-        #[doc = "`] state, if this state is one, otherwise returning an error describing the mismatch, paired with `self`."]
-        pub fn $method(self) -> Result<$state, (UnexpectedState, State)> {
-            if let State::$constructor(r) = self {
-                Ok(r)
-            } else {
-                Err((
-                    UnexpectedState {
-                        expected_state: <$state as NameState>::state_name(),
-                        actual_state: self.name(),
-                    },
-                    self,
-                ))
-            }
-        }
-    };
-}
+impl_is_state!(Inactive(Inactive));
+impl_is_state!(Ready(Ready));
+impl_is_state!(Started(Started));
+impl_is_state!(Locked(Locked));
+impl_is_state!(PendingClose(ClosingMessage));
+impl_is_state!(Closed(Closed));
 
 impl State {
-    impl_state_try_getter!("Inactive", inactive, Inactive, Inactive);
-    impl_state_try_getter!("Ready", ready, Ready, Ready);
-    impl_state_try_getter!("Started", started, Started, Started);
-    impl_state_try_getter!("Locked", locked, Locked, Locked);
-    impl_state_try_getter!(
-        "ClosingMessage",
-        pending_close,
-        PendingClose,
-        ClosingMessage,
-    );
-    impl_state_try_getter!("Closed", closed, Closed, Closed);
-
-    /// Get the [`StateName`] of this state.
-    pub fn name(&self) -> StateName {
+    /// Get the name of this state.
+    fn state_name(&self) -> StateName {
         match self {
             State::Inactive(_) => StateName::Inactive,
             State::Ready(_) => StateName::Ready,

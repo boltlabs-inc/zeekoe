@@ -3,7 +3,7 @@ use {
     futures::stream::StreamExt,
     serde::{Deserialize, Serialize},
     sqlx::SqlitePool,
-    std::any::Any,
+    std::{any::Any, convert::TryInto},
     thiserror::Error,
 };
 
@@ -12,7 +12,7 @@ use zkabacus_crypto::customer::Inactive;
 use crate::customer::{client::ZkChannelAddress, ChannelName};
 
 mod state;
-pub use state::{NameState, State, StateName, UnexpectedState};
+pub use state::{IsState, State, StateName, UnexpectedState};
 
 /// Extension trait augmenting the customer database [`QueryCustomer`] with extra methods.
 ///
@@ -145,7 +145,7 @@ impl QueryCustomer for SqlitePool {
             result
         })()
         .await
-        .map_err(|e| (state.inactive().unwrap(), e))
+        .map_err(|e| (state.try_into().unwrap(), e))
     }
 
     async fn channel_address(&self, label: &ChannelName) -> sqlx::Result<Option<ZkChannelAddress>> {
