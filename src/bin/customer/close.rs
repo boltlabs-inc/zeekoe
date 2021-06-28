@@ -26,7 +26,7 @@ impl Command for Close {
     #[allow(unused)]
     async fn run(self, mut rng: StdRng, config: self::Config) -> Result<(), anyhow::Error> {
         if self.force {
-            initiate_unilateral_close(&self, rng, config)
+            close(&self, rng, config)
                 .await
                 .context("Unilateral close failed")?;
         } else {
@@ -86,6 +86,7 @@ async fn claim_funds(close: &Close, config: self::Config) -> Result<(), anyhow::
 }
 
 /// React to an on-chain merchant dispute.
+#[allow(unused)]
 async fn process_dispute() -> Result<(), anyhow::Error> {
     // Update the database to indicate loss of funds.
     // This should only be updated after the merchant dispute is confirmed at the correct depth.

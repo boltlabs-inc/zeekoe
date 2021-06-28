@@ -64,6 +64,7 @@ impl Method for Close {
 ///
 /// **Usage**: this should be called after receiving a notification that a customer close entrypoint
 /// was posted on chain. Should not wait for the transaction to be confirmed at the required confirmation depth.
+#[allow(unused)]
 async fn process_customer_close() -> Result<(), anyhow::Error> {
     // TODO: Extract revocation lock from notification and atomically
     // - check that it is fresh (e.g. not in the database with a revocation secret),
@@ -90,6 +91,7 @@ async fn process_customer_close() -> Result<(), anyhow::Error> {
 ///
 /// **Usage**: this should be called after receiving a notification that a customer close entrypoint
 /// was posted on chain *and* is confirmed at the required confirmation depth.
+#[allow(unused)]
 async fn process_confirmed_customer_close() -> Result<(), anyhow::Error> {
     // TODO: If status is PENDING, update database channel status to CLOSED.
     // Otherwise, do nothing.
@@ -101,6 +103,7 @@ async fn process_confirmed_customer_close() -> Result<(), anyhow::Error> {
 ///
 /// **Usage**: this should be called after receiving a notification that a merchant dispute
 /// entrypoint operation is confirmed at the required confirmation depth.
+#[allow(unused)]
 async fn process_confirmed_dispute() -> Result<(), anyhow::Error> {
     // TODO: assert that status is DISPUTE
     // If so, update database channel status to CLOSED.
