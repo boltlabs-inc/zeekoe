@@ -210,7 +210,7 @@ async fn start_payment(
             }
         })
         .await
-        .context("Database error while fetching initial pay state")??
+        .context("Database error while fetching initial pay state")?
 }
 
 /// Attempt to lock a started payment for the channel of the given label, using the given
@@ -252,7 +252,7 @@ async fn lock_payment(
             }
         })
         .await
-        .context("Database error while fetching started pay state")??
+        .context("Database error while fetching started pay state")?
 }
 
 /// Attempt to unlock a locked payment for a channel of the given label, using the given
@@ -294,7 +294,7 @@ async fn unlock_payment(
             }
         })
         .await
-        .context("Database error while fetching locked pay state")??
+        .context("Database error while fetching locked pay state")?
 }
 
 #[async_trait]

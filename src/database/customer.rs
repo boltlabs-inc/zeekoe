@@ -12,7 +12,9 @@ use zkabacus_crypto::customer::Inactive;
 use crate::customer::{client::ZkChannelAddress, ChannelName};
 
 mod state;
-pub use state::{take_state, NameState, State, StateName};
+pub use state::{take_state, NameState, State, StateName, UnexpectedState};
+
+type Result<T> = std::result::Result<T, Error>;
 
 /// Extension trait augmenting the customer database [`QueryCustomer`] with extra methods.
 ///
@@ -33,7 +35,7 @@ pub trait QueryCustomerExt {
         &'a self,
         label: &ChannelName,
         with_state: impl for<'s> FnOnce(&'s mut Option<State>) -> T + Send + 'a,
-    ) -> sqlx::Result<Result<T, NoSuchChannel>>;
+    ) -> Result<T>;
 }
 
 /// Trait-object safe version of [`QueryCustomer`]: use this type in trait objects and implement it
@@ -51,19 +53,15 @@ pub trait QueryCustomer: Send + Sync {
         label: &ChannelName,
         address: &ZkChannelAddress,
         inactive: Inactive,
-    ) -> Result<(), (Inactive, Result<ChannelExists, sqlx::Error>)>;
+    ) -> std::result::Result<(), (Inactive, Error)>;
 
     /// Get the address of a given channel, or `None` if the label does not exist in the database.
-    async fn channel_address(&self, label: &ChannelName) -> sqlx::Result<Option<ZkChannelAddress>>;
+    async fn channel_address(&self, label: &ChannelName) -> Result<Option<ZkChannelAddress>>;
 
     /// Relabel an existing channel from a given label to a new one.
     ///
     /// Returns `true` if the label existed and `false` if it did not.
-    async fn relabel_channel(
-        &self,
-        label: &ChannelName,
-        new_label: &ChannelName,
-    ) -> sqlx::Result<bool>;
+    async fn relabel_channel(&self, label: &ChannelName, new_label: &ChannelName) -> Result<bool>;
 
     /// Assign a new [`ZkChannelAddress`] to an existing channel.
     ///
@@ -72,7 +70,7 @@ pub trait QueryCustomer: Send + Sync {
         &self,
         label: &ChannelName,
         new_address: &ZkChannelAddress,
-    ) -> sqlx::Result<bool>;
+    ) -> Result<bool>;
 
     /// **Don't call this function directly:** instead call [`QueryCustomer::with_channel_state`].
     /// Note that this method uses `Box<dyn Any + Send>` to avoid the use of generic parameters,
@@ -92,7 +90,21 @@ pub trait QueryCustomer: Send + Sync {
         with_state: Box<
             dyn for<'s> FnOnce(&'s mut Option<State>) -> Box<dyn Any + Send> + Send + 'a,
         >,
-    ) -> sqlx::Result<Result<Box<dyn Any>, NoSuchChannel>>;
+    ) -> Result<Box<dyn Any>>;
+}
+
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error(transparent)]
+    UnexpectedState(UnexpectedState),
+    #[error(transparent)]
+    Database(#[from] sqlx::Error),
+    #[error(transparent)]
+    Migration(#[from] sqlx::migrate::MigrateError),
+    #[error("There is no channel by the name of \"{0}\"")]
+    NoSuchChannel(ChannelName),
+    #[error("There is already a channel by the name of \"{0}\"")]
+    ChannelExists(ChannelName),
 }
 
 #[async_trait]
@@ -102,29 +114,26 @@ impl QueryCustomer for SqlitePool {
         label: &ChannelName,
         address: &ZkChannelAddress,
         inactive: Inactive,
-    ) -> Result<(), (Inactive, Result<ChannelExists, sqlx::Error>)> {
+    ) -> std::result::Result<(), (Inactive, Error)> {
         let state = State::Inactive(inactive);
         (|| async {
-            let mut transaction = self.begin().await.map_err(Err)?;
+            let mut transaction = self.begin().await?;
 
             // Determine if the channel already exists
-            let already_exists = if let Some(result) =
-                sqlx::query!("SELECT label FROM customer_channels WHERE label = ?", label)
+            let already_exists =
+                match sqlx::query!("SELECT label FROM customer_channels WHERE label = ?", label)
                     .fetch(&mut transaction)
                     .next()
                     .await
-            {
-                result.map_err(Err)?; // rethrow error
-                true // channel by this label already exists
-            } else {
-                false // channel label is fresh
-            };
+                    .transpose()?
+                {
+                    Some(_) => true,
+                    _ => false,
+                };
 
             // Return an error if it does exist
             if already_exists {
-                return Err(Ok(ChannelExists {
-                    label: label.clone(),
-                }));
+                return Err(Error::ChannelExists(label.clone()));
             }
 
             let result = sqlx::query!(
@@ -135,19 +144,18 @@ impl QueryCustomer for SqlitePool {
             )
             .execute(&mut transaction)
             .await
-            .map(|_| ())
-            .map_err(Err);
+            .map(|_| ());
 
-            transaction.commit().await.map_err(Err)?;
+            transaction.commit().await?;
 
-            result
+            Ok(result?)
         })()
         .await
         .map_err(|e| (state.inactive().unwrap(), e))
     }
 
-    async fn channel_address(&self, label: &ChannelName) -> sqlx::Result<Option<ZkChannelAddress>> {
-        sqlx::query!(
+    async fn channel_address(&self, label: &ChannelName) -> Result<Option<ZkChannelAddress>> {
+        Ok(sqlx::query!(
             r#"
             SELECT address AS "address: ZkChannelAddress"
             FROM customer_channels
@@ -158,29 +166,25 @@ impl QueryCustomer for SqlitePool {
         .next()
         .await
         .transpose()
-        .map(|option| option.map(|r| r.address))
+        .map(|option| option.map(|r| r.address))?)
     }
 
-    async fn relabel_channel(
-        &self,
-        label: &ChannelName,
-        new_label: &ChannelName,
-    ) -> sqlx::Result<bool> {
-        sqlx::query!(
+    async fn relabel_channel(&self, label: &ChannelName, new_label: &ChannelName) -> Result<bool> {
+        Ok(sqlx::query!(
             "UPDATE customer_channels SET label = ? WHERE label = ?",
             new_label,
             label,
         )
         .execute(self)
         .await
-        .map(|r| r.rows_affected() == 1)
+        .map(|r| r.rows_affected() == 1)?)
     }
 
     async fn readdress_channel(
         &self,
         label: &ChannelName,
         new_address: &ZkChannelAddress,
-    ) -> sqlx::Result<bool> {
+    ) -> Result<bool> {
         sqlx::query!(
             "UPDATE customer_channels SET address = ? WHERE label = ?",
             new_address,
@@ -189,6 +193,7 @@ impl QueryCustomer for SqlitePool {
         .execute(self)
         .await
         .map(|r| r.rows_affected() == 1)
+        .map_err(|e| e.into())
     }
 
     async fn with_channel_state_erased<'a>(
@@ -197,7 +202,7 @@ impl QueryCustomer for SqlitePool {
         with_state: Box<
             dyn for<'s> FnOnce(&'s mut Option<State>) -> Box<dyn Any + Send> + Send + 'a,
         >,
-    ) -> sqlx::Result<Result<Box<dyn Any>, NoSuchChannel>> {
+    ) -> Result<Box<dyn Any>> {
         let mut transaction = self.begin().await?;
 
         // Retrieve the state so that we can modify it
@@ -224,7 +229,7 @@ impl QueryCustomer for SqlitePool {
         // Commit the transaction
         transaction.commit().await?;
 
-        Ok(Ok(output))
+        Ok(output)
     }
 }
 
@@ -235,26 +240,13 @@ impl<Q: QueryCustomer + ?Sized> QueryCustomerExt for Q {
         &'a self,
         label: &ChannelName,
         with_state: impl for<'s> FnOnce(&'s mut Option<State>) -> T + Send + 'a,
-    ) -> sqlx::Result<Result<T, NoSuchChannel>> {
+    ) -> Result<T> {
         <Self as QueryCustomer>::with_channel_state_erased(
             self,
             label,
             Box::new(|state| Box::new(with_state(state))),
         )
         .await
-        .map(|result| result.map(|t| *t.downcast().unwrap()))
+        .map(|t| *t.downcast().unwrap())
     }
-}
-
-/// Error indicating that the requested channel label does not exist.
-#[derive(Debug, Serialize, Deserialize, Error)]
-#[error("There is no channel by the name of \"{label}\"")]
-pub struct NoSuchChannel {
-    label: ChannelName,
-}
-
-#[derive(Debug, Serialize, Deserialize, Error)]
-#[error("There is already a channel by the name of \"{label}\"")]
-pub struct ChannelExists {
-    label: ChannelName,
 }
