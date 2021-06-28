@@ -139,27 +139,30 @@ async fn zkabacus_pay(
         .context("Failed to receive closing signature")?;
 
     // Verify the closing signature and transition into a locked state
-    let chan = if let Some(lock_message) = lock_payment(database, label, closing_signature).await? {
-        proceed!(in chan);
+    let chan = match lock_payment(database, label, closing_signature).await? {
+        Ok(lock_message) => {
+            proceed!(in chan);
 
-        // If the closing signature verifies, reveal our lock, secret, and blinding factor
-        let chan = chan
-            .send(lock_message.revocation_lock)
-            .await
-            .context("Failed to send revocation lock")?
-            .send(lock_message.revocation_secret)
-            .await
-            .context("Failed to send revocation secret")?
-            .send(lock_message.revocation_lock_blinding_factor)
-            .await
-            .context("Failed to send revocation lock blinding factor")?;
+            // If the closing signature verifies, reveal our lock, secret, and blinding factor
+            let chan = chan
+                .send(lock_message.revocation_lock)
+                .await
+                .context("Failed to send revocation lock")?
+                .send(lock_message.revocation_secret)
+                .await
+                .context("Failed to send revocation secret")?
+                .send(lock_message.revocation_lock_blinding_factor)
+                .await
+                .context("Failed to send revocation lock blinding factor")?;
 
-        // Allow the merchant to cancel the session at this point, and throw an error if so
-        offer_abort!(in chan as Customer);
-        chan
-    } else {
-        // If the closing signature does not verify, inform the merchant we are aborting
-        abort!(in chan return pay::Error::InvalidClosingSignature);
+            // Allow the merchant to cancel the session at this point, and throw an error if so
+            offer_abort!(in chan as Customer);
+            chan
+        }
+        Err(error) => {
+            // If the closing signature does not verify, inform the merchant we are aborting
+            abort!(in chan return error);
+        }
     };
 
     // Receive a pay token from the merchant, which allows us to pay again
@@ -215,17 +218,17 @@ async fn lock_payment(
     database: &dyn QueryCustomer,
     label: &ChannelName,
     closing_signature: ClosingSignature,
-) -> Result<Option<LockMessage>, anyhow::Error> {
+) -> Result<Result<LockMessage, pay::Error>, anyhow::Error> {
     let result = database
         .with_channel_state(label, |state| {
             // Ensure channel is in the started state
-            let started = state.started().map_err(|(e, _)| e)?;
+            let started = state.started().map_err(|(e, _)| Err(e.into()))?;
 
             // Attempt to lock the state using the closing signature
             match started.lock(closing_signature) {
                 Err(_) => {
                     // Return no start message, since we failed
-                    Err(())
+                    Err(Ok(pay::Error::InvalidClosingSignature))
                 }
                 Ok((locked, lock_message)) => {
                     // Return the start message and set the new state
@@ -234,11 +237,15 @@ async fn lock_payment(
             }
         })
         .await
-        .context("Database error while fetching started pay state")??;
+        .context("Database error while fetching started pay state");
 
+    // TODO: Clean up this matching mess once errors PR is merged
     match result {
-        Ok(lock_message) => Ok(Some(lock_message)),
-        Err(()) => Ok(None),
+        Ok(Ok(Ok(lock_message))) => Ok(Ok(lock_message)),
+        Ok(Ok(Err(Ok(pay_error)))) => Ok(Err(pay_error)),
+        Ok(Ok(Err(Err(state_error)))) => Err(state_error),
+        Ok(Err(no_such_channel)) => Err(no_such_channel.into()),
+        Err(database_error) => Err(database_error),
     }
 }
 
@@ -255,28 +262,17 @@ async fn unlock_payment(
     database
         .with_channel_state(label, |state| {
             // Ensure the channel is in locked state
-            let locked = take_state(State::locked, state).with_context(|| {
-                format!(
-                    "Expecting the channel \"{}\" to be in a different state",
-                    label
-                )
-            })?;
+            let locked = state.locked().map_err(|(e, _)| e)?;
 
             // Attempt to unlock the state using the pay token
             match locked.unlock(pay_token) {
-                Err(locked) => {
-                    // Restore the state in the database to the original locked state
-                    *state = Some(State::Locked(locked));
-
+                Err(_) => {
                     // Return an error since the state could not be unlocked
                     Err(pay::Error::InvalidPayToken.into())
                 }
                 Ok(ready) => {
-                    // Set the new ready state in the database
-                    *state = Some(State::Ready(ready));
-
-                    // Success
-                    Ok(())
+                    // Success: set the new ready state in the database
+                    Ok(((), State::Ready(ready)))
                 }
             }
         })
