@@ -2503,8 +2503,9 @@ dependencies = [
 [[package]]
 name = "zkabacus-crypto"
 version = "0.1.0"
-source = "git+ssh://git@github.com/boltlabs-inc/libzkchannels-crypto.git?branch=main#1e5e1da6ffcb4add459b5821623f02e88a0bd89c"
+source = "git+ssh://git@github.com/boltlabs-inc/libzkchannels-crypto.git?branch=main#3dd54c4733f6bd9de3810088788cd464dcfd4c4d"
 dependencies = [
+ "base64",
  "bincode",
  "bls12_381",
  "ff",
@@ -2520,7 +2521,7 @@ dependencies = [
 [[package]]
 name = "zkchannels-crypto"
 version = "0.1.0"
-source = "git+ssh://git@github.com/boltlabs-inc/libzkchannels-crypto.git?branch=main#1e5e1da6ffcb4add459b5821623f02e88a0bd89c"
+source = "git+ssh://git@github.com/boltlabs-inc/libzkchannels-crypto.git?branch=main#3dd54c4733f6bd9de3810088788cd464dcfd4c4d"
 dependencies = [
  "arrayvec 0.7.1",
  "bincode",

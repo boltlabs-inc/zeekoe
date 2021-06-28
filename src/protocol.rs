@@ -114,6 +114,22 @@ pub enum ChannelStatus {
     Closed,
 }
 
+impl Display for ChannelStatus {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Originated => "Originated",
+                Self::CustomerFunded => "CustomerFunded",
+                Self::MerchantFunded => "MerchantFunded",
+                Self::Active => "Active",
+                Self::Closed => "Closed",
+            }
+        )
+    }
+}
+
 impl Party {
     /// Get the other party.
     ///
