@@ -1,3 +1,6 @@
+//* Close functionalities for a merchant.
+//*
+//* TODO: handle merchant expiry closes.
 use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng};
 
 use zeekoe::{
@@ -55,6 +58,55 @@ impl Method for Close {
 
         Ok(())
     }
+}
+
+/// Process a customer close event.
+///
+/// **Usage**: this should be called after receiving a notification that a customer close entrypoint
+/// was posted on chain. Should not wait for the transaction to be confirmed at the required confirmation depth.
+async fn process_customer_close() -> Result<(), anyhow::Error> {
+    // TODO: Extract revocation lock from notification and atomically
+    // - check that it is fresh (e.g. not in the database with a revocation secret),
+    // - insert it into the database,
+    // - return whatever else is already associated with the lock.
+
+    // TODO: Extract channel balances and fill in "final balance" columns in database.
+    // Note: this might be done atomically with the following status updates.
+
+    // TODO: If the lock already has an associated revocation secret, update channel status to DISPUTE
+
+    // TODO: If the lock already has an associated revocation secret, call the merchant dispute
+    // entrypoint with:
+    // - contract id
+    // - revocation secret
+    // E.g. call the "dispute" function from escrow API.
+
+    // TODO: update channel status to PENDING_CLOSE.
+
+    todo!()
+}
+
+/// Process a confirmed customer close event.
+///
+/// **Usage**: this should be called after receiving a notification that a customer close entrypoint
+/// was posted on chain *and* is confirmed at the required confirmation depth.
+async fn process_confirmed_customer_close() -> Result<(), anyhow::Error> {
+    // TODO: If status is PENDING, update database channel status to CLOSED.
+    // Otherwise, do nothing.
+
+    todo!()
+}
+
+/// Process a confirmed merchant dispute event.
+///
+/// **Usage**: this should be called after receiving a notification that a merchant dispute
+/// entrypoint operation is confirmed at the required confirmation depth.
+async fn process_confirmed_dispute() -> Result<(), anyhow::Error> {
+    // TODO: assert that status is DISPUTE
+    // If so, update database channel status to CLOSED.
+    // Update final balances to indicate successful dispute (transfer customer balance to merchant).
+
+    todo!()
 }
 
 // Process a mutual close event.

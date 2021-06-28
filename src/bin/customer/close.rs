@@ -39,16 +39,12 @@ impl Command for Close {
     }
 }
 
-/// Initiate a unilateral close of the channel, either initially or in response to the merchant posting
-/// an expiry to the contract.
+/// Closes the channel on the current balances, either unilaterally or in response to the
+/// merchant posting an expiry to the contract.
 ///
-/// **Usage**: this function registers the customer's claim on the funds. It can be called directly
+/// **Usage**: this function calls the customer close entrypoint. It can be called directly
 /// or as a response to an on-chain event.
-async fn initiate_unilateral_close(
-    close: &Close,
-    rng: StdRng,
-    config: self::Config,
-) -> Result<(), anyhow::Error> {
+async fn close(close: &Close, rng: StdRng, config: self::Config) -> Result<(), anyhow::Error> {
     let database = database(&config)
         .await
         .context("Failed to connect to local database")?;
@@ -58,9 +54,16 @@ async fn initiate_unilateral_close(
         .await
         .context("Failed to get closing information.")?;
 
-    // TODO: Produce an authorization signature based on the closing message.
-
-    // TODO: Send a disbursement request to the escrow agent.
+    // TODO: Call the customer close entrypoint which will take:
+    // - current channel balances
+    // - contract ID
+    // - revocation lock
+    // Raise an error if it fails.
+    //
+    // This function will:
+    // - Generate customer authorization EDDSA signature on the operation with the customer's
+    //   Tezos public key.
+    // - Send operation to blockchain
 
     Ok(())
 }
@@ -70,17 +73,23 @@ async fn initiate_unilateral_close(
 /// **Usage**: this function is called as a response to an on-chain event. It is only called after
 /// the contract claim delay has passed.
 #[allow(unused)]
-async fn claim_channel_balance(close: &Close, config: self::Config) -> Result<(), anyhow::Error> {
-    let database = database(&config)
-        .await
-        .context("Failed to connect to local database")?;
-
-    // TODO: Send claim request to escrow agent (maybe you will have to first extract the ClosingMessage with state
-    // information from the database?)
+async fn claim_funds(close: &Close, config: self::Config) -> Result<(), anyhow::Error> {
+    // TODO: Call the customer claim entrypoint which will take:
+    // - contract ID
 
     // TODO: update state in db from PENDING to CLOSED
-    
+    // This should only be called once the claim entrypoint operation is confirmed at an
+    // appropriate depth (perhaps in a separate function, called in response to an on-chain
+    // event)
+
     Ok(())
+}
+
+/// React to an on-chain merchant dispute.
+async fn process_dispute() -> Result<(), anyhow::Error> {
+    // Update the database to indicate loss of funds.
+    // This should only be updated after the merchant dispute is confirmed at the correct depth.
+    todo!()
 }
 
 async fn mutual_close(
