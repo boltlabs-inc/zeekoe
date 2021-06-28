@@ -8,7 +8,7 @@ use {
     },
     rand::{rngs::StdRng, SeedableRng},
     sqlx::SqlitePool,
-    std::{convert::identity, io, sync::Arc},
+    std::{convert::identity, sync::Arc},
     structopt::StructOpt,
     tokio::sync::broadcast,
 };
