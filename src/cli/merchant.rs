@@ -15,6 +15,7 @@ pub struct Cli {
 pub enum Merchant {
     Configure(Configure),
     Run(Run),
+    Close(Close),
 }
 
 #[derive(Debug, StructOpt)]
@@ -24,3 +25,14 @@ pub struct Configure {}
 #[derive(Debug, StructOpt)]
 #[non_exhaustive]
 pub struct Run {}
+
+#[derive(Debug, StructOpt)]
+#[non_exhaustive]
+pub struct Close {
+    #[structopt(long)]
+    pub all: bool,
+
+    /// TODO: replace this with a ChannelId or a ChannelIdPrefix of some flavor.
+    #[structopt(long)]
+    pub channel: bool,
+}

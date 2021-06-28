@@ -71,7 +71,7 @@ async fn claim_channel_balance(close: &Close, config: self::Config) -> Result<()
     // information from the database?)
 
     // TODO: update state in db from PENDING to CLOSED
-    
+
     Ok(())
 }
 

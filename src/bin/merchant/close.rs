@@ -1,8 +1,15 @@
 use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng};
 
+use std::sync::Arc;
+
+use super::Command;
+use rand::SeedableRng;
+
+use sqlx::SqlitePool;
 use zeekoe::{
     abort,
-    merchant::{config::Service, database::QueryMerchant, server::SessionKey, Chan},
+    customer::config::DatabaseLocation,
+    merchant::{cli, config::Service, database::QueryMerchant, server::SessionKey, Chan, Config},
     offer_abort, proceed,
     protocol::{self, close, ChannelStatus, Party::Merchant},
 };
@@ -90,5 +97,31 @@ async fn zkabacus_close(
         }
         // Abort if the close materials were invalid.
         Verification::Failed => abort!(in chan return close::Error::InvalidCloseStateSignature),
+    }
+}
+
+#[async_trait]
+impl Command for cli::Close {
+    async fn run(self, config: Config) -> Result<(), anyhow::Error> {
+        // Retrieve zkAbacus config from the database
+        // TODO: this is copied from main.rs, should it be a nicer function somewhere?
+        let database: Arc<dyn QueryMerchant> = match config.database {
+            DatabaseLocation::InMemory => Arc::new(SqlitePool::connect("file::memory:").await?),
+            DatabaseLocation::Sqlite(ref uri) => Arc::new(SqlitePool::connect(uri).await?),
+            DatabaseLocation::Postgres(_) => {
+                return Err(anyhow::anyhow!(
+                    "Postgres database support is not yet implemented"
+                ))
+            }
+        };
+
+        // Either initialize the merchant's config afresh, or get existing config if it exists (it should already exist)
+        let _merchant_config = database
+            .fetch_or_create_config(&mut StdRng::from_entropy()) // TODO: allow determinism
+            .await?;
+
+        // Next steps: parse self options, run close.
+
+        todo!()
     }
 }
