@@ -4,10 +4,10 @@ use zeekoe::{
     abort,
     merchant::{config::Service, database::QueryMerchant, server::SessionKey, Chan},
     offer_abort, proceed,
-    protocol::{self, close, Party::Merchant},
+    protocol::{self, close, ChannelStatus, Party::Merchant},
 };
 
-use zkabacus_crypto::{merchant::Config as MerchantConfig, Verification};
+use zkabacus_crypto::{merchant::Config as MerchantConfig, CloseState, Verification};
 
 use super::Method;
 
@@ -27,7 +27,7 @@ impl Method for Close {
         _session_key: SessionKey,
         chan: Chan<Self::Protocol>,
     ) -> Result<(), anyhow::Error> {
-        let chan = zkabacus_close(merchant_config, database, chan)
+        let (chan, close_state) = zkabacus_close(merchant_config, database, chan)
             .await
             .context("Mutual close failed")?;
 
@@ -41,7 +41,14 @@ impl Method for Close {
 
         // TODO: confirm that arbiter accepted the close request (posted by customer).
 
-        // TODO: Update channel status to closed.
+        database
+            .compare_and_swap_channel_status(
+                close_state.channel_id(),
+                &ChannelStatus::Active,
+                &ChannelStatus::Closed,
+            )
+            .await
+            .context("Failed to update database to indicate channel was closed.")?;
 
         Ok(())
     }
@@ -51,7 +58,7 @@ async fn zkabacus_close(
     merchant_config: &MerchantConfig,
     database: &dyn QueryMerchant,
     chan: Chan<close::CustomerSendSignature>,
-) -> Result<Chan<close::MerchantSendAuthorization>, anyhow::Error> {
+) -> Result<(Chan<close::MerchantSendAuthorization>, CloseState), anyhow::Error> {
     // Receive close signature and state from customer.
     let (close_signature, chan) = chan
         .recv()
@@ -75,7 +82,7 @@ async fn zkabacus_close(
             {
                 // If it's fresh, continue with protocol.
                 proceed!(in chan);
-                Ok(chan)
+                Ok((chan, close_state))
             } else {
                 // If it has been seen before, abort.
                 abort!(in chan return close::Error::KnownRevocationLock)

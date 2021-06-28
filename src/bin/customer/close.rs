@@ -93,7 +93,7 @@ async fn mutual_close(
     // Update database channel status from PendingClose to Closed.
     database
         .with_channel_state(&close.label, |state| match state.take() {
-            Some(State::PendingClose(cm)) => *state = None,
+            Some(State::PendingClose(_)) => *state = None,
             not_pending_state => {
                 *state = not_pending_state;
                 anyhow::anyhow!(format!(
