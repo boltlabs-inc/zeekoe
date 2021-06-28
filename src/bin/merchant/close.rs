@@ -7,7 +7,7 @@ use zeekoe::{
     protocol::{self, close, ChannelStatus, Party::Merchant},
 };
 
-use zkabacus_crypto::{merchant::Config as MerchantConfig, CloseState, Verification};
+use zkabacus_crypto::{merchant::Config as MerchantConfig, ChannelId, CloseState, Verification};
 
 use super::Method;
 
@@ -27,31 +27,41 @@ impl Method for Close {
         _session_key: SessionKey,
         chan: Chan<Self::Protocol>,
     ) -> Result<(), anyhow::Error> {
-        let (chan, close_state) = zkabacus_close(merchant_config, database, chan)
+        let (chan, _close_state) = zkabacus_close(merchant_config, database, chan)
             .await
             .context("Mutual close failed")?;
 
-        // TODO: generate authorization signature and send to customer.
+        // TODO: Generate an authorization signature under the merchant's EDDSA Tezos key.
+        // The signature should be over a tuple with
+        // (contract id, "zkChannels mutual close", channel id, customer balance, merchant balance).
 
-        // Give the customer the opportunity to reject an invalid auth signature.
+        // Give the customer the opportunity to reject an invalid authorization signature.
         offer_abort!(in chan as Merchant);
 
-        // Close the channel - all remaining operations are with the escrow agent.
+        // Close the dialectic channel.
         chan.close();
-
-        // TODO: confirm that arbiter accepted the close request (posted by customer).
-
-        database
-            .compare_and_swap_channel_status(
-                close_state.channel_id(),
-                &ChannelStatus::Active,
-                &ChannelStatus::Closed,
-            )
-            .await
-            .context("Failed to update database to indicate channel was closed.")?;
 
         Ok(())
     }
+}
+
+// Process a mutual close event.
+//
+// **Usage**: this should be called after receiving a notification that a mutual close operation
+// was posted on chain and confirmed to the required depth.
+#[allow(unused)]
+async fn process_confirmed_mutual_close(
+    merchant_config: &MerchantConfig,
+    database: &dyn QueryMerchant,
+    channel_id: &ChannelId,
+) -> Result<(), anyhow::Error> {
+    // Update database to indicate the channel closed successfully.
+    database
+        .compare_and_swap_channel_status(channel_id, &ChannelStatus::Active, &ChannelStatus::Closed)
+        .await
+        .context("Failed to update database to indicate channel was closed.")?;
+
+    Ok(())
 }
 
 async fn zkabacus_close(
@@ -70,10 +80,14 @@ async fn zkabacus_close(
         .await
         .context("Failed to receive close state.")?;
 
-    // Check validity of close materials from the customer.
+    // Confirm that customer sent a valid Pointcheval-Sanders signature under the merchant's
+    // zkAbacus public key on the given close state.
+    // If so, atomically check that the close state contains a fresh revocation lock and add it
+    // to the database.
+    // Otherwise, abort with an error.
     match merchant_config.check_close_signature(close_signature, &close_state) {
         Verification::Verified => {
-            // If valid, check that the close state hasn't been seen before.
+            // Check that the revocation lock is fresh and insert.
             if database
                 .insert_revocation(close_state.revocation_lock(), None)
                 .await
@@ -88,7 +102,7 @@ async fn zkabacus_close(
                 abort!(in chan return close::Error::KnownRevocationLock)
             }
         }
-        // Abort if the close materials were invalid.
+        // Abort if the close signature was invalid.
         Verification::Failed => abort!(in chan return close::Error::InvalidCloseStateSignature),
     }
 }

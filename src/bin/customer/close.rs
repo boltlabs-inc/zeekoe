@@ -1,3 +1,10 @@
+//* Close functionalities for a customer.
+//*
+//* In the current design, the customer requires either a watchtower or a notification service
+//* to finalize the channel close.
+//* This architecture is flexible; we could alternately allow the customer CLI to wait (hang) until
+//* it receives confirmation (e.g. call `process_mutual_close_confirmation` directly from
+//* `mutual_close()`).
 use {async_trait::async_trait, rand::rngs::StdRng};
 
 use zeekoe::{
@@ -72,7 +79,9 @@ async fn mutual_close(
         .await
         .context("zkAbacus close failed.")?;
 
-    // TODO: get auth signature from merchant
+    // TODO: Receive an authorization signature from merchant under the merchant's EDDSA Tezos key.
+    // The signature should be over a tuple with
+    // (contract id, "zkChannels mutual close", channel id, customer balance, merchant balance).
     /*
     let merchant_authorization_signature = chan
         .recv()
@@ -80,25 +89,60 @@ async fn mutual_close(
         .context("Failed to receive authorization signature from the merchant.")?;
     */
 
-    // TODO: verify the signature. Raise error if invalid.
+    // TODO: Verify that signature is a valid EDDSA signature with respect to the merchant's Tezos
+    // public key on the tuple:
+    // (contract id, "zkChannels mutual close", channel id, customer balance, merchant balance).
+    //
+    // abort!() if invalid with error InvalidMerchantAuthSignature.
+    //
+    // The customer has the option to retry or initiate a unilateral close.
+    // We should consider having the customer automatically initiate a unilateral close after a
+    // random delay.
     proceed!(in chan);
 
-    // Close the channel - all remaining operations are with the escrow agent.
+    // Close the dialectic channel - all remaining operations are with the escrow agent.
     chan.close();
 
-    // TODO: generate customer authorization signature.
+    // TODO: Call the mutual close entrypoint which will take:
+    // - current channel balances
+    // - merchant authorization signature
+    // - contract ID
+    // - channel ID
+    // abort!() if it fails with error ArbiterRejectedMutualClose.
+    //
+    // This function will:
+    // - Generate customer authorization EDDSA signature on the operation with the customer's
+    //   Tezos public key.
+    // - Send operation to blockchain
+    // - Raises an error if the operation fails to post. This may include relevant information
+    //   (e.g. insufficient fees) or may be more generic.
 
-    // TODO: call escrow agent disburse / mutual close endpoint. Raise error if it fails.
+    Ok(())
+}
+
+/// Update the channel state from pending to closed.
+///
+/// **Usage**: This should be called when the customer receives a confirmation from the blockchain
+/// that the mutual close operation has been applied and has reached required confirmation depth.
+/// It will only be called after a successful execution of [`mutual_close()`].
+#[allow(unused)]
+async fn process_mutual_close_confirmation(
+    config: self::Config,
+    label: ChannelName,
+) -> Result<(), anyhow::Error> {
+    let database = database(&config)
+        .await
+        .context("Failed to connect to local database")?;
 
     // Update database channel status from PendingClose to Closed.
     database
-        .with_channel_state(&close.label, |state| match state.take() {
+        .with_channel_state(&label, |state| match state.take() {
             Some(State::PendingClose(_)) => *state = None,
             not_pending_state => {
                 *state = not_pending_state;
                 anyhow::anyhow!(format!(
                     "Expecting the channel \"{}\" to be in a different state",
-                    &close.label
+                    &label
                 ));
             }
         })
@@ -163,5 +207,5 @@ async fn get_close_message(
             Ok(closing_message)
         })
         .await
-        .context("Database error while fetching initial pay state")??
+        .context("Database error while fetching state to close on")??
 }
