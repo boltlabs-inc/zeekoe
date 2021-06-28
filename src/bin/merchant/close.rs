@@ -71,10 +71,8 @@ async fn process_customer_close() -> Result<(), anyhow::Error> {
     // - insert it into the database,
     // - return whatever else is already associated with the lock.
 
-    // TODO: Extract channel balances and fill in "final balance" columns in database.
-    // Note: this might be done atomically with the following status updates.
-
-    // TODO: If the lock already has an associated revocation secret, update channel status to DISPUTE
+    // TODO: If the lock already has an associated revocation secret, update channel status to DISPUTE,
+    // filling in the "final balances" in the database.
 
     // TODO: If the lock already has an associated revocation secret, call the merchant dispute
     // entrypoint with:

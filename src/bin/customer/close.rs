@@ -98,6 +98,13 @@ async fn finalize_close(config: self::Config) -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+/// React to an on-chain merchant dispute.
+async fn process_dispute() -> Result<(), anyhow::Error> {
+    // Update the database to indicate loss of funds.
+    // This should only be updated after the merchant dispute is confirmed at the correct depth.
+    todo!()
+}
+
 async fn mutual_close(
     close: &Close,
     rng: StdRng,
