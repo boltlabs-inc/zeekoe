@@ -52,7 +52,7 @@ impl Command for Establish {
         // Format deposit amounts as the correct types
         let customer_deposit = CustomerBalance::try_new(
             self.deposit
-                .as_minor_units()
+                .try_into_minor_units()
                 .ok_or(establish::Error::InvalidDeposit(Customer))?
                 .try_into()?,
         )
@@ -61,7 +61,7 @@ impl Command for Establish {
         let merchant_deposit = MerchantBalance::try_new(match self.merchant_deposit {
             None => 0,
             Some(d) => d
-                .as_minor_units()
+                .try_into_minor_units()
                 .ok_or(establish::Error::InvalidDeposit(Merchant))?
                 .try_into()?,
         })

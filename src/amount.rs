@@ -30,7 +30,9 @@ impl FromStr for Amount {
 }
 
 impl Amount {
-    pub fn as_minor_units(&self) -> Option<i64> {
+    /// Convert this [`Amount`] into a unitless signed amount of the smallest denomination of its
+    /// currency, or fail if it is not representable as such.
+    pub fn try_into_minor_units(&self) -> Option<i64> {
         // The amount of money, as a `Decimal` in *major* units (e.g. 1 USD = 1.00)
         let amount: &Decimal = self.money.amount();
 
@@ -52,6 +54,26 @@ impl Amount {
 
         Some(minor_units)
     }
+
+    /// Get the currency of this [`Amount`].
+    pub fn currency(&self) -> &'static supported::Currency {
+        self.money.currency()
+    }
+
+    /// Convert a unitless signed number into an [`Amount`] in the given currency equal to that
+    /// number of the smallest denomination of the currency, or fail if it is not representable as
+    /// such.
+    pub fn try_from_minor_units_of_currency(
+        minor_units: i64,
+        currency: &'static supported::Currency,
+    ) -> Option<Self> {
+        let minor_units: Decimal = minor_units.into();
+        let major_units =
+            minor_units.checked_div(Decimal::from(10u32.checked_pow(currency.exponent())?))?;
+        Some(Self {
+            money: Money::from_decimal(major_units, currency),
+        })
+    }
 }
 
 #[allow(unused)]
@@ -71,7 +93,7 @@ mod test {
     fn parse_and_extract_tezos() {
         let tezos_amount = Amount::from_str("12.34 XTZ").expect("failed to parse");
         let minor_amount = tezos_amount
-            .as_minor_units()
+            .try_into_minor_units()
             .expect("failed to get minor amount");
         assert_eq!(12_340_000, minor_amount);
     }

@@ -23,7 +23,7 @@ use super::{connect, database, Command};
 impl Command for Pay {
     async fn run(self, rng: StdRng, config: self::Config) -> Result<(), anyhow::Error> {
         // Convert the payment amount appropriately
-        let minor_units: i64 = self.pay.as_minor_units().ok_or_else(|| {
+        let minor_units: i64 = self.pay.try_into_minor_units().ok_or_else(|| {
             anyhow::anyhow!("Payment amount invalid for currency or out of range for channel")
         })?;
         let payment_amount = (if minor_units < 0 {
