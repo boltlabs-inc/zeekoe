@@ -12,6 +12,26 @@ pub use state::{take_state, NameState, State, StateName, UnexpectedState};
 
 type Result<T> = std::result::Result<T, Error>;
 
+/// An error when accessing the customer database.
+#[derive(Debug, Error)]
+pub enum Error {
+    /// The state of the channel was not what was expected.
+    #[error(transparent)]
+    UnexpectedState(UnexpectedState),
+    /// An underlying error occurred in the database.
+    #[error(transparent)]
+    Database(#[from] sqlx::Error),
+    /// An underlying error occurred while migrating the database.
+    #[error(transparent)]
+    Migration(#[from] sqlx::migrate::MigrateError),
+    /// A channel which was expected to exist in the database did not exist.
+    #[error("There is no channel by the name of \"{0}\"")]
+    NoSuchChannel(ChannelName),
+    /// A channel which was expected *not* to exist in the database *did* exist.
+    #[error("There is already a channel by the name of \"{0}\"")]
+    ChannelExists(ChannelName),
+}
+
 /// Extension trait augmenting the customer database [`QueryCustomer`] with extra methods.
 ///
 /// These are implemented automatically for any database handle which implements
@@ -83,20 +103,6 @@ pub trait QueryCustomer: Send + Sync {
             dyn for<'s> FnOnce(&'s mut Option<State>) -> Box<dyn Any + Send> + Send + 'a,
         >,
     ) -> Result<Box<dyn Any>>;
-}
-
-#[derive(Debug, Error)]
-pub enum Error {
-    #[error(transparent)]
-    UnexpectedState(UnexpectedState),
-    #[error(transparent)]
-    Database(#[from] sqlx::Error),
-    #[error(transparent)]
-    Migration(#[from] sqlx::migrate::MigrateError),
-    #[error("There is no channel by the name of \"{0}\"")]
-    NoSuchChannel(ChannelName),
-    #[error("There is already a channel by the name of \"{0}\"")]
-    ChannelExists(ChannelName),
 }
 
 #[async_trait]

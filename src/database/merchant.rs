@@ -45,18 +45,23 @@ pub trait QueryMerchant: Send + Sync {
     ) -> Result<()>;
 }
 
+/// An error when accessing the merchant database.
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error("Could not find channel with label {0}")]
+    /// A channel with the given ID could not be found.
+    #[error("Could not find channel with id {0}")]
     ChannelNotFound(ChannelId),
+    /// The channel status was expected to be one thing, but it was another.
     #[error("Unexpected status for channel {channel_id} (expected {expected}, found {found})")]
     UnexpectedChannelStatus {
         channel_id: ChannelId,
         expected: ChannelStatus,
         found: ChannelStatus,
     },
+    /// An underlying database error occurred.
     #[error(transparent)]
     Database(#[from] sqlx::Error),
+    /// An underlying database migration error occurred.
     #[error(transparent)]
     Migration(#[from] sqlx::migrate::MigrateError),
 }
