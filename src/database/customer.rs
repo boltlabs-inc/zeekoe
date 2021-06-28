@@ -321,10 +321,14 @@ impl<Q: QueryCustomer + ?Sized> QueryCustomerExt for Q {
         // Cast the result back to its true type
         match result {
             // Successful result
-            Ok(t) => *t.downcast().unwrap(),
+            Ok(t) => {
+                let t: T = *t.downcast().unwrap();
+                Ok(Ok(t))
+            }
             // Error, which could be one of...
-            Err(e) => {
-                let error_result: std::result::Result<E, UnexpectedState> = *e.downcast().unwrap();
+            Err(error_result) => {
+                let error_result: std::result::Result<E, UnexpectedState> =
+                    *error_result.downcast().unwrap();
                 match error_result {
                     // Error returned by the closure
                     Ok(e) => Ok(Err(e)),
