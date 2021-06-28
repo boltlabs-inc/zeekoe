@@ -51,7 +51,7 @@ impl Method for Close {
                 &ChannelStatus::PendingClose,
             )
             .await
-            .context("Failed to update database to indicate channel is pending close.")?;
+            .context("Failed to update database to indicate channel is pending close")?;
 
         Ok(())
     }
@@ -75,7 +75,7 @@ async fn process_confirmed_mutual_close(
             &ChannelStatus::Closed,
         )
         .await
-        .context("Failed to update database to indicate channel is closed.")?;
+        .context("Failed to update database to indicate channel is closed")?;
 
     Ok(())
 }
@@ -89,7 +89,7 @@ async fn zkabacus_close(
     let (close_signature, chan) = chan
         .recv()
         .await
-        .context("Failed to receive close state signature.")?;
+        .context("Failed to receive close state signature")?;
 
     let (close_state, chan) = chan
         .recv()
@@ -107,7 +107,7 @@ async fn zkabacus_close(
             if database
                 .insert_revocation(close_state.revocation_lock(), None)
                 .await
-                .context("Failed to insert revocation lock into database.")?
+                .context("Failed to insert revocation lock into database")?
                 .is_empty()
             {
                 // If it's fresh, continue with protocol.
