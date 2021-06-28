@@ -28,13 +28,14 @@ impl Command for Close {
         if self.force {
             unilateral_close(&self, rng, config)
                 .await
-                .context("Unilateral close failed.")?;
+                .context("Unilateral close failed")?;
         } else {
             mutual_close(&self, rng, config)
                 .await
-                .context("Mutual close failed.")?;
+                .context("Mutual close failed")?;
         }
-        todo!()
+
+        Ok(())
     }
 }
 
