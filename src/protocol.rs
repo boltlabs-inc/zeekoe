@@ -1,6 +1,5 @@
 use zkabacus_crypto::{
-    revlock::*, ClosingSignature, CommitmentParameters, CustomerRandomness, MerchantRandomness,
-    Nonce, PayProof, PayToken, PublicKey, RangeProofParameters,
+    revlock::*, ClosingSignature, CustomerRandomness, MerchantRandomness, Nonce, PayProof, PayToken,
 };
 use {
     dialectic::prelude::*,
@@ -120,11 +119,11 @@ impl Display for ChannelStatus {
             f,
             "{}",
             match self {
-                Self::Originated => "Originated",
-                Self::CustomerFunded => "CustomerFunded",
-                Self::MerchantFunded => "MerchantFunded",
-                Self::Active => "Active",
-                Self::Closed => "Closed",
+                Self::Originated => "originated",
+                Self::CustomerFunded => "customer funded",
+                Self::MerchantFunded => "merchant and customer funded",
+                Self::Active => "active",
+                Self::Closed => "closed",
             }
         )
     }
