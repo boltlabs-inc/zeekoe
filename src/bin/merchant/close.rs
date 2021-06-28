@@ -27,7 +27,7 @@ impl Method for Close {
         _session_key: SessionKey,
         chan: Chan<Self::Protocol>,
     ) -> Result<(), anyhow::Error> {
-        let (chan, _close_state) = zkabacus_close(merchant_config, database, chan)
+        let (chan, close_state) = zkabacus_close(merchant_config, database, chan)
             .await
             .context("Mutual close failed")?;
 
@@ -40,6 +40,18 @@ impl Method for Close {
 
         // Close the dialectic channel.
         chan.close();
+
+        // Update database to indicate channel is now pending close.
+        // Note: mutual close can only be called on an active channel. Any other state requires
+        // a unilateral close.
+        database
+            .compare_and_swap_channel_status(
+                close_state.channel_id(),
+                &ChannelStatus::Active,
+                &ChannelStatus::PendingClose,
+            )
+            .await
+            .context("Failed to update database to indicate channel is pending close.")?;
 
         Ok(())
     }
@@ -57,9 +69,13 @@ async fn process_confirmed_mutual_close(
 ) -> Result<(), anyhow::Error> {
     // Update database to indicate the channel closed successfully.
     database
-        .compare_and_swap_channel_status(channel_id, &ChannelStatus::Active, &ChannelStatus::Closed)
+        .compare_and_swap_channel_status(
+            channel_id,
+            &ChannelStatus::PendingClose,
+            &ChannelStatus::Closed,
+        )
         .await
-        .context("Failed to update database to indicate channel was closed.")?;
+        .context("Failed to update database to indicate channel is closed.")?;
 
     Ok(())
 }

@@ -110,6 +110,7 @@ pub enum ChannelStatus {
     CustomerFunded,
     MerchantFunded,
     Active,
+    PendingClose,
     Closed,
 }
 
@@ -123,6 +124,7 @@ impl Display for ChannelStatus {
                 Self::CustomerFunded => "customer funded",
                 Self::MerchantFunded => "merchant and customer funded",
                 Self::Active => "active",
+                Self::PendingClose => "pending close",
                 Self::Closed => "closed",
             }
         )
