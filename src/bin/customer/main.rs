@@ -10,7 +10,7 @@ use {
 
 use zeekoe::{
     customer::{
-        cli::{self, Account::*, Customer::*},
+        cli::{self, Customer::*},
         client::{SessionKey, ZkChannelAddress},
         database::QueryCustomer,
         defaults::config_path,
@@ -54,8 +54,6 @@ pub async fn main_with_cli(cli: Cli) -> Result<(), anyhow::Error> {
             drop(config);
             tokio::task::spawn_blocking(|| Ok(edit::edit_file(config_path)?)).await?
         }
-        Account(Import(import)) => import.run(rng, config.await?).await,
-        Account(Remove(remove)) => remove.run(rng, config.await?).await,
         List(list) => list.run(rng, config.await?).await,
         Rename(rename) => rename.run(rng, config.await?).await,
         Establish(establish) => establish.run(rng, config.await?).await,

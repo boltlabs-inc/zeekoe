@@ -25,7 +25,6 @@ pub struct Cli {
 
 #[derive(Debug, StructOpt)]
 pub enum Customer {
-    Account(Account),
     List(List),
     Configure(Configure),
     Rename(Rename),
@@ -120,24 +119,6 @@ pub struct Close {
     pub label: ChannelName,
     #[structopt(long)]
     pub force: bool,
-}
-
-#[derive(Debug, StructOpt)]
-#[non_exhaustive]
-pub struct Import {
-    pub address: Option<String>,
-}
-
-#[derive(Debug, StructOpt)]
-#[non_exhaustive]
-pub struct Remove {
-    pub address: Option<String>,
-}
-
-#[derive(Debug, StructOpt)]
-pub enum Account {
-    Import(Import),
-    Remove(Remove),
 }
 
 /// An argument specified on the command line which may be a string literal, or the special string
