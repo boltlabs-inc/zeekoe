@@ -1,0 +1,5 @@
+database = { sqlite = "merchant.db" }
+
+[[service]]
+private_key = "localhost.key"
+certificate = "localhost.crt"

@@ -11,7 +11,7 @@ use zeekoe::{
     customer::{
         cli::Establish,
         client::ZkChannelAddress,
-        database::{take_state, Error, QueryCustomer, QueryCustomerExt, State},
+        database::{self, QueryCustomer, QueryCustomerExt},
         Chan, ChannelName, Config,
     },
     offer_abort, proceed,
@@ -52,7 +52,7 @@ impl Command for Establish {
         // Format deposit amounts as the correct types
         let customer_deposit = CustomerBalance::try_new(
             self.deposit
-                .as_minor_units()
+                .try_into_minor_units()
                 .ok_or(establish::Error::InvalidDeposit(Customer))?
                 .try_into()?,
         )
@@ -61,7 +61,7 @@ impl Command for Establish {
         let merchant_deposit = MerchantBalance::try_new(match self.merchant_deposit {
             None => 0,
             Some(d) => d
-                .as_minor_units()
+                .try_into_minor_units()
                 .ok_or(establish::Error::InvalidDeposit(Merchant))?
                 .try_into()?,
         })
@@ -164,9 +164,15 @@ impl Command for Establish {
         proceed!(in chan);
 
         // Run zkAbacus.Activate
-        zkabacus_activate(database.as_ref(), actual_label, chan)
+        zkabacus_activate(database.as_ref(), &actual_label, chan)
             .await
             .context("Failed to activate channel")?;
+
+        // Print success
+        eprintln!(
+            "Successfully established new channel with label \"{}\"",
+            actual_label
+        );
 
         Ok(())
     }
@@ -306,7 +312,7 @@ async fn store_inactive_local(
             .await
         {
             Ok(()) => break actual_label, // report the label that worked
-            Err((returned_inactive, Error::ChannelExists(_))) => {
+            Err((returned_inactive, database::Error::ChannelExists(_))) => {
                 inactive = returned_inactive; // restore the inactive state, try again
             }
             Err((_returned_inactive, error)) => {
@@ -323,7 +329,7 @@ async fn store_inactive_local(
 /// The core zkAbacus.Initialize protocol.
 async fn zkabacus_activate(
     database: &dyn QueryCustomer,
-    label: ChannelName,
+    label: &ChannelName,
     chan: Chan<establish::Activate>,
 ) -> Result<(), anyhow::Error> {
     // Receive the pay token from the merchant
@@ -336,7 +342,7 @@ async fn zkabacus_activate(
     chan.close();
 
     // Step the local channel state forward to `Ready`
-    activate_local(database, &label, pay_token).await
+    activate_local(database, label, pay_token).await
 }
 
 /// Update the local state for a channel from [`Inactive`] to [`Ready`] in the database.
@@ -346,16 +352,11 @@ async fn activate_local(
     pay_token: PayToken,
 ) -> Result<(), anyhow::Error> {
     database
-        .with_channel_state(label, |state| {
-            let inactive = take_state(State::inactive, state)?;
-            match inactive.activate(pay_token) {
-                Ok(ready) => *state = Some(State::Ready(ready)),
-                Err(inactive) => {
-                    *state = Some(State::Inactive(inactive));
-                    Err(establish::Error::InvalidPayToken)?;
-                }
-            }
-            Ok(())
+        .with_channel_state(label, |inactive: Inactive| {
+            let ready = inactive
+                .activate(pay_token)
+                .map_err(|_| establish::Error::InvalidPayToken)?;
+            Ok((ready, ()))
         })
         .await?
 }

@@ -1,7 +1,7 @@
 use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng};
 
 use zkabacus_crypto::{
-    customer::{LockMessage, StartMessage},
+    customer::{LockMessage, Locked, Ready, StartMessage, Started},
     ClosingSignature, Context as ProofContext, PayToken, PaymentAmount,
 };
 
@@ -10,7 +10,7 @@ use zeekoe::{
     customer::{
         cli::{Pay, Refund},
         client::SessionKey,
-        database::{take_state, QueryCustomer, QueryCustomerExt, State},
+        database::{QueryCustomer, QueryCustomerExt},
         Chan, ChannelName, Config,
     },
     offer_abort, proceed,
@@ -23,7 +23,7 @@ use super::{connect, database, Command};
 impl Command for Pay {
     async fn run(self, rng: StdRng, config: self::Config) -> Result<(), anyhow::Error> {
         // Convert the payment amount appropriately
-        let minor_units: i64 = self.pay.as_minor_units().ok_or_else(|| {
+        let minor_units: i64 = self.pay.try_into_minor_units().ok_or_else(|| {
             anyhow::anyhow!("Payment amount invalid for currency or out of range for channel")
         })?;
         let payment_amount = (if minor_units < 0 {
@@ -155,7 +155,7 @@ async fn zkabacus_pay(
         chan
     } else {
         // If the closing signature does not verify, inform the merchant we are aborting
-        abort!(in chan return pay::Error::InvalidClosingSignature);
+        abort!(in chan return pay::Error::InvalidPayToken);
     };
 
     // Receive a pay token from the merchant, which allows us to pay again
@@ -182,28 +182,12 @@ async fn start_payment(
     context: ProofContext,
 ) -> Result<StartMessage, anyhow::Error> {
     database
-        .with_channel_state(label, |state| {
-            // Ensure the channel is in ready state
-            let ready = take_state(State::ready, state).with_context(|| {
-                format!(
-                    "Expecting the channel \"{}\" to be in a different state",
-                    label
-                )
-            })?;
-
+        .with_channel_state(label, |ready: Ready| {
             // Attempt to start the payment using the payment amount and proof context
-            match ready.start(rng, payment_amount, &context) {
-                Ok((started, start_message)) => {
-                    // Set the new started state in the database
-                    *state = Some(State::Started(started));
-                    Ok(start_message)
-                }
-                Err((ready, error)) => {
-                    // TODO: Put the old ready state back in the database
-                    *state = Some(State::Ready(ready));
-                    Err(error).context("Failed to generate nonce and pay proof")
-                }
-            }
+            ready
+                .start(rng, payment_amount, &context)
+                .map_err(|(_, e)| e)
+                .context("Failed to generate nonce and pay proof")
         })
         .await
         .context("Database error while fetching initial pay state")?
@@ -220,35 +204,13 @@ async fn lock_payment(
     closing_signature: ClosingSignature,
 ) -> Result<Option<LockMessage>, anyhow::Error> {
     database
-        .with_channel_state(label, |state| {
-            // Ensure the channel is in started state
-            let started = take_state(State::started, state).with_context(|| {
-                format!(
-                    "Expecting the channel \"{}\" to be in a different state",
-                    label
-                )
-            })?;
-
+        .with_channel_state(label, |started: Started| {
             // Attempt to lock the state using the closing signature
-            match started.lock(closing_signature) {
-                Err(started) => {
-                    // Restore the state in the database to the original started state
-                    *state = Some(State::Started(started));
-
-                    // Return no start message, since we failed
-                    Ok(None)
-                }
-                Ok((locked, lock_message)) => {
-                    // Set the new locked state in the database
-                    *state = Some(State::Locked(locked));
-
-                    // Return the start message
-                    Ok(Some(lock_message))
-                }
-            }
+            started.lock(closing_signature).map_err(|_| ())
         })
         .await
-        .context("Database error while fetching started pay state")?
+        .map(Result::ok)
+        .context("Database error while fetching started pay state")
 }
 
 /// Attempt to unlock a locked payment for a channel of the given label, using the given
@@ -262,32 +224,13 @@ async fn unlock_payment(
     pay_token: PayToken,
 ) -> Result<(), anyhow::Error> {
     database
-        .with_channel_state(label, |state| {
-            // Ensure the channel is in locked state
-            let locked = take_state(State::locked, state).with_context(|| {
-                format!(
-                    "Expecting the channel \"{}\" to be in a different state",
-                    label
-                )
-            })?;
-
+        .with_channel_state(label, |locked: Locked| {
             // Attempt to unlock the state using the pay token
-            match locked.unlock(pay_token) {
-                Err(locked) => {
-                    // Restore the state in the database to the original locked state
-                    *state = Some(State::Locked(locked));
-
-                    // Return an error since the state could not be unlocked
-                    Err(pay::Error::InvalidPayToken.into())
-                }
-                Ok(ready) => {
-                    // Set the new ready state in the database
-                    *state = Some(State::Ready(ready));
-
-                    // Success
-                    Ok(())
-                }
-            }
+            let ready = locked.unlock(pay_token).map_err(|_| {
+                // Return an error since the state could not be unlocked
+                pay::Error::InvalidPayToken
+            })?;
+            Ok((ready, ()))
         })
         .await
         .context("Database error while fetching locked pay state")?

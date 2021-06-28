@@ -1,7 +1,10 @@
 use {
     dialectic_reconnect::Backoff,
     serde::{Deserialize, Serialize},
-    std::{path::Path, time::Duration},
+    std::{
+        path::{Path, PathBuf},
+        time::Duration,
+    },
 };
 
 pub use super::DatabaseLocation;
@@ -9,7 +12,7 @@ pub use super::DatabaseLocation;
 use crate::customer::defaults;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(deny_unknown_fields, rename_all = "snake_case")]
 #[non_exhaustive]
 pub struct Config {
     pub database: Option<DatabaseLocation>,
@@ -23,10 +26,28 @@ pub struct Config {
     pub max_message_length: usize,
     #[serde(default = "defaults::max_note_length")]
     pub max_note_length: u64,
+    #[serde(default)]
+    pub trust_certificate: Option<PathBuf>,
 }
 
 impl Config {
-    pub async fn load(path: impl AsRef<Path>) -> Result<Config, anyhow::Error> {
-        Ok(toml::from_str(&tokio::fs::read_to_string(path).await?)?)
+    pub async fn load(config_path: impl AsRef<Path>) -> Result<Config, anyhow::Error> {
+        let mut config: Config = toml::from_str(&tokio::fs::read_to_string(&config_path).await?)?;
+
+        // Directory containing the configuration path
+        let config_dir = config_path
+            .as_ref()
+            .parent()
+            .expect("Merchant configuration path must exist in some parent directory");
+
+        // Adjust contained paths to be relative to the config path
+        config.database = config
+            .database
+            .map(|database| database.relative_to(&config_dir));
+        config.trust_certificate = config
+            .trust_certificate
+            .map(|ref cert_path| config_dir.join(cert_path));
+
+        Ok(config)
     }
 }

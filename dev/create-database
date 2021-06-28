@@ -1,10 +1,22 @@
 #!/usr/bin/env bash
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 REPO_ROOT="$SCRIPT_DIR/..";
-DB_PATH="$REPO_ROOT/test.db";
+BOTH_DB_PATH="$REPO_ROOT/test.db";
+CUSTOMER_DB_PATH="$REPO_ROOT/dev/customer.db"
+MERCHANT_DB_PATH="$REPO_ROOT/dev/merchant.db"
 
-if [ -f $DB_PATH ]; then
-  echo "Found db as $DB_PATH, doing nothing and exiting"
+if [ -f "$BOTH_DB_PATH" ]; then
+  echo "Found database template as $BOTH_DB_PATH, doing nothing and exiting"
+  exit 1
+fi
+
+if [ -f "$CUSTOMER_DB_PATH" ]; then
+  echo "Found customer database as $CUSTOMER_DB_PATH, doing nothing and exiting"
+  exit 1
+fi
+
+if [ -f "$MERCHANT_DB_PATH" ]; then
+  echo "Found merchant database as $MERCHANT_DB_PATH, doing nothing and exiting"
   exit 1
 fi
 
@@ -13,6 +25,12 @@ if ! command -v sqlite3 &> /dev/null; then
   exit 1
 fi
 
-touch $DB_PATH
-sqlite3 $DB_PATH < $REPO_ROOT/src/database/migrations/merchant/*_setup.sql
-sqlite3 $DB_PATH < $REPO_ROOT/src/database/migrations/customer/*_setup.sql
+touch "$BOTH_DB_PATH"
+sqlite3 "$BOTH_DB_PATH" < "$REPO_ROOT"/src/database/migrations/merchant/*_setup.sql
+sqlite3 "$BOTH_DB_PATH" < "$REPO_ROOT"/src/database/migrations/customer/*_setup.sql
+
+touch "$CUSTOMER_DB_PATH"
+sqlite3 "$CUSTOMER_DB_PATH" < "$REPO_ROOT"/src/database/migrations/customer/*_setup.sql
+
+touch "$MERCHANT_DB_PATH"
+sqlite3 "$MERCHANT_DB_PATH" < "$REPO_ROOT"/src/database/migrations/merchant/*_setup.sql

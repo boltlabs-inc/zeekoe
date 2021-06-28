@@ -1,13 +1,12 @@
 use {
+    anyhow::Context,
     async_trait::async_trait,
+    futures::FutureExt,
     rand::{rngs::StdRng, SeedableRng},
     sqlx::SqlitePool,
     std::{convert::identity, sync::Arc},
     structopt::StructOpt,
 };
-
-#[cfg(feature = "allow_explicit_certificate_trust")]
-use std::{env, path::Path};
 
 use zeekoe::{
     customer::{
@@ -38,7 +37,14 @@ pub trait Command {
 
 pub async fn main_with_cli(cli: Cli) -> Result<(), anyhow::Error> {
     let config_path = cli.config.ok_or_else(config_path).or_else(identity)?;
-    let config = Config::load(&config_path);
+    let config = Config::load(&config_path).map(|result| {
+        result.with_context(|| {
+            format!(
+                "Could not load customer configuration from {:?}",
+                config_path
+            )
+        })
+    });
 
     // TODO: let this be made deterministic during testing
     let rng = StdRng::from_entropy();
@@ -69,6 +75,7 @@ pub async fn connect(
         connection_timeout,
         max_pending_connection_retries,
         max_message_length,
+        trust_certificate,
         ..
     } = config;
 
@@ -78,13 +85,21 @@ pub async fn connect(
         .timeout(*connection_timeout)
         .max_pending_retries(*max_pending_connection_retries);
 
-    #[cfg(feature = "allow_explicit_certificate_trust")]
-    if let Ok(path_string) = env::var("ZEEKOE_TRUST_EXPLICIT_CERTIFICATE") {
-        let path = Path::new(&path_string);
-        if path.is_relative() {
-            return Err(anyhow::anyhow!("Path specified in `ZEEKOE_TRUST_EXPLICIT_CERTIFICATE` must be absolute, but the current value, \"{}\", is relative", path_string));
-        }
-        client.trust_explicit_certificate(path)?;
+    if let Some(path) = trust_certificate {
+        #[cfg(feature = "allow_explicit_certificate_trust")]
+        client.trust_explicit_certificate(path).with_context(|| {
+            format!(
+                "Failed to enable explicitly trusted certificate at {:?}",
+                path
+            )
+        })?;
+
+        #[cfg(not(feature = "allow_explicit_certificate_trust"))]
+        eprintln!(
+            "Ignoring explicitly trusted certificate at {:?} because \
+            this binary was built to only trust webpki roots of trust",
+            path
+        );
     }
 
     Ok(client.connect(address).await?)
@@ -99,8 +114,21 @@ pub async fn database(config: &Config) -> Result<Arc<dyn QueryCustomer>, anyhow:
 
     use zeekoe::customer::config::DatabaseLocation;
     let database = match location {
-        DatabaseLocation::InMemory => Arc::new(SqlitePool::connect("file::memory:").await?),
-        DatabaseLocation::Sqlite(ref uri) => Arc::new(SqlitePool::connect(uri).await?),
+        DatabaseLocation::Ephemeral => Arc::new(
+            SqlitePool::connect("file::memory:")
+                .await
+                .context("Could not create in-memory SQLite database")?,
+        ),
+        DatabaseLocation::Sqlite(ref path) => {
+            let uri = path.to_str().ok_or_else(|| {
+                anyhow::anyhow!("Invalid UTF-8 in SQLite database path {:?}", path)
+            })?;
+            Arc::new(
+                SqlitePool::connect(uri)
+                    .await
+                    .with_context(|| format!("Could not open SQLite database at \"{}\"", uri))?,
+            )
+        }
         DatabaseLocation::Postgres(_) => {
             return Err(anyhow::anyhow!(
                 "Postgres database support is not yet implemented"

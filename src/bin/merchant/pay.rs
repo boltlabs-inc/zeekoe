@@ -106,7 +106,7 @@ async fn zkabacus_pay(
         merchant_config.allow_payment(&mut rng, payment_amount, &nonce, pay_proof, &context)
     {
         // Proof verified, so check the nonce
-        if database
+        if !database
             .insert_nonce(&nonce)
             .await
             .context("Failed to insert nonce in database")?

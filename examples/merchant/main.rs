@@ -26,7 +26,12 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Run the server
     server
-        .serve_while(([127, 0, 0, 1], 8080), || async { Some(()) }, interact)
+        .serve_while(
+            ([127, 0, 0, 1], 8080),
+            || async { Some(()) },
+            interact,
+            std::future::pending(),
+        )
         .await?;
     Ok(())
 }

@@ -1,5 +1,8 @@
 use {
-    async_trait::async_trait, futures::stream::StreamExt, sqlx::SqlitePool, std::any::Any,
+    async_trait::async_trait,
+    futures::stream::StreamExt,
+    sqlx::SqlitePool,
+    std::{any::Any, convert::TryInto},
     thiserror::Error,
 };
 
@@ -8,7 +11,7 @@ use zkabacus_crypto::customer::Inactive;
 use crate::customer::{client::ZkChannelAddress, ChannelName};
 
 mod state;
-pub use state::{take_state, NameState, State, StateName, UnexpectedState};
+pub use state::{IsState, State, StateName, UnexpectedState};
 
 type Result<T> = std::result::Result<T, Error>;
 
@@ -17,7 +20,7 @@ type Result<T> = std::result::Result<T, Error>;
 pub enum Error {
     /// The state of the channel was not what was expected.
     #[error(transparent)]
-    UnexpectedState(UnexpectedState),
+    UnexpectedState(#[from] UnexpectedState),
     /// An underlying error occurred in the database.
     #[error(transparent)]
     Database(#[from] sqlx::Error),
@@ -47,11 +50,17 @@ pub trait QueryCustomerExt {
     /// **Important:** The given closure should be idempotent on the state of the world aside from
     /// the single side effect of modifying their given `&mut Option<State>`. In particular, the
     /// closure **should not result in communication with the merchant**.
-    async fn with_channel_state<'a, T: Send + 'static>(
+    async fn with_channel_state<
+        'a,
+        Starting: IsState + Send + 'static,
+        Final: Into<State> + Send + 'static,
+        T: Send + 'static,
+        E: Send + 'static,
+    >(
         &'a self,
         label: &ChannelName,
-        with_state: impl for<'s> FnOnce(&'s mut Option<State>) -> T + Send + 'a,
-    ) -> Result<T>;
+        with_state: impl for<'s> FnOnce(Starting) -> std::result::Result<(Final, T), E> + Send + 'a,
+    ) -> Result<std::result::Result<T, E>>;
 }
 
 /// Trait-object safe version of [`QueryCustomer`]: use this type in trait objects and implement it
@@ -100,9 +109,15 @@ pub trait QueryCustomer: Send + Sync {
         &'a self,
         label: &ChannelName,
         with_state: Box<
-            dyn for<'s> FnOnce(&'s mut Option<State>) -> Box<dyn Any + Send> + Send + 'a,
+            dyn for<'s> FnOnce(
+                    State,
+                ) -> std::result::Result<
+                    (State, Box<dyn Any + Send>),
+                    Box<dyn Any + Send>,
+                > + Send
+                + 'a,
         >,
-    ) -> Result<Box<dyn Any>>;
+    ) -> Result<std::result::Result<Box<dyn Any>, Box<dyn Any>>>;
 }
 
 #[async_trait]
@@ -149,7 +164,7 @@ impl QueryCustomer for SqlitePool {
             Ok(result?)
         })()
         .await
-        .map_err(|e| (state.inactive().unwrap(), e))
+        .map_err(|e| (state.try_into().unwrap(), e))
     }
 
     async fn channel_address(&self, label: &ChannelName) -> Result<ZkChannelAddress> {
@@ -232,13 +247,19 @@ impl QueryCustomer for SqlitePool {
         &'a self,
         label: &ChannelName,
         with_state: Box<
-            dyn for<'s> FnOnce(&'s mut Option<State>) -> Box<dyn Any + Send> + Send + 'a,
+            dyn for<'s> FnOnce(
+                    State,
+                ) -> std::result::Result<
+                    (State, Box<dyn Any + Send>),
+                    Box<dyn Any + Send>,
+                > + Send
+                + 'a,
         >,
-    ) -> Result<Box<dyn Any>> {
+    ) -> Result<std::result::Result<Box<dyn Any>, Box<dyn Any>>> {
         let mut transaction = self.begin().await?;
 
         // Retrieve the state so that we can modify it
-        let mut state: Option<State> = sqlx::query!(
+        let state: State = sqlx::query!(
             r#"SELECT state AS "state: State" FROM customer_channels WHERE label = ?"#,
             label,
         )
@@ -249,38 +270,72 @@ impl QueryCustomer for SqlitePool {
         .state;
 
         // Perform the operation with the state fetched from the database
-        let output = with_state(&mut state);
+        match with_state(state) {
+            Ok((state, output)) => {
+                // Store the new state to the database and set it to clean again
+                sqlx::query!(
+                    "UPDATE customer_channels SET state = ? WHERE label = ?",
+                    state,
+                    label
+                )
+                .execute(&mut transaction)
+                .await?;
 
-        // Store the new state to the database
-        sqlx::query!(
-            "UPDATE customer_channels SET state = ? WHERE label = ?",
-            state,
-            label
-        )
-        .execute(&mut transaction)
-        .await?;
+                // Commit the transaction
+                transaction.commit().await?;
 
-        // Commit the transaction
-        transaction.commit().await?;
-
-        Ok(output)
+                Ok(Ok(output))
+            }
+            Err(error) => Ok(Err(error)),
+        }
     }
 }
 
 // Blanket implementation of [`QueryCustomerExt`] for all [`QueryCustomer`]
 #[async_trait]
 impl<Q: QueryCustomer + ?Sized> QueryCustomerExt for Q {
-    async fn with_channel_state<'a, T: Send + 'static>(
+    async fn with_channel_state<
+        'a,
+        Starting: IsState + Send + 'static,
+        Final: Into<State> + Send + 'static,
+        T: Send + 'static,
+        E: Send + 'static,
+    >(
         &'a self,
         label: &ChannelName,
-        with_state: impl for<'s> FnOnce(&'s mut Option<State>) -> T + Send + 'a,
-    ) -> Result<T> {
-        <Self as QueryCustomer>::with_channel_state_erased(
+        with_state: impl for<'s> FnOnce(Starting) -> std::result::Result<(Final, T), E> + Send + 'a,
+    ) -> Result<std::result::Result<T, E>> {
+        let result = <Self as QueryCustomer>::with_channel_state_erased(
             self,
             label,
-            Box::new(|state| Box::new(with_state(state))),
+            Box::new(|state| match state.try_into().map_err(|(e, _)| e) {
+                Ok(state) => match with_state(state) {
+                    Ok((state, t)) => Ok((state.into(), Box::new(t))),
+                    Err(e) => Err(Box::new(Ok::<E, UnexpectedState>(e))),
+                },
+                Err(error) => Err(Box::new(Err::<E, UnexpectedState>(error))),
+            }),
         )
-        .await
-        .map(|t| *t.downcast().unwrap())
+        .await?;
+
+        // Cast the result back to its true type
+        match result {
+            // Successful result
+            Ok(t) => {
+                let t: T = *t.downcast().unwrap();
+                Ok(Ok(t))
+            }
+            // Error, which could be one of...
+            Err(error_result) => {
+                let error_result: std::result::Result<E, UnexpectedState> =
+                    *error_result.downcast().unwrap();
+                match error_result {
+                    // Error returned by the closure
+                    Ok(e) => Ok(Err(e)),
+                    // Error returned because the state wasn't right
+                    Err(unexpected_state) => return Err(unexpected_state.into()),
+                }
+            }
+        }
     }
 }

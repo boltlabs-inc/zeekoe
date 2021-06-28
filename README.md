@@ -9,12 +9,21 @@ $ ./dev/generate-certificates
 # initialize the database
 $ ./dev/create-database
 
-# running the server
-$ cargo run --bin zeekoe-server
+# running the merchant server (leave this running)
+$ cargo run --bin zkchannel-merchant -- --config "./dev/Merchant.toml" run
 
-# running the client
-$ ZEEKOE_TRUST_EXPLICIT_CERTIFICATE=$PWD/dev/localhost.crt \
-    cargo run \
-      ---features allow_explicit_certificate_trust \
-      --bin zeekoe-client
+# establish a channel
+$ cargo run --features "allow_explicit_certificate_trust" \
+    --bin zkchannel-customer -- \
+    --config "./dev/Customer.toml" \
+    establish "zkchannel://localhost" \
+    --label "my-first-zkchannel" \
+    --deposit "5 XTZ" \
+    --from somewhere
+
+# make a payment
+cargo run --features "allow_explicit_certificate_trust" \
+    --bin zkchannel-customer -- \
+    --config "./dev/Customer.toml" \
+    pay "my-first-zkchannel" "0.005 XTZ"
 ```

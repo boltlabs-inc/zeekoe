@@ -91,7 +91,15 @@ pub async fn establish(
 ) -> Result<Option<Url>, Option<String>> {
     match approver {
         // The automatic approver approves all establishment requests
-        Approver::Automatic => Ok(None),
+        Approver::Automatic => {
+            if merchant_balance.into_inner() == 0 {
+                Ok(None)
+            } else {
+                Err(Some(
+                    "merchant declined to contribute to initial channel balance".into(),
+                ))
+            }
+        }
 
         // A URL-based approver approves a payment iff it returns a success code
         Approver::Url(approver_url) => {
