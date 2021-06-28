@@ -56,14 +56,10 @@ async fn mutual_close(
         .context("Failed to connect to local database")?;
 
     // Look up the address and current local customer state for this merchant in the database
-    let address = match database
+    let address = database
         .channel_address(&close.label)
         .await
-        .context("Failed to look up channel address in local database")?
-    {
-        None => return Err(anyhow::anyhow!("Unknown channel label: {}", close.label)),
-        Some(address) => address,
-    };
+        .context("Failed to look up channel address in local database")?;
 
     // Connect and select the Close session
     let (_session_key, chan) = connect(&config, &address)
@@ -147,7 +143,7 @@ async fn process_mutual_close_confirmation(
             }
         })
         .await
-        .context("Database error while updating state to Closed")??;
+        .context("Database error while updating state to Closed")?;
 
     Ok(())
 }
@@ -207,5 +203,5 @@ async fn get_close_message(
             Ok(closing_message)
         })
         .await
-        .context("Database error while fetching state to close on")??
+        .context("Database error while fetching state to close on")?
 }
