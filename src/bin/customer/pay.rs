@@ -1,4 +1,4 @@
-use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng, std::convert::TryInto};
+use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng};
 
 use zkabacus_crypto::{
     customer::{LockMessage, Locked, Ready, StartMessage, Started},
@@ -10,7 +10,7 @@ use zeekoe::{
     customer::{
         cli::{Pay, Refund},
         client::SessionKey,
-        database::{QueryCustomer, QueryCustomerExt, State, UnexpectedState},
+        database::{QueryCustomer, QueryCustomerExt},
         Chan, ChannelName, Config,
     },
     offer_abort, proceed,
@@ -135,30 +135,27 @@ async fn zkabacus_pay(
         .context("Failed to receive closing signature")?;
 
     // Verify the closing signature and transition into a locked state
-    let chan = match lock_payment(database, label, closing_signature).await? {
-        Ok(lock_message) => {
-            proceed!(in chan);
+    let chan = if let Some(lock_message) = lock_payment(database, label, closing_signature).await? {
+        proceed!(in chan);
 
-            // If the closing signature verifies, reveal our lock, secret, and blinding factor
-            let chan = chan
-                .send(lock_message.revocation_lock)
-                .await
-                .context("Failed to send revocation lock")?
-                .send(lock_message.revocation_secret)
-                .await
-                .context("Failed to send revocation secret")?
-                .send(lock_message.revocation_lock_blinding_factor)
-                .await
-                .context("Failed to send revocation lock blinding factor")?;
+        // If the closing signature verifies, reveal our lock, secret, and blinding factor
+        let chan = chan
+            .send(lock_message.revocation_lock)
+            .await
+            .context("Failed to send revocation lock")?
+            .send(lock_message.revocation_secret)
+            .await
+            .context("Failed to send revocation secret")?
+            .send(lock_message.revocation_lock_blinding_factor)
+            .await
+            .context("Failed to send revocation lock blinding factor")?;
 
-            // Allow the merchant to cancel the session at this point, and throw an error if so
-            offer_abort!(in chan as Customer);
-            chan
-        }
-        Err(error) => {
-            // If the closing signature does not verify, inform the merchant we are aborting
-            abort!(in chan return error);
-        }
+        // Allow the merchant to cancel the session at this point, and throw an error if so
+        offer_abort!(in chan as Customer);
+        chan
+    } else {
+        // If the closing signature does not verify, inform the merchant we are aborting
+        abort!(in chan return pay::Error::InvalidPayToken);
     };
 
     // Receive a pay token from the merchant, which allows us to pay again
@@ -185,21 +182,12 @@ async fn start_payment(
     context: ProofContext,
 ) -> Result<StartMessage, anyhow::Error> {
     database
-        .with_channel_state(label, |state| {
-            // Make sure channel is in ready state
-            let ready: Ready = state.try_into().map_err(|(e, _)| e)?;
-
+        .with_channel_state(label, |ready: Ready| {
             // Attempt to start the payment using the payment amount and proof context
-            match ready.start(rng, payment_amount, &context) {
-                Ok((started, start_message)) => {
-                    // Return the start message and new state
-                    Ok((start_message, State::Started(started)))
-                }
-                Err((_, error)) => {
-                    // Return an error describing the failure
-                    Err(error).context("Failed to generate nonce and pay proof")
-                }
-            }
+            ready
+                .start(rng, payment_amount, &context)
+                .map_err(|(_, e)| e)
+                .context("Failed to generate nonce and pay proof")
         })
         .await
         .context("Database error while fetching initial pay state")?
@@ -214,35 +202,15 @@ async fn lock_payment(
     database: &dyn QueryCustomer,
     label: &ChannelName,
     closing_signature: ClosingSignature,
-) -> Result<Result<LockMessage, pay::Error>, anyhow::Error> {
-    let result = database
-        .with_channel_state(label, |state| {
-            // Ensure channel is in the started state
-            let started: Started = state
-                .try_into()
-                .map_err(|(e, _): (UnexpectedState, _)| Err(e.into()))?;
-
+) -> Result<Option<LockMessage>, anyhow::Error> {
+    database
+        .with_channel_state(label, |started: Started| {
             // Attempt to lock the state using the closing signature
-            match started.lock(closing_signature) {
-                Err(_) => {
-                    // Return no start message, since we failed
-                    Err(Ok(pay::Error::InvalidClosingSignature))
-                }
-                Ok((locked, lock_message)) => {
-                    // Return the start message and set the new state
-                    Ok((lock_message, State::Locked(locked)))
-                }
-            }
+            started.lock(closing_signature).map_err(|_| ())
         })
         .await
-        .context("Database error while fetching started pay state");
-
-    match result {
-        Ok(Ok(lock_message)) => Ok(Ok(lock_message)),
-        Ok(Err(Ok(pay_error))) => Ok(Err(pay_error)),
-        Ok(Err(Err(state_error))) => Err(state_error),
-        Err(database_error) => Err(database_error),
-    }
+        .map(Result::ok)
+        .context("Database error while fetching started pay state")
 }
 
 /// Attempt to unlock a locked payment for a channel of the given label, using the given
@@ -256,21 +224,13 @@ async fn unlock_payment(
     pay_token: PayToken,
 ) -> Result<(), anyhow::Error> {
     database
-        .with_channel_state(label, |state| {
-            // Ensure the channel is in locked state
-            let locked: Locked = state.try_into().map_err(|(e, _)| e)?;
-
+        .with_channel_state(label, |locked: Locked| {
             // Attempt to unlock the state using the pay token
-            match locked.unlock(pay_token) {
-                Err(_) => {
-                    // Return an error since the state could not be unlocked
-                    Err(pay::Error::InvalidPayToken.into())
-                }
-                Ok(ready) => {
-                    // Success: set the new ready state in the database
-                    Ok(((), State::Ready(ready)))
-                }
-            }
+            let ready = locked.unlock(pay_token).map_err(|_| {
+                // Return an error since the state could not be unlocked
+                pay::Error::InvalidPayToken
+            })?;
+            Ok((ready, ()))
         })
         .await
         .context("Database error while fetching locked pay state")?

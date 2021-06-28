@@ -11,7 +11,7 @@ use zeekoe::{
     customer::{
         cli::Establish,
         client::ZkChannelAddress,
-        database::{self, QueryCustomer, QueryCustomerExt, State},
+        database::{self, QueryCustomer, QueryCustomerExt},
         Chan, ChannelName, Config,
     },
     offer_abort, proceed,
@@ -352,12 +352,11 @@ async fn activate_local(
     pay_token: PayToken,
 ) -> Result<(), anyhow::Error> {
     database
-        .with_channel_state(label, |state| {
-            let inactive: Inactive = state.try_into().map_err(|(e, _)| e)?;
+        .with_channel_state(label, |inactive: Inactive| {
             let ready = inactive
                 .activate(pay_token)
                 .map_err(|_| establish::Error::InvalidPayToken)?;
-            Ok(((), State::Ready(ready)))
+            Ok((ready, ()))
         })
         .await?
 }

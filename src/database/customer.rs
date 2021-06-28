@@ -20,7 +20,7 @@ type Result<T> = std::result::Result<T, Error>;
 pub enum Error {
     /// The state of the channel was not what was expected.
     #[error(transparent)]
-    UnexpectedState(UnexpectedState),
+    UnexpectedState(#[from] UnexpectedState),
     /// An underlying error occurred in the database.
     #[error(transparent)]
     Database(#[from] sqlx::Error),
@@ -50,10 +50,16 @@ pub trait QueryCustomerExt {
     /// **Important:** The given closure should be idempotent on the state of the world aside from
     /// the single side effect of modifying their given `&mut Option<State>`. In particular, the
     /// closure **should not result in communication with the merchant**.
-    async fn with_channel_state<'a, T: Send + 'static, E: Send + 'static>(
+    async fn with_channel_state<
+        'a,
+        Starting: IsState + Send + 'static,
+        Final: Into<State> + Send + 'static,
+        T: Send + 'static,
+        E: Send + 'static,
+    >(
         &'a self,
         label: &ChannelName,
-        with_state: impl for<'s> FnOnce(State) -> std::result::Result<(T, State), E> + Send + 'a,
+        with_state: impl for<'s> FnOnce(Starting) -> std::result::Result<(Final, T), E> + Send + 'a,
     ) -> Result<std::result::Result<T, E>>;
 }
 
@@ -106,7 +112,7 @@ pub trait QueryCustomer: Send + Sync {
             dyn for<'s> FnOnce(
                     State,
                 ) -> std::result::Result<
-                    (Box<dyn Any + Send>, State),
+                    (State, Box<dyn Any + Send>),
                     Box<dyn Any + Send>,
                 > + Send
                 + 'a,
@@ -244,7 +250,7 @@ impl QueryCustomer for SqlitePool {
             dyn for<'s> FnOnce(
                     State,
                 ) -> std::result::Result<
-                    (Box<dyn Any + Send>, State),
+                    (State, Box<dyn Any + Send>),
                     Box<dyn Any + Send>,
                 > + Send
                 + 'a,
@@ -265,7 +271,7 @@ impl QueryCustomer for SqlitePool {
 
         // Perform the operation with the state fetched from the database
         match with_state(state) {
-            Ok((output, state)) => {
+            Ok((state, output)) => {
                 // Store the new state to the database and set it to clean again
                 sqlx::query!(
                     "UPDATE customer_channels SET state = ? WHERE label = ?",
@@ -288,24 +294,44 @@ impl QueryCustomer for SqlitePool {
 // Blanket implementation of [`QueryCustomerExt`] for all [`QueryCustomer`]
 #[async_trait]
 impl<Q: QueryCustomer + ?Sized> QueryCustomerExt for Q {
-    async fn with_channel_state<'a, T: Send + 'static, E: Send + 'static>(
+    async fn with_channel_state<
+        'a,
+        Starting: IsState + Send + 'static,
+        Final: Into<State> + Send + 'static,
+        T: Send + 'static,
+        E: Send + 'static,
+    >(
         &'a self,
         label: &ChannelName,
-        with_state: impl for<'s> FnOnce(State) -> std::result::Result<(T, State), E> + Send + 'a,
+        with_state: impl for<'s> FnOnce(Starting) -> std::result::Result<(Final, T), E> + Send + 'a,
     ) -> Result<std::result::Result<T, E>> {
-        <Self as QueryCustomer>::with_channel_state_erased(
+        let result = <Self as QueryCustomer>::with_channel_state_erased(
             self,
             label,
-            Box::new(|state| match with_state(state) {
-                Ok((t, state)) => Ok((Box::new(t), state)),
-                Err(e) => Err(Box::new(e)),
+            Box::new(|state| match state.try_into().map_err(|(e, _)| e) {
+                Ok(state) => match with_state(state) {
+                    Ok((state, t)) => Ok((state.into(), Box::new(t))),
+                    Err(e) => Err(Box::new(Ok::<E, UnexpectedState>(e))),
+                },
+                Err(error) => Err(Box::new(Err::<E, UnexpectedState>(error))),
             }),
         )
-        .await
-        .map(|result| {
-            result
-                .map(|t| *t.downcast().unwrap())
-                .map_err(|e| *e.downcast().unwrap())
-        })
+        .await?;
+
+        // Cast the result back to its true type
+        match result {
+            // Successful result
+            Ok(t) => *t.downcast().unwrap(),
+            // Error, which could be one of...
+            Err(e) => {
+                let error_result: std::result::Result<E, UnexpectedState> = *e.downcast().unwrap();
+                match error_result {
+                    // Error returned by the closure
+                    Ok(e) => Ok(Err(e)),
+                    // Error returned because the state wasn't right
+                    Err(unexpected_state) => return Err(unexpected_state.into()),
+                }
+            }
+        }
     }
 }
