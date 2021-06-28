@@ -38,14 +38,10 @@ impl Command for Pay {
             .context("Failed to connect to local database")?;
 
         // Look up the address and current local customer state for this merchant in the database
-        let address = match database
+        let address = database
             .channel_address(&self.label)
             .await
-            .context("Failed to look up channel address in local database")?
-        {
-            None => return Err(anyhow::anyhow!("Unknown channel label: {}", self.label)),
-            Some(address) => address,
-        };
+            .context("Failed to look up channel address in local database")?;
 
         // Connect and select the Pay session
         let (session_key, chan) = connect(&config, &address)

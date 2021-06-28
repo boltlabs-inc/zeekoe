@@ -1,9 +1,5 @@
 use {
-    async_trait::async_trait,
-    futures::stream::StreamExt,
-    serde::{Deserialize, Serialize},
-    sqlx::SqlitePool,
-    std::any::Any,
+    async_trait::async_trait, futures::stream::StreamExt, sqlx::SqlitePool, std::any::Any,
     thiserror::Error,
 };
 
@@ -55,22 +51,18 @@ pub trait QueryCustomer: Send + Sync {
         inactive: Inactive,
     ) -> std::result::Result<(), (Inactive, Error)>;
 
-    /// Get the address of a given channel, or `None` if the label does not exist in the database.
-    async fn channel_address(&self, label: &ChannelName) -> Result<Option<ZkChannelAddress>>;
+    /// Get the address of a given channel.
+    async fn channel_address(&self, label: &ChannelName) -> Result<ZkChannelAddress>;
 
     /// Relabel an existing channel from a given label to a new one.
-    ///
-    /// Returns `true` if the label existed and `false` if it did not.
-    async fn relabel_channel(&self, label: &ChannelName, new_label: &ChannelName) -> Result<bool>;
+    async fn relabel_channel(&self, label: &ChannelName, new_label: &ChannelName) -> Result<()>;
 
     /// Assign a new [`ZkChannelAddress`] to an existing channel.
-    ///
-    /// Returns `true` if the label existed and `false` if it did not.
     async fn readdress_channel(
         &self,
         label: &ChannelName,
         new_address: &ZkChannelAddress,
-    ) -> Result<bool>;
+    ) -> Result<()>;
 
     /// **Don't call this function directly:** instead call [`QueryCustomer::with_channel_state`].
     /// Note that this method uses `Box<dyn Any + Send>` to avoid the use of generic parameters,
@@ -154,7 +146,7 @@ impl QueryCustomer for SqlitePool {
         .map_err(|e| (state.inactive().unwrap(), e))
     }
 
-    async fn channel_address(&self, label: &ChannelName) -> Result<Option<ZkChannelAddress>> {
+    async fn channel_address(&self, label: &ChannelName) -> Result<ZkChannelAddress> {
         Ok(sqlx::query!(
             r#"
             SELECT address AS "address: ZkChannelAddress"
@@ -165,35 +157,69 @@ impl QueryCustomer for SqlitePool {
         .fetch(self)
         .next()
         .await
-        .transpose()
-        .map(|option| option.map(|r| r.address))?)
+        .ok_or_else(|| Error::NoSuchChannel(label.clone()))?
+        .map(|record| record.address)?)
     }
 
-    async fn relabel_channel(&self, label: &ChannelName, new_label: &ChannelName) -> Result<bool> {
-        Ok(sqlx::query!(
+    async fn relabel_channel(&self, label: &ChannelName, new_label: &ChannelName) -> Result<()> {
+        let mut transaction = self.begin().await?;
+
+        // Ensure that the old channel name exists
+        let old_exists = sqlx::query!("SELECT label FROM customer_channels WHERE label = ?", label)
+            .fetch(&mut transaction)
+            .next()
+            .await
+            .is_some();
+
+        if !old_exists {
+            return Err(Error::NoSuchChannel(label.clone()));
+        }
+
+        // Ensure that the new channel name *does not* exist
+        let new_does_not_exist =
+            sqlx::query!("SELECT label FROM customer_channels WHERE label = ?", label)
+                .fetch(&mut transaction)
+                .next()
+                .await
+                .is_none();
+
+        if !new_does_not_exist {
+            return Err(Error::ChannelExists(new_label.clone()).into());
+        }
+
+        sqlx::query!(
             "UPDATE customer_channels SET label = ? WHERE label = ?",
             new_label,
             label,
         )
         .execute(self)
-        .await
-        .map(|r| r.rows_affected() == 1)?)
+        .await?;
+
+        transaction.commit().await?;
+
+        Ok(())
     }
 
     async fn readdress_channel(
         &self,
         label: &ChannelName,
         new_address: &ZkChannelAddress,
-    ) -> Result<bool> {
-        sqlx::query!(
+    ) -> Result<()> {
+        let rows_affected = sqlx::query!(
             "UPDATE customer_channels SET address = ? WHERE label = ?",
             new_address,
             label,
         )
         .execute(self)
-        .await
-        .map(|r| r.rows_affected() == 1)
-        .map_err(|e| e.into())
+        .await?
+        .rows_affected();
+
+        // If the rows affected is 1, that means we found the channel to readdress
+        if rows_affected == 1 {
+            Ok(())
+        } else {
+            Err(Error::NoSuchChannel(label.clone()))
+        }
     }
 
     async fn with_channel_state_erased<'a>(
@@ -210,14 +236,16 @@ impl QueryCustomer for SqlitePool {
             r#"SELECT state AS "state: State" FROM customer_channels WHERE label = ?"#,
             label,
         )
-        .fetch_one(&mut transaction)
-        .await?
+        .fetch(&mut transaction)
+        .next()
+        .await
+        .ok_or_else(|| Error::NoSuchChannel(label.clone()))??
         .state;
 
         // Perform the operation with the state fetched from the database
         let output = with_state(&mut state);
 
-        // Store the new state to the database and set it to clean again
+        // Store the new state to the database
         sqlx::query!(
             "UPDATE customer_channels SET state = ? WHERE label = ?",
             state,
