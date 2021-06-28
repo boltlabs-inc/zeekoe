@@ -72,8 +72,9 @@ async fn close(close: &Close, rng: StdRng, config: self::Config) -> Result<(), a
 
 /// Claim final balance of the channel.
 ///
-/// **Usage**: this function is called as a response to an on-chain event. It is called
-/// after the contract claim delay has passed.
+/// **Usage**: this function is called as a response to an on-chain event. It is only called after
+/// the contract claim delay has passed and the claim entrypoint is confirmed at the required
+/// confirmation depth.
 #[allow(unused)]
 async fn claim_funds(close: &Close, config: self::Config) -> Result<(), anyhow::Error> {
     // TODO: assert that the db status is PENDING_CLOSE

@@ -219,6 +219,7 @@ pub async fn main_with_cli(cli: Cli) -> Result<(), anyhow::Error> {
         List(list) => list.run(config.await?).await,
         Show(show) => show.run(config.await?).await,
         Run(run) => run.run(config.await?).await,
+        Close(close) => close.run(config.await?).await,
     }
 }
 
