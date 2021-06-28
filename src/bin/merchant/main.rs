@@ -33,6 +33,7 @@ mod establish;
 mod parameters;
 mod pay;
 
+use close::Close;
 use establish::Establish;
 use parameters::Parameters;
 use pay::Pay;
@@ -137,6 +138,15 @@ impl Command for Run {
                                     chan,
                                 ).await?,
                                 2 => Pay.run(
+                                    rng,
+                                    &client,
+                                    &service,
+                                    &merchant_config,
+                                    database.as_ref(),
+                                    session_key,
+                                    chan,
+                                ).await?,
+                                3 => Close.run(
                                     rng,
                                     &client,
                                     &service,
