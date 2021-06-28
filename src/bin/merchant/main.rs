@@ -81,7 +81,7 @@ impl Command for Run {
         let (terminate, _) = broadcast::channel(1);
 
         // Collect the futures for the result of running each specified server
-        let mut _server_futures: FuturesUnordered<_> = config
+        let mut server_futures: FuturesUnordered<_> = config
             .services
             .iter()
             .map(|service| {
@@ -164,6 +164,21 @@ impl Command for Run {
                 }
             })
             .collect();
+
+        // Wait for each server to finish, and print its error if it did
+        loop {
+            if server_futures.is_empty() {
+                break;
+            }
+
+            if let Some(result) = server_futures.next().await {
+                if let Err(e) = result {
+                    eprintln!("Error: {}", e);
+                }
+            } else {
+                break;
+            }
+        }
 
         Ok(())
     }
