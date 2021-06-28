@@ -86,20 +86,20 @@ pub async fn connect(
         .max_pending_retries(*max_pending_connection_retries);
 
     if let Some(path) = trust_certificate {
-        if cfg!(feature = "allow_explicit_certificate_trust") {
-            client.trust_explicit_certificate(path).with_context(|| {
-                format!(
-                    "Failed to enable explicitly trusted certificate at {:?}",
-                    path
-                )
-            })?;
-        } else {
-            eprintln!(
-                "Ignoring explicitly trusted certificate at {:?} because \
-                this binary was built to only trust webpki roots of trust",
+        #[cfg(feature = "allow_explicit_certificate_trust")]
+        client.trust_explicit_certificate(path).with_context(|| {
+            format!(
+                "Failed to enable explicitly trusted certificate at {:?}",
                 path
-            );
-        }
+            )
+        })?;
+
+        #[cfg(not(feature = "allow_explicit_certificate_trust"))]
+        eprintln!(
+            "Ignoring explicitly trusted certificate at {:?} because \
+            this binary was built to only trust webpki roots of trust",
+            path
+        );
     }
 
     Ok(client.connect(address).await?)

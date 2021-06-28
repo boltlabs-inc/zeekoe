@@ -1,4 +1,4 @@
-use {async_trait::async_trait, futures::StreamExt, rand::rngs::StdRng};
+use {async_trait::async_trait, futures::StreamExt, rand::rngs::StdRng, thiserror::Error};
 
 use crate::database::SqlitePool;
 use crate::protocol::{ChannelStatus, ContractId};
@@ -7,14 +7,16 @@ use zkabacus_crypto::{
     ChannelId, CommitmentParameters, KeyPair, Nonce, RangeProofParameters,
 };
 
+type Result<T> = std::result::Result<T, Error>;
+
 #[async_trait]
 pub trait QueryMerchant: Send + Sync {
     /// Perform all the DB migrations defined in src/database/migrations/merchant/*.sql
-    async fn migrate(&self) -> sqlx::Result<()>;
+    async fn migrate(&self) -> Result<()>;
 
     /// Atomically insert a nonce, returning `true` if it was added successfully
     /// and `false` if it already exists.
-    async fn insert_nonce(&self, nonce: &Nonce) -> sqlx::Result<bool>;
+    async fn insert_nonce(&self, nonce: &Nonce) -> Result<bool>;
 
     /// Insert a revocation lock and optional secret, returning all revocations
     /// that existed prior.
@@ -22,20 +24,16 @@ pub trait QueryMerchant: Send + Sync {
         &self,
         revocation: &RevocationLock,
         secret: Option<&RevocationSecret>,
-    ) -> sqlx::Result<Vec<Option<RevocationSecret>>>;
+    ) -> Result<Vec<Option<RevocationSecret>>>;
 
     /// Fetch a singleton merchant config, creating it if it doesn't already exist.
     async fn fetch_or_create_config(
         &self,
         rng: &mut StdRng,
-    ) -> sqlx::Result<zkabacus_crypto::merchant::Config>;
+    ) -> Result<zkabacus_crypto::merchant::Config>;
 
     /// Create a new merchant channel.
-    async fn new_channel(
-        &self,
-        channel_id: &ChannelId,
-        contract_id: &ContractId,
-    ) -> sqlx::Result<()>;
+    async fn new_channel(&self, channel_id: &ChannelId, contract_id: &ContractId) -> Result<()>;
 
     /// Update an existing merchant channel's status to a new state, only if it is currently in the
     /// expected state.
@@ -44,19 +42,40 @@ pub trait QueryMerchant: Send + Sync {
         channel_id: &ChannelId,
         expected: &ChannelStatus,
         new: &ChannelStatus,
-    ) -> sqlx::Result<()>;
+    ) -> Result<()>;
+}
+
+/// An error when accessing the merchant database.
+#[derive(Debug, Error)]
+pub enum Error {
+    /// A channel with the given ID could not be found.
+    #[error("Could not find channel with id {0}")]
+    ChannelNotFound(ChannelId),
+    /// The channel status was expected to be one thing, but it was another.
+    #[error("Unexpected status for channel {channel_id} (expected {expected}, found {found})")]
+    UnexpectedChannelStatus {
+        channel_id: ChannelId,
+        expected: ChannelStatus,
+        found: ChannelStatus,
+    },
+    /// An underlying database error occurred.
+    #[error(transparent)]
+    Database(#[from] sqlx::Error),
+    /// An underlying database migration error occurred.
+    #[error(transparent)]
+    Migration(#[from] sqlx::migrate::MigrateError),
 }
 
 #[async_trait]
 impl QueryMerchant for SqlitePool {
-    async fn migrate(&self) -> sqlx::Result<()> {
+    async fn migrate(&self) -> Result<()> {
         sqlx::migrate!("src/database/migrations/merchant")
             .run(self)
             .await?;
         Ok(())
     }
 
-    async fn insert_nonce(&self, nonce: &Nonce) -> sqlx::Result<bool> {
+    async fn insert_nonce(&self, nonce: &Nonce) -> Result<bool> {
         let res = sqlx::query!(
             "INSERT INTO nonces (data) VALUES (?) ON CONFLICT (data) DO NOTHING",
             nonce
@@ -71,7 +90,7 @@ impl QueryMerchant for SqlitePool {
         &self,
         lock: &RevocationLock,
         secret: Option<&RevocationSecret>,
-    ) -> sqlx::Result<Vec<Option<RevocationSecret>>> {
+    ) -> Result<Vec<Option<RevocationSecret>>> {
         let mut transaction = self.begin().await?;
         let existing_pairs = sqlx::query!(
             r#"
@@ -102,7 +121,7 @@ impl QueryMerchant for SqlitePool {
     async fn fetch_or_create_config(
         &self,
         rng: &mut StdRng,
-    ) -> sqlx::Result<zkabacus_crypto::merchant::Config> {
+    ) -> Result<zkabacus_crypto::merchant::Config> {
         let mut transaction = self.begin().await?;
 
         let existing = sqlx::query!(
@@ -131,7 +150,7 @@ impl QueryMerchant for SqlitePool {
                     existing.range_proof_parameters,
                 ));
             }
-            Some(Err(err)) => return Err(err),
+            Some(Err(err)) => return Err(err.into()),
             None => {}
         }
 
@@ -160,11 +179,7 @@ impl QueryMerchant for SqlitePool {
         Ok(new_config)
     }
 
-    async fn new_channel(
-        &self,
-        channel_id: &ChannelId,
-        contract_id: &ContractId,
-    ) -> sqlx::Result<()> {
+    async fn new_channel(&self, channel_id: &ChannelId, contract_id: &ContractId) -> Result<()> {
         sqlx::query!(
             "INSERT INTO merchant_channels (channel_id, contract_id, status) VALUES (?, ?, ?)",
             channel_id,
@@ -182,7 +197,7 @@ impl QueryMerchant for SqlitePool {
         channel_id: &ChannelId,
         expected: &ChannelStatus,
         new: &ChannelStatus,
-    ) -> sqlx::Result<()> {
+    ) -> Result<()> {
         // TODO: This should return a different error when the CAS fails
         let mut transaction = self.begin().await?;
 
@@ -200,7 +215,7 @@ impl QueryMerchant for SqlitePool {
 
         // Only if the current status is what was expected, update the status to the new status
         match result {
-            None => Err(sqlx::error::Error::RowNotFound),
+            None => Err(Error::ChannelNotFound(*channel_id)),
             Some(ref current) if current == expected => {
                 sqlx::query!(
                     "UPDATE merchant_channels
@@ -215,8 +230,11 @@ impl QueryMerchant for SqlitePool {
                 transaction.commit().await?;
                 Ok(())
             }
-            // TODO: make this return an UnexpectedChannelStatus error.
-            Some(_unexpected_status) => Err(sqlx::error::Error::RowNotFound),
+            Some(unexpected_status) => Err(Error::UnexpectedChannelStatus {
+                channel_id: *channel_id,
+                expected: *expected,
+                found: unexpected_status,
+            }),
         }
     }
 }
@@ -241,20 +259,20 @@ mod tests {
         );
     }
 
-    async fn create_migrated_db() -> Result<SqlitePool, anyhow::Error> {
+    async fn create_migrated_db() -> Result<SqlitePool> {
         let conn = SqlitePoolOptions::new().connect("sqlite::memory:").await?;
         conn.migrate().await?;
         Ok(conn)
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn test_migrate() -> Result<(), anyhow::Error> {
+    async fn test_migrate() -> Result<()> {
         create_migrated_db().await?;
         Ok(())
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn test_insert_nonce() -> Result<(), anyhow::Error> {
+    async fn test_insert_nonce() -> Result<()> {
         let conn = create_migrated_db().await?;
         let mut rng = rand::thread_rng();
 
@@ -268,7 +286,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn test_insert_revocation() -> Result<(), anyhow::Error> {
+    async fn test_insert_revocation() -> Result<()> {
         let conn = create_migrated_db().await?;
         let mut rng = rand::thread_rng();
 
@@ -298,7 +316,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn test_merchant_config() -> Result<(), anyhow::Error> {
+    async fn test_merchant_config() -> Result<()> {
         let conn = create_migrated_db().await?;
         let mut rng = StdRng::from_entropy();
 
@@ -323,7 +341,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn test_merchant_channels() -> Result<(), anyhow::Error> {
+    async fn test_merchant_channels() -> Result<()> {
         let conn = create_migrated_db().await?;
         let mut rng = StdRng::from_entropy();
 

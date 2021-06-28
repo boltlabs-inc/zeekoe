@@ -11,7 +11,7 @@ use zeekoe::{
     customer::{
         cli::Establish,
         client::ZkChannelAddress,
-        database::{QueryCustomer, QueryCustomerExt, State},
+        database::{self, QueryCustomer, QueryCustomerExt, State},
         Chan, ChannelName, Config,
     },
     offer_abort, proceed,
@@ -295,7 +295,7 @@ async fn store_inactive_local(
     label: ChannelName,
     address: &ZkChannelAddress,
     mut inactive: Inactive,
-) -> Result<ChannelName, sqlx::Error> {
+) -> Result<ChannelName, anyhow::Error> {
     // This loop iterates trying to insert the channel, adding suffixes "(1)", "(2)", etc.
     // onto the label name until it finds an unused label
     let mut count = 0;
@@ -312,12 +312,12 @@ async fn store_inactive_local(
             .await
         {
             Ok(()) => break actual_label, // report the label that worked
-            Err((returned_inactive, Ok(_))) => {
+            Err((returned_inactive, database::Error::ChannelExists(_))) => {
                 inactive = returned_inactive; // restore the inactive state, try again
             }
-            Err((_returned_inactive, Err(error))) => {
+            Err((_returned_inactive, error)) => {
                 // TODO: what to do with the `Inactive` state here when the database has failed to allow us to persist it?
-                return Err(error);
+                return Err(error.into());
             }
         }
         count += 1;
@@ -359,5 +359,5 @@ async fn activate_local(
                 .map_err(|_| establish::Error::InvalidPayToken)?;
             Ok(((), State::Ready(ready)))
         })
-        .await??
+        .await?
 }

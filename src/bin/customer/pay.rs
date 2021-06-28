@@ -38,14 +38,10 @@ impl Command for Pay {
             .context("Failed to connect to local database")?;
 
         // Look up the address and current local customer state for this merchant in the database
-        let address = match database
+        let address = database
             .channel_address(&self.label)
             .await
-            .context("Failed to look up channel address in local database")?
-        {
-            None => return Err(anyhow::anyhow!("Unknown channel label: {}", self.label)),
-            Some(address) => address,
-        };
+            .context("Failed to look up channel address in local database")?;
 
         // Connect and select the Pay session
         let (session_key, chan) = connect(&config, &address)
@@ -206,7 +202,7 @@ async fn start_payment(
             }
         })
         .await
-        .context("Database error while fetching initial pay state")??
+        .context("Database error while fetching initial pay state")?
 }
 
 /// Attempt to lock a started payment for the channel of the given label, using the given
@@ -241,12 +237,10 @@ async fn lock_payment(
         .await
         .context("Database error while fetching started pay state");
 
-    // TODO: Clean up this matching mess once errors PR is merged
     match result {
-        Ok(Ok(Ok(lock_message))) => Ok(Ok(lock_message)),
-        Ok(Ok(Err(Ok(pay_error)))) => Ok(Err(pay_error)),
-        Ok(Ok(Err(Err(state_error)))) => Err(state_error),
-        Ok(Err(no_such_channel)) => Err(no_such_channel.into()),
+        Ok(Ok(lock_message)) => Ok(Ok(lock_message)),
+        Ok(Err(Ok(pay_error))) => Ok(Err(pay_error)),
+        Ok(Err(Err(state_error))) => Err(state_error),
         Err(database_error) => Err(database_error),
     }
 }
@@ -279,7 +273,7 @@ async fn unlock_payment(
             }
         })
         .await
-        .context("Database error while fetching locked pay state")??
+        .context("Database error while fetching locked pay state")?
 }
 
 #[async_trait]
