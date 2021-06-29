@@ -55,7 +55,8 @@ pub trait QueryMerchant: Send + Sync {
     /// Get information about every channel in the database.
     async fn get_channels(&self) -> Result<Vec<(ChannelId, ChannelStatus)>>;
 
-    /// Get details about a particular channel.
+    /// Get details about a particular channel based on a unique prefix of its [`ChannelId`].
+    // TODO: This currently does not implement prefix matching
     async fn get_channel_details(&self, prefix: &str) -> Result<ChannelDetails>;
 }
 
