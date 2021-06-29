@@ -56,6 +56,11 @@ impl Command for List {
 impl Command for Rename {
     #[allow(unused)]
     async fn run(self, rng: StdRng, config: self::Config) -> Result<(), anyhow::Error> {
-        todo!()
+        database(&config)
+            .await
+            .context("Failed to connect to local database")?
+            .relabel_channel(&self.old_label, &self.new_label)
+            .await
+            .context("Failed to rename channel")
     }
 }
