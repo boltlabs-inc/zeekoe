@@ -5,7 +5,12 @@
 //* This architecture is flexible; we could alternately allow the customer CLI to wait (hang) until
 //* it receives confirmation (e.g. call `process_mutual_close_confirmation` directly from
 //* `mutual_close()`).
-use {async_trait::async_trait, rand::rngs::StdRng, std::convert::Infallible};
+use {
+    async_trait::async_trait,
+    rand::rngs::StdRng,
+    serde::Serialize,
+    std::{convert::Infallible, fs::File, path::PathBuf},
+};
 
 use zeekoe::{
     customer::{
@@ -16,7 +21,10 @@ use zeekoe::{
     offer_abort, proceed,
     protocol::{close, Party::Customer},
 };
-use zkabacus_crypto::customer::{ClosingMessage, Inactive, Locked, Ready, Started};
+use zkabacus_crypto::{
+    customer::{ClosingMessage, Inactive, Locked, Ready, Started},
+    ChannelId, CloseStateSignature, CustomerBalance, MerchantBalance, RevocationLock,
+};
 
 use super::{connect, database, Command};
 use anyhow::Context;
@@ -94,6 +102,70 @@ async fn finalize_close(config: self::Config) -> Result<(), anyhow::Error> {
     // TODO: update status in db from PENDING to CLOSED with the final balances.
     // - for claim, this will match the PENDING_CLOSE balances
     // - for dispute, this will show loss of funds - all money to the merchant.
+
+    Ok(())
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct Closing {
+    channel_id: ChannelId,
+    customer_balance: CustomerBalance,
+    merchant_balance: MerchantBalance,
+    closing_signature: CloseStateSignature,
+    revocation_lock: RevocationLock,
+}
+
+async fn unilateral_close(
+    close: &Close,
+    rng: StdRng,
+    config: self::Config,
+) -> Result<(), anyhow::Error> {
+    let database = database(&config)
+        .await
+        .context("Failed to connect to local database")?;
+
+    // Read the closing message without changing the database state
+    let close_message = get_close_message(rng, database.as_ref(), &close.label)
+        .await
+        .context("Failed to fetch closing message from database")?;
+
+    let closing = Closing {
+        merchant_balance: *close_message.merchant_balance(),
+        customer_balance: *close_message.customer_balance(),
+        closing_signature: close_message.closing_signature().clone(),
+        revocation_lock: close_message.revocation_lock().clone(),
+        channel_id: *close_message.channel_id(),
+    };
+
+    // Write the closing message to disk
+    let close_json_path = PathBuf::from(format!(
+        "{}.close.json",
+        hex::encode(closing.channel_id.to_bytes())
+    ));
+    let mut close_file = File::create(&close_json_path)
+        .with_context(|| format!("Could not open file for writing: {:?}", &close_json_path))?;
+    serde_json::to_writer(&mut close_file, &closing)
+        .with_context(|| format!("Could not write close data to file: {:?}", &close_json_path))?;
+
+    eprintln!("Closing data written to {:?}", &close_json_path);
+
+    // Update database to closed state
+    match database
+        .with_channel_state(&close.label, |pending_close: ClosingMessage| {
+            let channel_id = *pending_close.channel_id();
+            let customer_balance = *pending_close.customer_balance();
+            let merchant_balance = *pending_close.merchant_balance();
+            Ok::<_, Infallible>((
+                Closed::new(channel_id, customer_balance, merchant_balance),
+                (),
+            ))
+        })
+        .await
+        .context("Could not update channel state to closed")?
+    {
+        Ok(closing) => closing,
+        Err(infallible) => match infallible {},
+    };
 
     Ok(())
 }

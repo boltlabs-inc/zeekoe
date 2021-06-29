@@ -1,9 +1,15 @@
-use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng, std::convert::TryInto};
+use {
+    anyhow::Context,
+    async_trait::async_trait,
+    rand::rngs::StdRng,
+    serde::Serialize,
+    std::{convert::TryInto, fs::File, path::PathBuf},
+};
 
 use zkabacus_crypto::{
     customer::{Inactive, Requested},
     ChannelId, Context as ProofContext, CustomerBalance, CustomerRandomness, MerchantBalance,
-    PayToken,
+    PayToken, PublicKey, CLOSE_SCALAR,
 };
 
 use zeekoe::{
@@ -22,6 +28,15 @@ use zeekoe::{
 };
 
 use super::{connect, database, Command};
+
+#[derive(Debug, Clone, Serialize)]
+struct Establishment {
+    merchant_ps_public_key: PublicKey,
+    customer_deposit: CustomerBalance,
+    merchant_deposit: MerchantBalance,
+    channel_id: ChannelId,
+    close_scalar_bytes: [u8; 32],
+}
 
 #[async_trait]
 impl Command for Establish {
@@ -120,6 +135,15 @@ impl Command for Establish {
             &[], // TODO: fill this in with bytes of customer's tezos public key
         );
 
+        // Generate structure holding information about the establishment that's about to take place
+        let establishment = Establishment {
+            merchant_ps_public_key: zkabacus_customer_config.merchant_public_key().clone(),
+            customer_deposit,
+            merchant_deposit,
+            channel_id: channel_id.clone(),
+            close_scalar_bytes: CLOSE_SCALAR.to_bytes(),
+        };
+
         // Generate the proof context for the establish proof
         // TODO: the context should actually be formed from a session transcript up to this point
         let context = ProofContext::new(&session_key.to_bytes());
@@ -173,6 +197,26 @@ impl Command for Establish {
             "Successfully established new channel with label \"{}\"",
             actual_label
         );
+
+        // Write the establishment information to disk
+        let establish_json_path = PathBuf::from(format!(
+            "{}.establish.json",
+            hex::encode(establishment.channel_id.to_bytes())
+        ));
+        let mut establish_file = File::create(&establish_json_path).with_context(|| {
+            format!(
+                "Could not open file for writing: {:?}",
+                &establish_json_path
+            )
+        })?;
+        serde_json::to_writer(&mut establish_file, &establishment).with_context(|| {
+            format!(
+                "Could not write establishment data to file: {:?}",
+                &establish_json_path
+            )
+        })?;
+
+        eprintln!("Establishment data written to {:?}", &establish_json_path);
 
         Ok(())
     }
