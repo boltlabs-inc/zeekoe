@@ -28,6 +28,7 @@ use zeekoe::{
 mod approve;
 mod close;
 mod establish;
+mod manage;
 mod parameters;
 mod pay;
 
@@ -48,27 +49,9 @@ pub trait Command {
 #[async_trait]
 impl Command for Run {
     async fn run(self, config: Config) -> Result<(), anyhow::Error> {
-        let database: Arc<dyn QueryMerchant> =
-            match config.database {
-                DatabaseLocation::Ephemeral => Arc::new(
-                    SqlitePool::connect("file::memory:")
-                        .await
-                        .context("Could not create in-memory SQLite database")?,
-                ),
-                DatabaseLocation::Sqlite(ref path) => {
-                    let uri = path.to_str().ok_or_else(|| {
-                        anyhow::anyhow!("Invalid UTF-8 in SQLite database path {:?}", path)
-                    })?;
-                    Arc::new(SqlitePool::connect(uri).await.with_context(|| {
-                        format!("Could not open SQLite database at \"{}\"", uri)
-                    })?)
-                }
-                DatabaseLocation::Postgres(_) => {
-                    return Err(anyhow::anyhow!(
-                        "Postgres database support is not yet implemented"
-                    ))
-                }
-            };
+        let database = database(&config)
+            .await
+            .context("Failed to connect to merchant database")?;
 
         // Either initialize the merchant's config afresh, or get existing config if it exists
         let merchant_config = database
@@ -232,8 +215,37 @@ pub async fn main_with_cli(cli: Cli) -> Result<(), anyhow::Error> {
             drop(config);
             tokio::task::spawn_blocking(|| Ok(edit::edit_file(config_path)?)).await?
         }
+        List(list) => list.run(config.await?).await,
+        Show(show) => show.run(config.await?).await,
         Run(run) => run.run(config.await?).await,
     }
+}
+
+/// Connect to the database specified by the configuration.
+pub async fn database(config: &Config) -> Result<Arc<dyn QueryMerchant>, anyhow::Error> {
+    let database = match config.database {
+        DatabaseLocation::Ephemeral => Arc::new(
+            SqlitePool::connect("file::memory:")
+                .await
+                .context("Could not create in-memory SQLite database")?,
+        ),
+        DatabaseLocation::Sqlite(ref path) => {
+            let uri = path.to_str().ok_or_else(|| {
+                anyhow::anyhow!("Invalid UTF-8 in SQLite database path {:?}", path)
+            })?;
+            Arc::new(
+                SqlitePool::connect(uri)
+                    .await
+                    .with_context(|| format!("Could not open SQLite database at \"{}\"", uri))?,
+            )
+        }
+        DatabaseLocation::Postgres(_) => {
+            return Err(anyhow::anyhow!(
+                "Postgres database support is not yet implemented"
+            ))
+        }
+    };
+    Ok(database)
 }
 
 #[allow(unused)]

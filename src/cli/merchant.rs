@@ -13,8 +13,20 @@ pub struct Cli {
 
 #[derive(Debug, StructOpt)]
 pub enum Merchant {
+    List(List),
+    Show(Show),
     Configure(Configure),
     Run(Run),
+}
+
+#[derive(Debug, StructOpt)]
+#[non_exhaustive]
+pub struct List {}
+
+#[derive(Debug, StructOpt)]
+#[non_exhaustive]
+pub struct Show {
+    pub prefix: String,
 }
 
 #[derive(Debug, StructOpt)]
