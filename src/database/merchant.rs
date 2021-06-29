@@ -55,16 +55,8 @@ pub trait QueryMerchant: Send + Sync {
     /// Get information about every channel in the database.
     async fn get_channels(&self) -> Result<Vec<(ChannelId, ChannelStatus)>>;
 
-    async fn get_channel_details(
-        &self,
-        prefix: &str,
-    ) -> Result<(
-        ChannelId,
-        ChannelStatus,
-        ContractId,
-        MerchantBalance,
-        CustomerBalance,
-    )>;
+    /// Get details about a particular channel.
+    async fn get_channel_details(&self, prefix: &str) -> Result<ChannelDetails>;
 }
 
 /// An error when accessing the merchant database.
@@ -92,6 +84,14 @@ pub enum Error {
     /// An underlying database migration error occurred.
     #[error(transparent)]
     Migration(#[from] sqlx::migrate::MigrateError),
+}
+
+pub struct ChannelDetails {
+    pub channel_id: ChannelId,
+    pub status: ChannelStatus,
+    pub contract_id: ContractId,
+    pub merchant_deposit: MerchantBalance,
+    pub customer_deposit: CustomerBalance,
 }
 
 #[async_trait]
@@ -296,16 +296,7 @@ impl QueryMerchant for SqlitePool {
         Ok(channels)
     }
 
-    async fn get_channel_details(
-        &self,
-        prefix: &str,
-    ) -> Result<(
-        ChannelId,
-        ChannelStatus,
-        ContractId,
-        MerchantBalance,
-        CustomerBalance,
-    )> {
+    async fn get_channel_details(&self, prefix: &str) -> Result<ChannelDetails> {
         let channel_id = ChannelId::from_str(prefix)
             .map_err(|_| Error::MalformedChannelId(prefix.to_string()))?;
         let result = sqlx::query!(
@@ -326,13 +317,13 @@ impl QueryMerchant for SqlitePool {
 
         match result {
             None => Err(Error::ChannelNotFoundWithPrefix(prefix.to_string())),
-            Some(channel) => Ok((
-                channel.channel_id,
-                channel.status,
-                channel.contract_id,
-                channel.merchant_deposit,
-                channel.customer_deposit,
-            )),
+            Some(channel) => Ok(ChannelDetails {
+                channel_id: channel.channel_id,
+                status: channel.status,
+                contract_id: channel.contract_id,
+                merchant_deposit: channel.merchant_deposit,
+                customer_deposit: channel.customer_deposit,
+            }),
         }
     }
 }
