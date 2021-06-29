@@ -6,7 +6,7 @@ use {
     thiserror::Error,
 };
 
-use zkabacus_crypto::customer::Inactive;
+use zkabacus_crypto::{customer::Inactive, CustomerBalance, MerchantBalance};
 
 use crate::customer::{client::ZkChannelAddress, ChannelName};
 
@@ -33,6 +33,16 @@ pub enum Error {
     /// A channel which was expected *not* to exist in the database *did* exist.
     #[error("There is already a channel by the name of \"{0}\"")]
     ChannelExists(ChannelName),
+}
+
+/// The contents of a row of the database for a particular channel.
+#[non_exhaustive]
+pub struct ChannelDetails {
+    pub label: ChannelName,
+    pub state: State,
+    pub merchant_deposit: MerchantBalance,
+    pub customer_deposit: CustomerBalance,
+    pub address: ZkChannelAddress,
 }
 
 /// Extension trait augmenting the customer database [`QueryCustomer`] with extra methods.
@@ -92,6 +102,9 @@ pub trait QueryCustomer: Send + Sync {
         label: &ChannelName,
         new_address: &ZkChannelAddress,
     ) -> Result<()>;
+
+    /// Get all the information about all the channels.
+    async fn get_channels(&self) -> Result<Vec<ChannelDetails>>;
 
     /// **Don't call this function directly:** instead call [`QueryCustomer::with_channel_state`].
     /// Note that this method uses `Box<dyn Any + Send>` to avoid the use of generic parameters,
@@ -251,6 +264,31 @@ impl QueryCustomer for SqlitePool {
         } else {
             Err(Error::NoSuchChannel(label.clone()))
         }
+    }
+
+    async fn get_channels(&self) -> Result<Vec<ChannelDetails>> {
+        let channels = sqlx::query!(
+            r#"SELECT
+                label AS "label: ChannelName",
+                state AS "state: State",
+                address AS "address: ZkChannelAddress",
+                customer_deposit AS "customer_deposit: CustomerBalance",
+                merchant_deposit AS "merchant_deposit: MerchantBalance"
+            FROM customer_channels"#
+        )
+        .fetch_all(self)
+        .await?
+        .into_iter()
+        .map(|r| ChannelDetails {
+            label: r.label,
+            state: r.state,
+            address: r.address,
+            customer_deposit: r.customer_deposit,
+            merchant_deposit: r.merchant_deposit,
+        })
+        .collect();
+
+        Ok(channels)
     }
 
     async fn with_channel_state_erased<'a>(

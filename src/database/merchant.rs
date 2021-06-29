@@ -2,6 +2,7 @@ use {async_trait::async_trait, futures::StreamExt, rand::rngs::StdRng, thiserror
 
 use crate::database::SqlitePool;
 use crate::protocol::{ChannelStatus, ContractId};
+use std::str::FromStr;
 use zkabacus_crypto::{
     revlock::{RevocationLock, RevocationSecret},
     ChannelId, CommitmentParameters, CustomerBalance, KeyPair, MerchantBalance, Nonce,
@@ -50,6 +51,13 @@ pub trait QueryMerchant: Send + Sync {
         expected: &ChannelStatus,
         new: &ChannelStatus,
     ) -> Result<()>;
+
+    /// Get information about every channel in the database.
+    async fn get_channels(&self) -> Result<Vec<(ChannelId, ChannelStatus)>>;
+
+    /// Get details about a particular channel based on a unique prefix of its [`ChannelId`].
+    // TODO: This currently does not implement prefix matching
+    async fn get_channel_details(&self, prefix: &str) -> Result<ChannelDetails>;
 }
 
 /// An error when accessing the merchant database.
@@ -58,6 +66,12 @@ pub enum Error {
     /// A channel with the given ID could not be found.
     #[error("Could not find channel with id {0}")]
     ChannelNotFound(ChannelId),
+    /// A channel with the given ID prefix could not be found.
+    #[error("Could not find channel with an id that starts with {0}")]
+    ChannelNotFoundWithPrefix(String),
+    /// Tried to search by a malformed channel id.
+    #[error("`{0}` was not a valid channel id")]
+    MalformedChannelId(String),
     /// The channel status was expected to be one thing, but it was another.
     #[error("Unexpected status for channel {channel_id} (expected {expected}, found {found})")]
     UnexpectedChannelStatus {
@@ -71,6 +85,15 @@ pub enum Error {
     /// An underlying database migration error occurred.
     #[error(transparent)]
     Migration(#[from] sqlx::migrate::MigrateError),
+}
+
+/// The contents of a row of the database for a particular channel.
+pub struct ChannelDetails {
+    pub channel_id: ChannelId,
+    pub status: ChannelStatus,
+    pub contract_id: ContractId,
+    pub merchant_deposit: MerchantBalance,
+    pub customer_deposit: CustomerBalance,
 }
 
 #[async_trait]
@@ -255,6 +278,53 @@ impl QueryMerchant for SqlitePool {
                 channel_id: *channel_id,
                 expected: *expected,
                 found: unexpected_status,
+            }),
+        }
+    }
+
+    async fn get_channels(&self) -> Result<Vec<(ChannelId, ChannelStatus)>> {
+        let channels = sqlx::query!(
+            r#"SELECT
+                channel_id AS "channel_id: ChannelId",
+                status as "status: ChannelStatus"
+            FROM merchant_channels"#
+        )
+        .fetch_all(self)
+        .await?
+        .into_iter()
+        .map(|r| (r.channel_id, r.status))
+        .collect();
+
+        Ok(channels)
+    }
+
+    async fn get_channel_details(&self, prefix: &str) -> Result<ChannelDetails> {
+        let channel_id = ChannelId::from_str(prefix)
+            .map_err(|_| Error::MalformedChannelId(prefix.to_string()))?;
+        let result = sqlx::query!(
+            r#"
+            SELECT
+                channel_id AS "channel_id: ChannelId",
+                status as "status: ChannelStatus",
+                contract_id AS "contract_id: ContractId",
+                merchant_deposit AS "merchant_deposit: MerchantBalance",
+                customer_deposit AS "customer_deposit: CustomerBalance"
+            FROM merchant_channels
+            WHERE channel_id = ?
+        "#,
+            channel_id
+        )
+        .fetch_optional(self)
+        .await?;
+
+        match result {
+            None => Err(Error::ChannelNotFoundWithPrefix(prefix.to_string())),
+            Some(channel) => Ok(ChannelDetails {
+                channel_id: channel.channel_id,
+                status: channel.status,
+                contract_id: channel.contract_id,
+                merchant_deposit: channel.merchant_deposit,
+                customer_deposit: channel.customer_deposit,
             }),
         }
     }

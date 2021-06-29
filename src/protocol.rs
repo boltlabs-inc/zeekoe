@@ -103,6 +103,13 @@ impl Display for Party {
 pub struct ContractId {/* TODO */}
 zkabacus_crypto::impl_sqlx_for_bincode_ty!(ContractId);
 
+impl Display for ContractId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        // TODO: Fill in with actual contract ID
+        std::fmt::Debug::fmt(self, f)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, sqlx::Type)]
 #[sqlx(rename_all = "snake_case", type_name = "text")]
 pub enum ChannelStatus {

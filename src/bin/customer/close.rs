@@ -137,6 +137,7 @@ async fn process_mutual_close_confirmation(
         .with_channel_state(&label, |pending: ClosingMessage| {
             Ok((
                 Closed::new(
+                    pending.channel_id().clone(),
                     pending.customer_balance().clone(),
                     pending.merchant_balance().clone(),
                 ),

@@ -94,7 +94,12 @@ impl Command for Pay {
 
         // Print the response note on standard out
         if let Some(response_note) = response_note {
-            println!("{}", response_note);
+            eprintln!(
+                "Payment succeeded with response from merchant: \"{}\"",
+                response_note
+            );
+        } else {
+            eprintln!("Payment succeeded with no concluding response from merchant");
         }
 
         Ok(())

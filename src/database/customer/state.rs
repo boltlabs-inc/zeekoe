@@ -9,7 +9,7 @@ use {
 
 use zkabacus_crypto::{
     customer::{ClosingMessage, Inactive, Locked, Ready, Started},
-    impl_sqlx_for_bincode_ty, CustomerBalance, MerchantBalance,
+    impl_sqlx_for_bincode_ty, ChannelId, CustomerBalance, MerchantBalance,
 };
 
 /// The current state of the channel, from the perspective of the customer.
@@ -37,14 +37,20 @@ impl_sqlx_for_bincode_ty!(State);
 /// The final balances of a channel closed on chain.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Closed {
+    channel_id: ChannelId,
     merchant_balance: MerchantBalance,
     customer_balance: CustomerBalance,
 }
 
 impl Closed {
     /// Create a new [`Closed`] state given balances.
-    pub fn new(customer_balance: CustomerBalance, merchant_balance: MerchantBalance) -> Self {
+    pub fn new(
+        channel_id: ChannelId,
+        customer_balance: CustomerBalance,
+        merchant_balance: MerchantBalance,
+    ) -> Self {
         Closed {
+            channel_id,
             customer_balance,
             merchant_balance,
         }
@@ -58,6 +64,11 @@ impl Closed {
     /// Get the final [`MerchantBalance`] for this closed channel state.
     pub fn merchant_balance(&self) -> &MerchantBalance {
         &self.merchant_balance
+    }
+
+    /// Get the [`ChannelId`] for this closed channel state.
+    pub fn channel_id(&self) -> &ChannelId {
+        &self.channel_id
     }
 }
 
@@ -135,7 +146,7 @@ impl_is_state!(Closed(Closed));
 
 impl State {
     /// Get the name of this state.
-    fn state_name(&self) -> StateName {
+    pub fn state_name(&self) -> StateName {
         match self {
             State::Inactive(_) => StateName::Inactive,
             State::Ready(_) => StateName::Ready,
@@ -166,6 +177,17 @@ impl State {
             State::Locked(locked) => locked.merchant_balance(),
             State::PendingClose(closing_message) => closing_message.merchant_balance(),
             State::Closed(closed) => closed.merchant_balance(),
+        }
+    }
+
+    pub fn channel_id(&self) -> &ChannelId {
+        match self {
+            State::Inactive(inactive) => inactive.channel_id(),
+            State::Ready(ready) => ready.channel_id(),
+            State::Started(started) => started.channel_id(),
+            State::Locked(locked) => locked.channel_id(),
+            State::PendingClose(closing_message) => closing_message.channel_id(),
+            State::Closed(closed) => closed.channel_id(),
         }
     }
 }
