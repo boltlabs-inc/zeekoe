@@ -26,6 +26,7 @@ pub struct Cli {
 #[derive(Debug, StructOpt)]
 pub enum Customer {
     List(List),
+    // Show(Show),
     Configure(Configure),
     Rename(Rename),
     Establish(Establish),
@@ -37,6 +38,12 @@ pub enum Customer {
 #[derive(Debug, StructOpt)]
 #[non_exhaustive]
 pub struct List {}
+
+#[derive(Debug, StructOpt)]
+#[non_exhaustive]
+pub struct Show {
+    pub prefix: String,
+}
 
 #[derive(Debug, StructOpt)]
 #[non_exhaustive]

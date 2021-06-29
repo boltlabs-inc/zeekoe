@@ -1,7 +1,11 @@
 use {
     rust_decimal::Decimal,
     rusty_money::{define_currency_set, FormattableCurrency, Money, MoneyError},
-    std::{convert::TryInto, str::FromStr},
+    std::{
+        convert::TryInto,
+        fmt::{self, Display},
+        str::FromStr,
+    },
     thiserror::Error,
 };
 
@@ -28,6 +32,14 @@ impl FromStr for Amount {
         } else {
             Err(MoneyError::InvalidAmount)
         }
+    }
+}
+
+impl Display for Amount {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.money.amount().fmt(f)?;
+        write!(f, " ")?;
+        self.money.currency().fmt(f)
     }
 }
 

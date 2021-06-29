@@ -2,11 +2,15 @@ use {
     async_trait::async_trait,
     comfy_table::{Cell, Table},
     rand::rngs::StdRng,
+    std::convert::TryInto,
 };
 
-use zeekoe::customer::{
-    cli::{List, Rename},
-    Config,
+use zeekoe::{
+    amount::{Amount, XTZ},
+    customer::{
+        cli::{List, Rename},
+        Config,
+    },
 };
 
 use super::{database, Command};
@@ -21,21 +25,25 @@ impl Command for List {
         let channels = database.get_channels().await?;
 
         let mut table = Table::new();
+        table.load_preset(comfy_table::presets::UTF8_FULL);
         table.set_header(vec![
             "Label",
-            "Address",
             "State",
-            "Customer Deposit",
-            "Merchant Deposit",
+            "Balance",
+            "Max Refund",
+            "Channel ID",
         ]);
 
-        for (label, state, address, customer_deposit, merchant_deposit) in channels {
+        for (label, state, _address, _customer_deposit, _merchant_deposit) in channels {
+            // TODO: don't hard-code XTZ here, instead store currency in database
+            let amount = |b: u64| Amount::from_minor_units_of_currency(b.try_into().unwrap(), XTZ);
+
             table.add_row(vec![
                 Cell::new(label),
-                Cell::new(address),
                 Cell::new(state.state_name()),
-                Cell::new(customer_deposit.into_inner()),
-                Cell::new(merchant_deposit.into_inner()),
+                Cell::new(amount(state.customer_balance().into_inner())),
+                Cell::new(amount(state.merchant_balance().into_inner())),
+                Cell::new(state.channel_id()),
             ]);
         }
 
