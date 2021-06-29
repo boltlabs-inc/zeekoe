@@ -66,6 +66,7 @@ dialectic = { git = "ssh://git@github.com/boltlabs-inc/dialectic.git", branch = 
 dialectic-tokio-serde = { git = "ssh://git@github.com/boltlabs-inc/dialectic.git", branch = "main" }
 dialectic-tokio-serde-bincode = { git = "ssh://git@github.com/boltlabs-inc/dialectic.git", branch = "main" }
 dialectic-reconnect = { features = ["serde", "humantime-serde"], git = "ssh://git@github.com/boltlabs-inc/dialectic.git", branch = "main" }
+comfy-table = "3.0.0"
 sqlx = { version = "0.5.2", features = ["any", "migrate", "offline", "runtime-tokio-rustls", "sqlite"] }
 
 [dev-dependencies]

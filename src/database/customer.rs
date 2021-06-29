@@ -6,7 +6,7 @@ use {
     thiserror::Error,
 };
 
-use zkabacus_crypto::customer::Inactive;
+use zkabacus_crypto::{customer::Inactive, CustomerBalance, MerchantBalance};
 
 use crate::customer::{client::ZkChannelAddress, ChannelName};
 
@@ -92,6 +92,19 @@ pub trait QueryCustomer: Send + Sync {
         label: &ChannelName,
         new_address: &ZkChannelAddress,
     ) -> Result<()>;
+
+    /// Get all the information about all the channels.
+    async fn get_channels(
+        &self,
+    ) -> Result<
+        Vec<(
+            ChannelName,
+            State,
+            ZkChannelAddress,
+            CustomerBalance,
+            MerchantBalance,
+        )>,
+    >;
 
     /// **Don't call this function directly:** instead call [`QueryCustomer::with_channel_state`].
     /// Note that this method uses `Box<dyn Any + Send>` to avoid the use of generic parameters,
@@ -251,6 +264,43 @@ impl QueryCustomer for SqlitePool {
         } else {
             Err(Error::NoSuchChannel(label.clone()))
         }
+    }
+
+    async fn get_channels(
+        &self,
+    ) -> Result<
+        Vec<(
+            ChannelName,
+            State,
+            ZkChannelAddress,
+            CustomerBalance,
+            MerchantBalance,
+        )>,
+    > {
+        let channels = sqlx::query!(
+            r#"SELECT
+                label AS "label: ChannelName",
+                state AS "state: State",
+                address AS "address: ZkChannelAddress",
+                customer_deposit AS "customer_deposit: CustomerBalance",
+                merchant_deposit AS "merchant_deposit: MerchantBalance"
+            FROM customer_channels"#
+        )
+        .fetch_all(self)
+        .await?
+        .into_iter()
+        .map(|r| {
+            (
+                r.label,
+                r.state,
+                r.address,
+                r.customer_deposit,
+                r.merchant_deposit,
+            )
+        })
+        .collect();
+
+        Ok(channels)
     }
 
     async fn with_channel_state_erased<'a>(

@@ -135,7 +135,7 @@ impl_is_state!(Closed(Closed));
 
 impl State {
     /// Get the name of this state.
-    fn state_name(&self) -> StateName {
+    pub fn state_name(&self) -> StateName {
         match self {
             State::Inactive(_) => StateName::Inactive,
             State::Ready(_) => StateName::Ready,

@@ -1,5 +1,47 @@
 {
   "db": "SQLite",
+  "062682f177d7105bff6aabbfef6c89acd3dd78a518e3f9a8c0dd1a35771bdb49": {
+    "query": "SELECT\n                label AS \"label: ChannelName\",\n                state AS \"state: State\",\n                address AS \"address: ZkChannelAddress\",\n                customer_deposit AS \"customer_deposit: CustomerBalance\",\n                merchant_deposit AS \"merchant_deposit: MerchantBalance\"\n            FROM customer_channels",
+    "describe": {
+      "columns": [
+        {
+          "name": "label: ChannelName",
+          "ordinal": 0,
+          "type_info": "Text"
+        },
+        {
+          "name": "state: State",
+          "ordinal": 1,
+          "type_info": "Blob"
+        },
+        {
+          "name": "address: ZkChannelAddress",
+          "ordinal": 2,
+          "type_info": "Blob"
+        },
+        {
+          "name": "customer_deposit: CustomerBalance",
+          "ordinal": 3,
+          "type_info": "Blob"
+        },
+        {
+          "name": "merchant_deposit: MerchantBalance",
+          "ordinal": 4,
+          "type_info": "Blob"
+        }
+      ],
+      "parameters": {
+        "Right": 0
+      },
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false
+      ]
+    }
+  },
   "25601de5c6748724f92d8a8e18ff3e95321a32b0dc0bb0cac2e0b0eb479dc78a": {
     "query": "UPDATE customer_channels SET address = ? WHERE label = ?",
     "describe": {
