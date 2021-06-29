@@ -2518,6 +2518,7 @@ dependencies = [
  "edit",
  "futures",
  "generic-array",
+ "hex",
  "http",
  "http-serde",
  "humantime",
@@ -2532,6 +2533,7 @@ dependencies = [
  "rust_decimal",
  "rusty-money",
  "serde",
+ "serde_json",
  "serde_with",
  "sha2",
  "sqlx",
@@ -2573,7 +2575,7 @@ dependencies = [
 [[package]]
 name = "zkabacus-crypto"
 version = "0.1.0"
-source = "git+ssh://git@github.com/boltlabs-inc/libzkchannels-crypto.git?branch=main#f443adf8db91c85c06eb799ff60e1fe2e2f26999"
+source = "git+ssh://git@github.com/boltlabs-inc/libzkchannels-crypto.git?branch=main#8f2f635c9a48106957cc5a0fed077220b1267b47"
 dependencies = [
  "base64",
  "bincode",
@@ -2591,7 +2593,7 @@ dependencies = [
 [[package]]
 name = "zkchannels-crypto"
 version = "0.1.0"
-source = "git+ssh://git@github.com/boltlabs-inc/libzkchannels-crypto.git?branch=main#f443adf8db91c85c06eb799ff60e1fe2e2f26999"
+source = "git+ssh://git@github.com/boltlabs-inc/libzkchannels-crypto.git?branch=main#8f2f635c9a48106957cc5a0fed077220b1267b47"
 dependencies = [
  "arrayvec 0.7.1",
  "bincode",
