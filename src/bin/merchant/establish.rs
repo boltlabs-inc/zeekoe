@@ -185,7 +185,12 @@ async fn approve_and_establish(
 
     // Store the channel information in the database
     database
-        .new_channel(&channel_id, &contract_id)
+        .new_channel(
+            &channel_id,
+            &contract_id,
+            &merchant_deposit,
+            &customer_deposit,
+        )
         .await
         .context("Failed to insert new channel_id, contract_id in database")?;
 

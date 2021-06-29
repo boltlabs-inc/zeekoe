@@ -128,6 +128,8 @@ impl QueryCustomer for SqlitePool {
         address: &ZkChannelAddress,
         inactive: Inactive,
     ) -> std::result::Result<(), (Inactive, Error)> {
+        let merchant_deposit = *inactive.merchant_balance();
+        let customer_deposit = *inactive.customer_balance();
         let state = State::Inactive(inactive);
         (|| async {
             let mut transaction = self.begin().await?;
@@ -150,9 +152,17 @@ impl QueryCustomer for SqlitePool {
             }
 
             let result = sqlx::query!(
-                "INSERT INTO customer_channels (label, address, state) VALUES (?, ?, ?)",
+                "INSERT INTO customer_channels (
+                    label,
+                    address,
+                    merchant_deposit,
+                    customer_deposit,
+                    state
+                ) VALUES (?, ?, ?, ?, ?)",
                 label,
                 address,
+                merchant_deposit,
+                customer_deposit,
                 state,
             )
             .execute(&mut transaction)
