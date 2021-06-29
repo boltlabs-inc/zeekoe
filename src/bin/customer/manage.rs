@@ -14,7 +14,7 @@ use anyhow::Context;
 
 #[async_trait]
 impl Command for List {
-    async fn run(self, rng: StdRng, config: self::Config) -> Result<(), anyhow::Error> {
+    async fn run(self, _rng: StdRng, config: self::Config) -> Result<(), anyhow::Error> {
         let database = database(&config)
             .await
             .context("Failed to connect to local database")?;
