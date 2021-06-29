@@ -32,23 +32,6 @@ impl Command for Establish {
             ..
         } = self;
 
-        // Connect to the customer database
-        let database = database(&config)
-            .await
-            .context("Failed to connect to local database")?;
-
-        // Run a **separate** session to get the merchant's public parameters
-        let zkabacus_customer_config = get_parameters(&config, &address).await?;
-
-        // Connect and select the Establish session
-        let (session_key, chan) = connect(&config, &address)
-            .await
-            .context("Failed to connect to merchant")?;
-        let chan = chan
-            .choose::<1>()
-            .await
-            .context("Failed to select channel establishment session")?;
-
         // Format deposit amounts as the correct types
         let customer_deposit = CustomerBalance::try_new(
             self.deposit
@@ -66,6 +49,23 @@ impl Command for Establish {
                 .try_into()?,
         })
         .map_err(|_| establish::Error::InvalidDeposit(Merchant))?;
+
+        // Connect to the customer database
+        let database = database(&config)
+            .await
+            .context("Failed to connect to local database")?;
+
+        // Run a **separate** session to get the merchant's public parameters
+        let zkabacus_customer_config = get_parameters(&config, &address).await?;
+
+        // Connect and select the Establish session
+        let (session_key, chan) = connect(&config, &address)
+            .await
+            .context("Failed to connect to merchant")?;
+        let chan = chan
+            .choose::<1>()
+            .await
+            .context("Failed to select channel establishment session")?;
 
         // Read the contents of the channel establishment note, if any: this is the justification,
         // if any is needed, for why the channel should be allowed to be established (format
