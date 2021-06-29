@@ -22,6 +22,8 @@ CREATE TABLE merchant_channels (
   id SERIAL PRIMARY KEY,
   channel_id BLOB NOT NULL,
   contract_id BLOB NOT NULL,
+  merchant_deposit BLOB NOT NULL,
+  customer_deposit BLOB NOT NULL,
   status TEXT NOT NULL
     CHECK (status IN (
       "originated",

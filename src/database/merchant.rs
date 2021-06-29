@@ -4,7 +4,8 @@ use crate::database::SqlitePool;
 use crate::protocol::{ChannelStatus, ContractId};
 use zkabacus_crypto::{
     revlock::{RevocationLock, RevocationSecret},
-    ChannelId, CommitmentParameters, KeyPair, Nonce, RangeProofParameters,
+    ChannelId, CommitmentParameters, CustomerBalance, KeyPair, MerchantBalance, Nonce,
+    RangeProofParameters,
 };
 
 type Result<T> = std::result::Result<T, Error>;
@@ -33,7 +34,13 @@ pub trait QueryMerchant: Send + Sync {
     ) -> Result<zkabacus_crypto::merchant::Config>;
 
     /// Create a new merchant channel.
-    async fn new_channel(&self, channel_id: &ChannelId, contract_id: &ContractId) -> Result<()>;
+    async fn new_channel(
+        &self,
+        channel_id: &ChannelId,
+        contract_id: &ContractId,
+        merchant_deposit: &MerchantBalance,
+        customer_deposit: &CustomerBalance,
+    ) -> Result<()>;
 
     /// Update an existing merchant channel's status to a new state, only if it is currently in the
     /// expected state.
@@ -179,11 +186,25 @@ impl QueryMerchant for SqlitePool {
         Ok(new_config)
     }
 
-    async fn new_channel(&self, channel_id: &ChannelId, contract_id: &ContractId) -> Result<()> {
+    async fn new_channel(
+        &self,
+        channel_id: &ChannelId,
+        contract_id: &ContractId,
+        merchant_deposit: &MerchantBalance,
+        customer_deposit: &CustomerBalance,
+    ) -> Result<()> {
         sqlx::query!(
-            "INSERT INTO merchant_channels (channel_id, contract_id, status) VALUES (?, ?, ?)",
+            "INSERT INTO merchant_channels (
+                channel_id,
+                contract_id,
+                merchant_deposit,
+                customer_deposit,
+                status
+            ) VALUES (?, ?, ?, ?, ?)",
             channel_id,
             contract_id,
+            merchant_deposit,
+            customer_deposit,
             ChannelStatus::Originated
         )
         .execute(self)
@@ -351,7 +372,15 @@ mod tests {
         let channel_id = ChannelId::new(cid_m, cid_c, &pk, &[], &[]);
         let contract_id = ContractId {};
 
-        conn.new_channel(&channel_id, &contract_id).await?;
+        let merchant_deposit = MerchantBalance::try_new(5).unwrap();
+        let customer_deposit = CustomerBalance::try_new(5).unwrap();
+        conn.new_channel(
+            &channel_id,
+            &contract_id,
+            &merchant_deposit,
+            &customer_deposit,
+        )
+        .await?;
         conn.compare_and_swap_channel_status(
             &channel_id,
             &ChannelStatus::Originated,

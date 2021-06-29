@@ -68,6 +68,16 @@
       ]
     }
   },
+  "4ed55f3cbe97f7dcb73ef0c18ebe3baa6213eae42e8604eb6371142cc56fcb83": {
+    "query": "INSERT INTO merchant_channels (\n                channel_id,\n                contract_id,\n                merchant_deposit,\n                customer_deposit,\n                status\n            ) VALUES (?, ?, ?, ?, ?)",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Right": 5
+      },
+      "nullable": []
+    }
+  },
   "69377cabe38e67da48503697a4f862521c02db27307026e082bfcc042a57f092": {
     "query": "SELECT state AS \"state: State\" FROM customer_channels WHERE label = ?",
     "describe": {
@@ -106,16 +116,6 @@
       "nullable": []
     }
   },
-  "a7790da586c93d20f5f26d7d927283566efdfe5ee684f4c0fe5d029da0cc6656": {
-    "query": "INSERT INTO customer_channels (label, address, state) VALUES (?, ?, ?)",
-    "describe": {
-      "columns": [],
-      "parameters": {
-        "Right": 3
-      },
-      "nullable": []
-    }
-  },
   "aa91a624c3efb7bbda7d2501c6b93f13513b36b9ebbb3410275cb3bd9bb1965e": {
     "query": "\n            INSERT INTO\n                merchant_config\n            (signing_keypair, revocation_commitment_parameters, range_proof_parameters)\n                VALUES\n            (?, ?, ?)\n            ",
     "describe": {
@@ -144,12 +144,12 @@
       ]
     }
   },
-  "de50503397e87da087b33c6b1ba45a26c2765bff0dd0a9c6cc52a1cd15c0e0ea": {
-    "query": "INSERT INTO merchant_channels (channel_id, contract_id, status) VALUES (?, ?, ?)",
+  "da49f0dabf981510d17157dafc884c64e2cded2242a8f1465a4b109ff0194599": {
+    "query": "INSERT INTO customer_channels (\n                    label,\n                    address,\n                    merchant_deposit,\n                    customer_deposit,\n                    state\n                ) VALUES (?, ?, ?, ?, ?)",
     "describe": {
       "columns": [],
       "parameters": {
-        "Right": 3
+        "Right": 5
       },
       "nullable": []
     }
