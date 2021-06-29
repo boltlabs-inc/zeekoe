@@ -35,6 +35,16 @@ pub enum Error {
     ChannelExists(ChannelName),
 }
 
+/// The contents of a row of the database for a particular channel.
+#[non_exhaustive]
+pub struct ChannelDetails {
+    pub label: ChannelName,
+    pub state: State,
+    pub merchant_deposit: MerchantBalance,
+    pub customer_deposit: CustomerBalance,
+    pub address: ZkChannelAddress,
+}
+
 /// Extension trait augmenting the customer database [`QueryCustomer`] with extra methods.
 ///
 /// These are implemented automatically for any database handle which implements
@@ -94,17 +104,7 @@ pub trait QueryCustomer: Send + Sync {
     ) -> Result<()>;
 
     /// Get all the information about all the channels.
-    async fn get_channels(
-        &self,
-    ) -> Result<
-        Vec<(
-            ChannelName,
-            State,
-            ZkChannelAddress,
-            CustomerBalance,
-            MerchantBalance,
-        )>,
-    >;
+    async fn get_channels(&self) -> Result<Vec<ChannelDetails>>;
 
     /// **Don't call this function directly:** instead call [`QueryCustomer::with_channel_state`].
     /// Note that this method uses `Box<dyn Any + Send>` to avoid the use of generic parameters,
@@ -266,17 +266,7 @@ impl QueryCustomer for SqlitePool {
         }
     }
 
-    async fn get_channels(
-        &self,
-    ) -> Result<
-        Vec<(
-            ChannelName,
-            State,
-            ZkChannelAddress,
-            CustomerBalance,
-            MerchantBalance,
-        )>,
-    > {
+    async fn get_channels(&self) -> Result<Vec<ChannelDetails>> {
         let channels = sqlx::query!(
             r#"SELECT
                 label AS "label: ChannelName",
@@ -289,14 +279,12 @@ impl QueryCustomer for SqlitePool {
         .fetch_all(self)
         .await?
         .into_iter()
-        .map(|r| {
-            (
-                r.label,
-                r.state,
-                r.address,
-                r.customer_deposit,
-                r.merchant_deposit,
-            )
+        .map(|r| ChannelDetails {
+            label: r.label,
+            state: r.state,
+            address: r.address,
+            customer_deposit: r.customer_deposit,
+            merchant_deposit: r.merchant_deposit,
         })
         .collect();
 

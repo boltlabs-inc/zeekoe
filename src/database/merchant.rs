@@ -87,6 +87,7 @@ pub enum Error {
     Migration(#[from] sqlx::migrate::MigrateError),
 }
 
+/// The contents of a row of the database for a particular channel.
 pub struct ChannelDetails {
     pub channel_id: ChannelId,
     pub status: ChannelStatus,

@@ -34,16 +34,16 @@ impl Command for List {
             "Channel ID",
         ]);
 
-        for (label, state, _address, _customer_deposit, _merchant_deposit) in channels {
-            // TODO: don't hard-code XTZ here, instead store currency in database
-            let amount = |b: u64| Amount::from_minor_units_of_currency(b.try_into().unwrap(), XTZ);
+        // TODO: don't hard-code XTZ here, instead store currency in database
+        let amount = |b: u64| Amount::from_minor_units_of_currency(b.try_into().unwrap(), XTZ);
 
+        for details in channels {
             table.add_row(vec![
-                Cell::new(label),
-                Cell::new(state.state_name()),
-                Cell::new(amount(state.customer_balance().into_inner())),
-                Cell::new(amount(state.merchant_balance().into_inner())),
-                Cell::new(state.channel_id()),
+                Cell::new(details.label),
+                Cell::new(details.state.state_name()),
+                Cell::new(amount(details.state.customer_balance().into_inner())),
+                Cell::new(amount(details.state.merchant_balance().into_inner())),
+                Cell::new(details.state.channel_id()),
             ]);
         }
 
