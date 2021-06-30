@@ -32,10 +32,10 @@ def convert_to_little_endian(s):
         t = s[2:]
     return bytes.fromhex(t)[::-1].hex()
 
-def convert_list_to_hex_string(data, field, type="", verbose=False, little_endian=False):
+def convert_list_to_hex_string(data, field, type="", verbose=False, flip_endianness=False):
     field_raw = data.get(field)
     field_bytes = bytes(field_raw)
-    if little_endian:
+    if flip_endianness:
         data[field] = add_hex_prefix(convert_to_little_endian(field_bytes.hex()))
     else:
         if type in ["G1", "G2"]:
@@ -59,14 +59,14 @@ def transform_establish_json_file(data, _verbose):
     convert_list_to_hex_string(merchant_ps_public_key, "x2", "G2", verbose=_verbose)
     convert_vec_list_to_hex_string(merchant_ps_public_key, "y1s", "G1", verbose=_verbose)
     convert_vec_list_to_hex_string(merchant_ps_public_key, "y2s", "G2", verbose=_verbose)
-    convert_list_to_hex_string(original_data, "channel_id", little_endian=False, verbose=_verbose)
-    convert_list_to_hex_string(original_data, "close_scalar_bytes", little_endian=False, verbose=_verbose)
+    convert_list_to_hex_string(original_data, "channel_id", verbose=_verbose)
+    convert_list_to_hex_string(original_data, "close_scalar_bytes", verbose=_verbose)
     return original_data
 
 def transform_close_json_file(data, _verbose):
     original_data = dict(data)
-    convert_list_to_hex_string(original_data, "channel_id", little_endian=True, verbose=_verbose)
-    convert_list_to_hex_string(original_data, "revocation_lock", little_endian=True, verbose=_verbose)
+    convert_list_to_hex_string(original_data, "channel_id", verbose=_verbose)
+    convert_list_to_hex_string(original_data, "revocation_lock", verbose=_verbose)
     close_sig = original_data.get("closing_signature")
     convert_list_to_hex_string(close_sig, "sigma1", "G1", verbose=_verbose)
     convert_list_to_hex_string(close_sig, "sigma2", "G1", verbose=_verbose)
