@@ -1,18 +1,59 @@
 # zeekoe
 
+*Zeekoe* is the Dutch word for the sea-cow, otherwise known as the manatee. It also has the
+fortuitous coincidence of being one of the few words whose first and only two consonants are the
+letters "ZK": and hence the gentle manatee is the mascot of the **zkChannels protocol** for
+zero-knowledge layer-2 payment channels.
+
+## What is a zkChannel?
+
+This repository contains the source for the `zkchannels` application, which can serve as both the
+"merchant" or the "customer" end of the asymmetric zkChannels protocol.
+
+In this protocol, the customer *establishes* a channel with the merchant by placing a certain amount
+of funds in escrow on the blockchain. After the channel is established, the customer may choose to
+*pay* the merchant some number of times on the channel, and receive some digital artifact in
+exchange (the nature of this good or service is not fixed by the protocol). The customer may also
+request a *refund* from the merchant, up to the maximum refund made possible by the payments that
+have occurred on the channel. The customer is always the party to initiate a payment (or refund),
+and is either accepted or rejected by the merchant. Thanks to the power of zero -knowledge proofs,
+the merchant can validate that the customer has the requisite balance in some open channel, without
+learning the payment or real-world identity of the customer. After some number of payments and/or
+refunds, the customer or merchant may *close* the channel, which distributes the current channel
+balances from the on-chain escrow account to the customer and merchant.
+
+This payment channel protocol has a significant privacy advantage over many prior layer-2 payment
+channel approaches. At every point from establishment through closing, the merchant is only able to
+learn correlate the customer's on-chain payment identity with starting and ending balances of the
+channel, and explicitly does not gain the ability to connect the customer's identity with the
+quantity, price, or nature of the payments any individual customer has made (so long as there are
+sufficiently many customers that the merchant can't draw statistical or timing correlations between
+their on-chain and off-chain actions).
+
+## Current project status
+
+This project is currently a technology demonstration. It has not yet been formally audited for
+correctness and is not yet ready for use with currency that holds real value.
+
+In general, the zkChannels protocol and most of the underlying software stack are compatible with
+any blockchain or other escrow arbiter that supports the verification of various blind signature
+constructs. The version of the `zkchannel` application in this repository is specialized to the
+Tezos blockchain. Future work will generalize to other escrow arbiters.
+
 ## Setting up the project
 
-You will need a recent version of stable Rust.
+To build the project, you will need a recent version of stable Rust. This project has been tested on
+Rust version 1.52.1.
+
+```bash
+cargo build --features "allow_explicit_certificate_trust"
+```
 
 Notice also that we specify the build option `allow_explicit_certificate_trust`. Without this
 option, only certificates rooted at the webpki roots of trust would be trusted, and the customer
 would reject the connection to the merchant due to the bad certificate. Because this decreases the
 trustworthiness of the authentication between the merchant and customer, this is only intended for
 use in testing, and cannot be enabled in release builds.
-
-```bash
-cargo build --features "allow_explicit_certificate_trust"
-```
 
 ## Running the zkchannel merchant and customer
 
