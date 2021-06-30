@@ -8,13 +8,6 @@ use {
     thiserror::Error,
 };
 
-pub type Ping = Session! {
-    loop {
-        send String;
-        recv String;
-    }
-};
-
 type OfferAbort<Next, Err> = Session! {
     offer {
         0 => recv Err,
