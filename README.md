@@ -61,10 +61,9 @@ demo, transactions are separately submitted after off-chain establishment or clo
 based on the PyTezos framework.
 
 A full integration with Tezos test-net, including contract origination, funding, and closing, as
-well as active monitoring for salient events, is targeted for completion for July 31, 2021. This
-integration will use the emerging [`tezedge-client`](https://github.com/tezedge/tezedge-client) for
-the Tezos RPC protocol to interact with the network directly from within the `zkchannel`
-application.
+well as active monitoring for salient events, is targeted for completion soon. This integration will
+use the emerging [`tezedge-client`](https://github.com/tezedge/tezedge-client) for the Tezos RPC
+protocol to interact with the network directly from within the `zkchannel` application.
 
 ## Setting up the project
 
