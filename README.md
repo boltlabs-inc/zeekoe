@@ -1,9 +1,13 @@
 # zeekoe
 
-*Zeekoe* is the Dutch word for the sea-cow, otherwise known as the manatee. It also has the
-fortuitous coincidence of being one of the few words whose first and only two consonants are the
-letters "ZK": and hence the gentle manatee is the mascot of the **zkChannels protocol** for
-zero-knowledge layer-2 payment channels.
+*Zeekoe* is the Dutch word for the sea-cow, otherwise known as the manatee, a friendly coastal
+aquatic mammal. The word "zeekoe" also has the fortuitous coincidence of being one of the few words
+whose first and only two consonants are the letters "ZK": and hence the gentle manatee is the mascot
+of the **zkChannels protocol** for zero-knowledge layer-2 payment channels.
+
+![photograph of a mother manatee and calf](https://upload.wikimedia.org/wikipedia/commons/thumb/d/da/Mother_manatee_and_calf.jpg/800px-Mother_manatee_and_calf.jpg)
+
+[Source: public domain image by Sam Farkas (NOAA Photo Library), via Wikimedia](https://en.wikipedia.org/wiki/File:Mother_manatee_and_calf.jpg)
 
 ## What is a zkChannel?
 
