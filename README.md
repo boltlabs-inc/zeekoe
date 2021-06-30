@@ -47,8 +47,8 @@ Tezos blockchain. Future work will generalize to other escrow arbiters.
 ## On-chain integration demo
 
 In this repository (KWF: LINK HERE) you will also find a first demonstration of the compatibility of
-the zkChannels protocol with Tezos test-net as implemented by the zeekoe project. This demo
-illustrates how zkchannels can be used to establish a payment channel linked to funds in escrow on
+the zkChannels protocol with Tezos test-net as implemented by the Zeekoe project. This demo
+illustrates how zkChannels can be used to establish a payment channel linked to funds in escrow on
 the Tezos test-net, make several payments on that channel, and close the channel, disbursing the
 final channel balances to the merchant and customer.
 
@@ -80,7 +80,7 @@ would reject the connection to the merchant due to the bad certificate. Because 
 trustworthiness of the authentication between the merchant and customer, this is only intended for
 use in testing, and cannot be enabled in release builds.
 
-## Running the zkchannel merchant and customer
+## Running the `zkchannel` merchant and customer
 
 The customer authenticates the merchant using a TLS certificate, which must be generated. For
 development and testing purposes, the certificate and private key can be generated using a provided
