@@ -14,7 +14,7 @@ use in testing, and cannot be enabled in release builds.
 cargo build --features "allow_explicit_certificate_trust"
 ```
 
-## Running the zkchannel merchant server and customer client
+## Running the zkchannel merchant and customer
 
 The customer authenticates the merchant using a TLS certificate, which must be generated. For
 development and testing purposes, the certificate and private key can be generated using a provided
