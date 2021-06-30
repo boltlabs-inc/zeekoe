@@ -80,15 +80,14 @@ would reject the connection to the merchant due to the bad certificate. Because 
 trustworthiness of the authentication between the merchant and customer, this is only intended for
 use in testing, and cannot be enabled in release builds.
 
-## Running the `zkchannel` merchant and customer
-
-The customer authenticates the merchant using a TLS certificate, which must be generated. For
-development and testing purposes, the certificate and private key can be generated using a provided
-script, which places them in the `./dev` folder:
+For development and testing purposes, however, the certificate and private key can be generated
+using a provided script, which places them in the `./dev` folder:
 
 ```bash
 ./dev/generate-certificates
 ```
+
+## Running the `zkchannel` merchant and customer
 
 Now, we can run the merchant server. If we were to install the `zkchannel` binary, it would look for
 its `Merchant.toml` configuration file in the idiomatic configuration directory for the current
