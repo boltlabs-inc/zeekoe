@@ -26,6 +26,7 @@ pub struct List {}
 #[derive(Debug, StructOpt)]
 #[non_exhaustive]
 pub struct Show {
+    #[structopt(empty_values(false))]
     pub prefix: String,
 }
 

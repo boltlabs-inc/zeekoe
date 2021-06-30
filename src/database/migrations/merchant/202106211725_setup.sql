@@ -9,7 +9,7 @@ CREATE TABLE revocations (
   lock BLOB NOT NULL,
   secret BLOB
 );
-CREATE INDEX revocations_lock on revocations (lock);
+CREATE INDEX revocations_lock ON revocations (lock);
 
 CREATE TABLE merchant_config (
   id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -20,7 +20,7 @@ CREATE TABLE merchant_config (
 
 CREATE TABLE merchant_channels (
   id SERIAL PRIMARY KEY,
-  channel_id BLOB NOT NULL,
+  channel_id TEXT NOT NULL,
   contract_id BLOB NOT NULL,
   merchant_deposit BLOB NOT NULL,
   customer_deposit BLOB NOT NULL,
@@ -33,3 +33,4 @@ CREATE TABLE merchant_channels (
       "closed"
     ))
 );
+CREATE INDEX merchant_channels_channel_id ON merchant_channels (channel_id);

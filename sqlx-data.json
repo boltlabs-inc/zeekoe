@@ -145,7 +145,7 @@
         {
           "name": "channel_id: ChannelId",
           "ordinal": 0,
-          "type_info": "Blob"
+          "type_info": "Text"
         },
         {
           "name": "status: ChannelStatus",
@@ -192,42 +192,14 @@
       "nullable": []
     }
   },
-  "b3e1ea79364c63e3ecc4b86a880212129785a03c9c47993ef9b7986c83a6cc82": {
-    "query": "SELECT label FROM customer_channels WHERE label = ?",
-    "describe": {
-      "columns": [
-        {
-          "name": "label",
-          "ordinal": 0,
-          "type_info": "Text"
-        }
-      ],
-      "parameters": {
-        "Right": 1
-      },
-      "nullable": [
-        false
-      ]
-    }
-  },
-  "da49f0dabf981510d17157dafc884c64e2cded2242a8f1465a4b109ff0194599": {
-    "query": "INSERT INTO customer_channels (\n                    label,\n                    address,\n                    merchant_deposit,\n                    customer_deposit,\n                    state\n                ) VALUES (?, ?, ?, ?, ?)",
-    "describe": {
-      "columns": [],
-      "parameters": {
-        "Right": 5
-      },
-      "nullable": []
-    }
-  },
-  "e3c55de93492c286f768dc10ecb49736155a5c3624c43e4e67f75df9575d22bb": {
-    "query": "\n            SELECT\n                channel_id AS \"channel_id: ChannelId\",\n                status as \"status: ChannelStatus\",\n                contract_id AS \"contract_id: ContractId\",\n                merchant_deposit AS \"merchant_deposit: MerchantBalance\",\n                customer_deposit AS \"customer_deposit: CustomerBalance\"\n            FROM merchant_channels\n            WHERE channel_id = ?\n        ",
+  "b21151f897a0218c4410c7f31856db1fa9b604394a46e235a533fa73f0284ef5": {
+    "query": "\n            SELECT\n                channel_id AS \"channel_id: ChannelId\",\n                status as \"status: ChannelStatus\",\n                contract_id AS \"contract_id: ContractId\",\n                merchant_deposit AS \"merchant_deposit: MerchantBalance\",\n                customer_deposit AS \"customer_deposit: CustomerBalance\"\n            FROM merchant_channels\n            WHERE channel_id LIKE ?\n            LIMIT 2\n        ",
     "describe": {
       "columns": [
         {
           "name": "channel_id: ChannelId",
           "ordinal": 0,
-          "type_info": "Blob"
+          "type_info": "Text"
         },
         {
           "name": "status: ChannelStatus",
@@ -260,6 +232,34 @@
         false,
         false
       ]
+    }
+  },
+  "b3e1ea79364c63e3ecc4b86a880212129785a03c9c47993ef9b7986c83a6cc82": {
+    "query": "SELECT label FROM customer_channels WHERE label = ?",
+    "describe": {
+      "columns": [
+        {
+          "name": "label",
+          "ordinal": 0,
+          "type_info": "Text"
+        }
+      ],
+      "parameters": {
+        "Right": 1
+      },
+      "nullable": [
+        false
+      ]
+    }
+  },
+  "da49f0dabf981510d17157dafc884c64e2cded2242a8f1465a4b109ff0194599": {
+    "query": "INSERT INTO customer_channels (\n                    label,\n                    address,\n                    merchant_deposit,\n                    customer_deposit,\n                    state\n                ) VALUES (?, ?, ?, ?, ?)",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Right": 5
+      },
+      "nullable": []
     }
   },
   "ea687226f1c5d6a673bd477103aaacb4ab87504b12898632b203b32b569ccd35": {
