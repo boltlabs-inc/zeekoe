@@ -87,10 +87,10 @@ using a provided script, which places them in the `./dev` folder:
 ./dev/generate-certificates
 ```
 
-## Running the `zkchannel` merchant and customer
+## Running the `zkchannel` merchant and customer in off-chain mode
 
-Now, we can run the merchant server. If we were to install the `zkchannel` binary, it would look for
-its `Merchant.toml` configuration file in the idiomatic configuration directory for the current
+First, let's run the merchant server. If we were to install the `zkchannel` binary, it would look
+for its `Merchant.toml` configuration file in the idiomatic configuration directory for the current
 user, but in this self-contained example we use the `--config` flag to request that it use the
 configuration in `./dev`. This configuration also specifies that the merchant should store its
 database in that same directory.
