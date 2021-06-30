@@ -1,5 +1,6 @@
 use {async_trait::async_trait, futures::StreamExt, rand::rngs::StdRng, thiserror::Error};
 
+pub use super::connect_sqlite;
 use crate::database::SqlitePool;
 use crate::protocol::{ChannelStatus, ContractId};
 use std::str::FromStr;

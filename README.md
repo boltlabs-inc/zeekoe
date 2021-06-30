@@ -1,13 +1,10 @@
 # zeekoe
 
-## Development
+## Running
 
 ```bash
 # generate localhost.crt and localhost.key
 $ ./dev/generate-certificates
-
-# initialize the database
-$ ./dev/create-database
 
 # running the merchant server (leave this running)
 $ cargo run --bin zkchannel-merchant -- --config "./dev/Merchant.toml" run
@@ -26,4 +23,15 @@ cargo run --features "allow_explicit_certificate_trust" \
     --bin zkchannel-customer -- \
     --config "./dev/Customer.toml" \
     pay "my-first-zkchannel" "0.005 XTZ"
+```
+
+## Development
+
+In order to compile, you'll also need to generate the development database:
+
+```
+# initialize the database
+$ ./dev/create-database
+
+$ cargo build
 ```
