@@ -28,11 +28,11 @@ balances from the on-chain escrow account to the customer and merchant.
 
 This payment channel protocol has a significant privacy advantage over many prior layer-2 payment
 channel approaches. At every point from establishment through closing, the merchant is only able to
-learn correlate the customer's on-chain payment identity with starting and ending balances of the
-channel, and explicitly does not gain the ability to connect the customer's identity with the
-quantity, price, or nature of the payments any individual customer has made (so long as there are
-sufficiently many customers that the merchant can't draw statistical or timing correlations between
-their on-chain and off-chain actions).
+correlate the customer's on-chain payment identity with starting and ending balances of the channel,
+and explicitly does not gain the ability to connect the customer's identity with the quantity,
+price, or nature of the payments any individual customer has made (so long as there are sufficiently
+many customers that the merchant can't draw statistical or timing correlations between their
+on-chain and off-chain actions).
 
 ## Current project status
 
