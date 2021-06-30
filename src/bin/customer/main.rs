@@ -12,7 +12,7 @@ use zeekoe::{
     customer::{
         cli::{self, Customer::*},
         client::{SessionKey, ZkChannelAddress},
-        database::QueryCustomer,
+        database::{connect_sqlite, QueryCustomer},
         defaults::config_path,
         Chan, Cli, Client, Config,
     },
@@ -119,14 +119,9 @@ pub async fn database(config: &Config) -> Result<Arc<dyn QueryCustomer>, anyhow:
                 .context("Could not create in-memory SQLite database")?,
         ),
         DatabaseLocation::Sqlite(ref path) => {
-            let uri = path.to_str().ok_or_else(|| {
-                anyhow::anyhow!("Invalid UTF-8 in SQLite database path {:?}", path)
-            })?;
-            Arc::new(
-                SqlitePool::connect(uri)
-                    .await
-                    .with_context(|| format!("Could not open SQLite database at \"{}\"", uri))?,
-            )
+            let conn = connect_sqlite(path).await?;
+            conn.migrate().await?;
+            conn
         }
         DatabaseLocation::Postgres(_) => {
             return Err(anyhow::anyhow!(
