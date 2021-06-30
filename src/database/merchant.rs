@@ -2,7 +2,6 @@ use {async_trait::async_trait, futures::StreamExt, rand::rngs::StdRng, thiserror
 
 use crate::database::SqlitePool;
 use crate::protocol::{ChannelStatus, ContractId};
-use std::str::FromStr;
 use zkabacus_crypto::{
     revlock::{RevocationLock, RevocationSecret},
     ChannelId, CommitmentParameters, CustomerBalance, KeyPair, MerchantBalance, Nonce,
@@ -64,13 +63,16 @@ pub trait QueryMerchant: Send + Sync {
 #[derive(Debug, Error)]
 pub enum Error {
     /// A channel with the given ID could not be found.
-    #[error("Could not find channel with id {0}")]
+    #[error("Could not find channel with id: {0}")]
     ChannelNotFound(ChannelId),
     /// A channel with the given ID prefix could not be found.
-    #[error("Could not find channel with an id that starts with {0}")]
+    #[error("No channel with id that starts with: {0}")]
     ChannelNotFoundWithPrefix(String),
+    /// Multiple channels were found with a given prefix.
+    #[error("Multiple channels with prefix: {0}")]
+    ChannelIdCollision(String),
     /// Tried to search by a malformed channel id.
-    #[error("`{0}` was not a valid channel id")]
+    #[error("Invalid channel id: {0}")]
     MalformedChannelId(String),
     /// The channel status was expected to be one thing, but it was another.
     #[error("Unexpected status for channel {channel_id} (expected {expected}, found {found})")]
@@ -299,9 +301,8 @@ impl QueryMerchant for SqlitePool {
     }
 
     async fn get_channel_details(&self, prefix: &str) -> Result<ChannelDetails> {
-        let channel_id = ChannelId::from_str(prefix)
-            .map_err(|_| Error::MalformedChannelId(prefix.to_string()))?;
-        let result = sqlx::query!(
+        let query = format!("{}%", &prefix);
+        let mut results = sqlx::query!(
             r#"
             SELECT
                 channel_id AS "channel_id: ChannelId",
@@ -310,23 +311,31 @@ impl QueryMerchant for SqlitePool {
                 merchant_deposit AS "merchant_deposit: MerchantBalance",
                 customer_deposit AS "customer_deposit: CustomerBalance"
             FROM merchant_channels
-            WHERE channel_id = ?
+            WHERE channel_id LIKE ?
+            LIMIT 2
         "#,
-            channel_id
+            query
         )
-        .fetch_optional(self)
-        .await?;
+        .fetch_all(self)
+        .await?
+        .into_iter();
 
-        match result {
-            None => Err(Error::ChannelNotFoundWithPrefix(prefix.to_string())),
-            Some(channel) => Ok(ChannelDetails {
+        let details = match results.next() {
+            None => return Err(Error::ChannelNotFoundWithPrefix(prefix.to_string())),
+            Some(channel) => ChannelDetails {
                 channel_id: channel.channel_id,
                 status: channel.status,
                 contract_id: channel.contract_id,
                 merchant_deposit: channel.merchant_deposit,
                 customer_deposit: channel.customer_deposit,
-            }),
+            },
+        };
+
+        if results.next().is_some() {
+            return Err(Error::ChannelIdCollision(prefix.to_string()));
         }
+
+        Ok(details)
     }
 }
 
