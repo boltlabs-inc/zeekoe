@@ -11,6 +11,7 @@ use zkabacus_crypto::{customer::Inactive, CustomerBalance, MerchantBalance};
 use crate::customer::{client::ZkChannelAddress, ChannelName};
 
 mod state;
+pub use super::connect_sqlite;
 pub use state::{Closed, IsState, State, StateName, UnexpectedState};
 
 type Result<T> = std::result::Result<T, Error>;
@@ -78,6 +79,9 @@ pub trait QueryCustomerExt {
 /// [`ErasedQueryCustomer`] are [`QueryCustomer`].
 #[async_trait]
 pub trait QueryCustomer: Send + Sync {
+    /// Perform all the DB migrations defined in src/database/migrations/customer/*.sql
+    async fn migrate(&self) -> Result<()>;
+
     /// Insert a newly initialized [`Requested`] channel into the customer database, associated with
     /// a unique label and [`ZkChannelAddress`].
     ///
@@ -135,6 +139,13 @@ pub trait QueryCustomer: Send + Sync {
 
 #[async_trait]
 impl QueryCustomer for SqlitePool {
+    async fn migrate(&self) -> Result<()> {
+        sqlx::migrate!("src/database/migrations/customer")
+            .run(self)
+            .await?;
+        Ok(())
+    }
+
     async fn new_channel(
         &self,
         label: &ChannelName,

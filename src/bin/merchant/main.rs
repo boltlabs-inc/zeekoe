@@ -17,7 +17,7 @@ use zeekoe::{
     merchant::{
         cli::{self, Run},
         config::{DatabaseLocation, Service},
-        database::QueryMerchant,
+        database::{connect_sqlite, QueryMerchant},
         defaults::config_path,
         server::SessionKey,
         Chan, Cli, Config, Server,
@@ -230,14 +230,9 @@ pub async fn database(config: &Config) -> Result<Arc<dyn QueryMerchant>, anyhow:
                 .context("Could not create in-memory SQLite database")?,
         ),
         DatabaseLocation::Sqlite(ref path) => {
-            let uri = path.to_str().ok_or_else(|| {
-                anyhow::anyhow!("Invalid UTF-8 in SQLite database path {:?}", path)
-            })?;
-            Arc::new(
-                SqlitePool::connect(uri)
-                    .await
-                    .with_context(|| format!("Could not open SQLite database at \"{}\"", uri))?,
-            )
+            let conn = connect_sqlite(path).await?;
+            conn.migrate().await?;
+            conn
         }
         DatabaseLocation::Postgres(_) => {
             return Err(anyhow::anyhow!(
