@@ -114,6 +114,7 @@ impl Method for Establish {
 
 /// Signal to the customer that the channel has been approved to be established, and continue to the
 /// end of the channel establishment protocol.
+#[allow(clippy::too_many_arguments)]
 async fn approve_and_establish(
     rng: &mut StdRng,
     database: &dyn QueryMerchant,

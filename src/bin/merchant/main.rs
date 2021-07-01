@@ -186,6 +186,7 @@ where
 {
     type Protocol;
 
+    #[allow(clippy::too_many_arguments)]
     async fn run(
         &self,
         rng: StdRng,

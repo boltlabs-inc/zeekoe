@@ -235,6 +235,7 @@ async fn get_parameters(
 /// If successful returns the [`ChannelName`] that the channel was *actually* inserted into the
 /// database using (which may differ from the one specified if the one specified was already in
 /// use!), and the [`Chan`] ready for the next part of the establish protocol.
+#[allow(clippy::too_many_arguments)]
 async fn zkabacus_initialize(
     mut rng: &mut StdRng,
     database: &dyn QueryCustomer,
