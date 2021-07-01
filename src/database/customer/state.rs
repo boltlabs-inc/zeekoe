@@ -38,8 +38,8 @@ impl_sqlx_for_bincode_ty!(State);
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Closed {
     channel_id: ChannelId,
-    merchant_balance: MerchantBalance,
     customer_balance: CustomerBalance,
+    merchant_balance: MerchantBalance,
 }
 
 impl Closed {
@@ -111,9 +111,9 @@ macro_rules! impl_is_state {
             }
         }
 
-        impl Into<State> for $ty {
-            fn into(self) -> State {
-                State::$name(self)
+        impl From<$ty> for State {
+            fn from(s: $ty) -> Self {
+                Self::$name(s)
             }
         }
 

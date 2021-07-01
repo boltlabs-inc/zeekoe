@@ -81,8 +81,9 @@ impl Method for Establish {
         {
             Ok(confirm_url) => confirm_url,
             Err(approval_error) => {
-                let error =
-                    establish::Error::Rejected(approval_error.unwrap_or("internal error".into()));
+                let error = establish::Error::Rejected(
+                    approval_error.unwrap_or_else(|| "internal error".into()),
+                );
                 abort!(in chan return error);
             }
         };

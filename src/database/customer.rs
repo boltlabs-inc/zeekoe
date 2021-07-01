@@ -160,15 +160,12 @@ impl QueryCustomer for SqlitePool {
 
             // Determine if the channel already exists
             let already_exists =
-                match sqlx::query!("SELECT label FROM customer_channels WHERE label = ?", label)
+                sqlx::query!("SELECT label FROM customer_channels WHERE label = ?", label)
                     .fetch(&mut transaction)
                     .next()
                     .await
                     .transpose()?
-                {
-                    Some(_) => true,
-                    _ => false,
-                };
+                    .is_some();
 
             // Return an error if it does exist
             if already_exists {
@@ -239,7 +236,7 @@ impl QueryCustomer for SqlitePool {
                 .is_none();
 
         if !new_does_not_exist {
-            return Err(Error::ChannelExists(new_label.clone()).into());
+            return Err(Error::ChannelExists(new_label.clone()));
         }
 
         sqlx::query!(
