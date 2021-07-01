@@ -82,7 +82,7 @@ def originate(cust_py, init_params, cust_funding, merch_funding):
     # Get address of main zkchannel contract
     opg = pytezos.shell.blocks[-20:].find_operation(out['hash'])
     contract_id = opg['contents'][0]['metadata']['operation_result']['originated_contracts'][0]
-    print("zkChannel contract address: ", main_id)
+    print("zkChannel contract address: ", contract_id)
     return out, contract_id
 
 def cust_close(ci, cust_close_data):
@@ -130,7 +130,7 @@ def zkchannel_establish(feetracker, cust_py, merch_py, establish_params):
     merch_funding=establish_json.get("merchant_deposit")
     out, contract_id = originate(cust_py, establish_params, cust_funding, merch_funding)
     feetracker.add_result('originate', out) # feetracker is used to track fees for benchmarking purposes 
-    print("contract id: {}", contract_id)
+    print("Contract ID: ", contract_id)
 
     # Set the contract interfaces for cust
     cust_ci = cust_py.contract(contract_id)
@@ -222,8 +222,8 @@ if __name__ == "__main__":
     feetracker = FeeTracker()
     if args.establish:
         establish_json = read_json_file(establish_json_file)
-        main_id = zkchannel_establish(feetracker, cust_py, merch_py, establish_json)
-        print("Contract ID: ", main_id)
+        contract_id = zkchannel_establish(feetracker, cust_py, merch_py, establish_json)
+        print("Contract ID (confirmed): ", contract_id)
 
     if args.cust_close:
         cust_close_json = read_json_file(cust_close_json_file)
