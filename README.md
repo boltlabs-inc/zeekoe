@@ -3,7 +3,7 @@
 *Zeekoe* is the Dutch word for the sea-cow, otherwise known as the manatee, a friendly coastal
 aquatic mammal. The word "zeekoe" also has the fortuitous coincidence of being one of the few words
 whose first and only two consonants are the letters "ZK": and hence the gentle manatee is the mascot
-of the **zkChannels protocol** for zero-knowledge layer-2 payment channels.
+of the **zkChannels protocol** for zero-knowledge layer-2 based transactions.
 
 ![photograph of a mother manatee and calf](https://upload.wikimedia.org/wikipedia/commons/thumb/d/da/Mother_manatee_and_calf.jpg/800px-Mother_manatee_and_calf.jpg)
 
@@ -26,8 +26,8 @@ learning the payment or real-world identity of the customer. After some number o
 refunds, the customer or merchant may *close* the channel, which distributes the current channel
 balances from the on-chain escrow account to the customer and merchant.
 
-This payment channel protocol has a significant privacy advantage over many prior layer-2 payment
-channel approaches. At every point from establishment through closing, the merchant is only able to
+This L2 protocol has a significant privacy advantage over many prior approaches. 
+At every point from establishment through closing, the merchant is only able to
 correlate the customer's on-chain payment identity with starting and ending balances of the channel,
 and explicitly does not gain the ability to connect the customer's identity with the quantity,
 price, or nature of the payments any individual customer has made (so long as there are sufficiently
@@ -46,10 +46,10 @@ Tezos blockchain. Future work will generalize to other escrow arbiters.
 
 ## On-chain integration demo
 
-In this repository ([here]()), you will also find a first demonstration of the compatibility of
+In this repository ([here](https://github.com/boltlabs-inc/zeekoe/blob/demo/pytezos-demo/README.md)), you will also find a first demonstration of the compatibility of
 the zkChannels protocol with Tezos testnet as implemented by the Zeekoe project. This demo
-illustrates how zkChannels can be used to establish a payment channel linked to funds in escrow on
-the Tezos test-net, make several payments on that channel, and close the channel, disbursing the
+illustrates how zkChannels can be used to establish a private channel linked to funds in escrow on
+the Tezos testnet, make several payments on that channel, and close the channel, disbursing the
 final channel balances to the merchant and customer.
 
 At present time of writing, Zeekoe does not fully _internally_ integrate with the Tezos network, but
@@ -100,7 +100,7 @@ $ ./target/debug/zkchannel merchant --config "./dev/Merchant.toml" run
 serving on: [::1]:2611
 ```
 
-Leaving the merchant running, we can now act as the customer to establish a new payment channel with
+Leaving the merchant running, we can now act as the customer to establish a new zkChannel with
 the merchant, making an initial deposit of 5 XTZ. We're specifying here that we'd like to give this
 channel the nickname "my-first-zkchannel", so we can keep track of it by a human-readable name.
 

@@ -1,21 +1,30 @@
 Demo
 ====
 
-This demo requires that you have pytezos installed as follows:
+This demo requires that pytezos has been installed:
 
     pip install pytezos
 
-Also, we require that you clone the tezos-contract repo here:
+Also, we require that you clone the [tezos-contract](https://github.com/boltlabs-inc/tezos-contract) repo here:
 
-    git clone https://github.com/boltlabs-inc/tezos-contract.git
+    git clone git@github.com:boltlabs-inc/tezos-contract.git
 
+
+Now we can run the merchant server in off-line mode:
 
 ```bash
 $ ../target/debug/zkchannel merchant --config "../dev/Merchant.toml" run
 serving on: [::1]:2611
 ```
 
-Establish the channel as follows:
+Leaving the merchant running, we can now act as the customer to establish a new zkChannel with
+the merchant, making an initial deposit of 5 XTZ. We're specifying here that we'd like to give this
+channel the nickname "my-first-zkchannel", so we can keep track of it by a human-readable name.
+
+As with the merchant, we specify a local configuration file using the `--config` flag, which
+overrides the default location of the customer configuration file. This configuration file puts the
+customer database in the `./dev` directory.
+
 
 ```bash
 $ ../target/debug/zkchannel customer --config "../dev/Customer.toml" \
