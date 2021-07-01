@@ -20,7 +20,7 @@ of funds in escrow on the blockchain. After the channel is established, the cust
 exchange (the nature of this good or service is not fixed by the protocol). The customer may also
 request a *refund* from the merchant, up to the maximum refund made possible by the payments that
 have occurred on the channel. The customer is always the party to initiate a payment (or refund),
-and is either accepted or rejected by the merchant. Thanks to the power of zero -knowledge proofs,
+and is either accepted or rejected by the merchant. Thanks to the power of zero-knowledge proofs,
 the merchant can validate that the customer has the requisite balance in some open channel, without
 learning the payment or real-world identity of the customer. After some number of payments and/or
 refunds, the customer or merchant may *close* the channel, which distributes the current channel
@@ -46,8 +46,8 @@ Tezos blockchain. Future work will generalize to other escrow arbiters.
 
 ## On-chain integration demo
 
-In this repository (KWF: LINK HERE) you will also find a first demonstration of the compatibility of
-the zkChannels protocol with Tezos test-net as implemented by the Zeekoe project. This demo
+In this repository ([here]()), you will also find a first demonstration of the compatibility of
+the zkChannels protocol with Tezos testnet as implemented by the Zeekoe project. This demo
 illustrates how zkChannels can be used to establish a payment channel linked to funds in escrow on
 the Tezos test-net, make several payments on that channel, and close the channel, disbursing the
 final channel balances to the merchant and customer.
@@ -60,7 +60,7 @@ transactions to the blockchain from within the `zkchannel` application itself. I
 demo, transactions are separately submitted after off-chain establishment or closing using a script
 based on the PyTezos framework.
 
-A full integration with Tezos test-net, including contract origination, funding, and closing, as
+A full integration with Tezos testnet, including contract origination, funding, and closing, as
 well as active monitoring for salient events, is targeted for completion soon. This integration will
 use the emerging [`tezedge-client`](https://github.com/tezedge/tezedge-client) for the Tezos RPC
 protocol to interact with the network directly from within the `zkchannel` application.
