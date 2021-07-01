@@ -8,10 +8,10 @@ fi
 
 MODE=$2
 if [[ $MODE = "establish" ]]; then
-   python3 testing-tool/format_output.py --establish --json $FILE --out out.$FILE 
+   python3 ../testing-tool/format_output.py --establish --json $FILE --out out.$FILE 
    exit 0
 elif [[ $MODE = "close" ]]; then
-   python3 testing-tool/format_output.py --close --json $FILE --out out.$FILE 
+   python3 ../testing-tool/format_output.py --close --json $FILE --out out.$FILE 
    exit 0
 else
    echo "[!] Invalid second arg: 'establish' or 'close'"
