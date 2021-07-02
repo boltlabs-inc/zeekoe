@@ -55,7 +55,7 @@ macro_rules! abort {
             "Failed to send error after choosing to abort",
         )?;
         $chan.close();
-        return ::anyhow::Context::context(Err(err), "Pay protocol aborted");
+        return ::anyhow::Context::context(Err(err), "Protocol aborted");
     }};
 }
 
