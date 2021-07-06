@@ -3,7 +3,10 @@ Demo
 
 This demo requires that pytezos has been installed:
 
-    pip install pytezos
+```bash
+$ apt install libsodium-dev libsecp256k1-dev libgmp-dev
+$ pip install pytezos
+```
 
 Also, we require that you clone the [tezos-contract](https://github.com/boltlabs-inc/tezos-contract) repo here:
 
