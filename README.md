@@ -71,7 +71,7 @@ To build the project, you will need a recent version of stable Rust. This projec
 Rust version 1.52.1.
 
 ```bash
-cargo build --features "allow_explicit_certificate_trust"
+CARGO_NET_GIT_FETCH_WITH_CLI=true cargo build --features "allow_explicit_certificate_trust"
 ```
 
 Notice also that we specify the build option `allow_explicit_certificate_trust`. Without this
