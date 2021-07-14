@@ -4,13 +4,14 @@ Demo
 This demo requires that pytezos has been installed:
 
 ```bash
-$ apt install libsodium-dev libsecp256k1-dev libgmp-dev
+$ apt install libsodium-dev libsecp256k1-dev libgmp-dev libssl-dev
 $ pip install pytezos
 ```
 
 Also, we require that you clone the [tezos-contract](https://github.com/boltlabs-inc/tezos-contract) repo here:
 
 ```bash
+$ git clone git@github.com:boltlabs-inc/zeekoe.git -b demo
 $ cd zeekoe/pytezos-demo
 $ git clone git@github.com:boltlabs-inc/tezos-contract.git
 ```
