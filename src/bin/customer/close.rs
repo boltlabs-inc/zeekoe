@@ -42,8 +42,10 @@ impl Command for Close {
 /// Closes the channel on the current balances, either unilaterally or in response to the
 /// merchant posting an expiry to the contract.
 ///
-/// **Usage**: this function calls the customer close entrypoint. It can be called directly
-/// or as a response to an on-chain event.
+/// **Usage**: This function can be called
+/// - directly from the command line to initiate unilateral customer channel closure.
+/// - in response to an on-chain event: the merchant posts an expiry operation. In this case,
+///   the function should be called even if the expiry operation is not yet confirmed.
 async fn close(close: &Close, rng: StdRng, config: self::Config) -> Result<(), anyhow::Error> {
     let database = database(&config)
         .await
@@ -70,27 +72,30 @@ async fn close(close: &Close, rng: StdRng, config: self::Config) -> Result<(), a
 
 /// Claim final balance of the channel.
 ///
-/// **Usage**: this function is called as a response to an on-chain event. It is only called after
-/// the contract claim delay has passed.
+/// **Usage**: this function is called as a response to an on-chain event. It is called
+/// after the contract claim delay has passed.
 #[allow(unused)]
 async fn claim_funds(close: &Close, config: self::Config) -> Result<(), anyhow::Error> {
+    // TODO: assert that the db status is PENDING_CLOSE
+
     // TODO: Call the customer claim entrypoint which will take:
     // - contract ID
-
-    // TODO: update state in db from PENDING to CLOSED
-    // This should only be called once the claim entrypoint operation is confirmed at an
-    // appropriate depth (perhaps in a separate function, called in response to an on-chain
-    // event)
 
     Ok(())
 }
 
-/// React to an on-chain merchant dispute.
+/// Update channel state once close operations are finalized.
+///
+/// **Usage**: this function is called as response to an on-chain event, either:
+/// - a claim operation is confirmed on chain at an appropriate depth.
+/// - a dispute operation is confirmed on chain at an appropriate depth.
 #[allow(unused)]
-async fn process_dispute() -> Result<(), anyhow::Error> {
-    // Update the database to indicate loss of funds.
-    // This should only be updated after the merchant dispute is confirmed at the correct depth.
-    todo!()
+async fn finalize_close(config: self::Config) -> Result<(), anyhow::Error> {
+    // TODO: update status in db from PENDING to CLOSED with the final balances.
+    // - for claim, this will match the PENDING_CLOSE balances
+    // - for dispute, this will show loss of funds - all money to the merchant.
+
+    Ok(())
 }
 
 async fn mutual_close(
@@ -151,7 +156,7 @@ async fn mutual_close(
     // - merchant authorization signature
     // - contract ID
     // - channel ID
-    // abort!() if it fails with error ArbiterRejectedMutualClose.
+    // raise error if it fails with error ArbiterRejectedMutualClose.
     //
     // This function will:
     // - Generate customer authorization EDDSA signature on the operation with the customer's
@@ -222,6 +227,11 @@ async fn zkabacus_close(
     Ok(chan)
 }
 
+/// Try to extract a close message from the database, assuming that the current channel status
+/// holds type $ty. There are four types that can successfully call close.
+/// If the current channel status is closeable, update the channel status to PENDING_CLOSE and
+/// return the close message.
+/// Otherwise, does nothing.
 macro_rules! try_close {
     ($rng:expr, $database:expr, $label:expr, $ty:ty) => {{
         let result = $database
@@ -244,6 +254,8 @@ macro_rules! try_close {
     };};
 }
 
+/// Extract the close message from the saved channel status (including the current state
+/// any stored signatures) and update the channel state to PENDING_CLOSE atomically.
 async fn get_close_message(
     mut rng: StdRng,
     database: &dyn QueryCustomer,
