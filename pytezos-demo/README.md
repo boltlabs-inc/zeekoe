@@ -12,7 +12,9 @@ Also, we require that you clone the [tezos-contract](https://github.com/boltlabs
 
 ```bash
 $ git clone git@github.com:boltlabs-inc/zeekoe.git -b demo
-$ cd zeekoe/pytezos-demo
+$ cd zeekoe/
+$ CARGO_NET_GIT_FETCH_WITH_CLI=true cargo build --features "allow_explicit_certificate_trust"
+$ cd pytezos-demo
 $ git clone git@github.com:boltlabs-inc/tezos-contract.git
 ```
 
