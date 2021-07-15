@@ -306,17 +306,17 @@ fn reconnect_unless<E>(
 /// Determine if a given [`io::ErrorKind`] should be considered a permanent error, or if it should
 /// be retried. If this predicate returns `false`, a retry is executed.
 fn permanent_error_kind(error_kind: &io::ErrorKind) -> bool {
-    match error_kind {
-        io::ErrorKind::NotFound => true,
-        io::ErrorKind::PermissionDenied => true,
-        io::ErrorKind::ConnectionRefused => true,
-        io::ErrorKind::AddrInUse => true,
-        io::ErrorKind::AddrNotAvailable => true,
-        io::ErrorKind::InvalidInput => true,
-        io::ErrorKind::InvalidData => true,
-        io::ErrorKind::Unsupported => true,
-        _ => false,
-    }
+    matches!(
+        error_kind,
+        io::ErrorKind::NotFound
+            | io::ErrorKind::PermissionDenied
+            | io::ErrorKind::ConnectionRefused
+            | io::ErrorKind::AddrInUse
+            | io::ErrorKind::AddrNotAvailable
+            | io::ErrorKind::InvalidInput
+            | io::ErrorKind::InvalidData
+            | io::ErrorKind::Unsupported
+    )
 }
 
 /// Determine if a sending error should be considered permanent.
