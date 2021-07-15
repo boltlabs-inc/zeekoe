@@ -88,13 +88,17 @@ async fn claim_funds(close: &Close, config: self::Config) -> Result<(), anyhow::
 /// Update channel state once close operations are finalized.
 ///
 /// **Usage**: this function is called as response to an on-chain event, either:
-/// - a claim operation is confirmed on chain at an appropriate depth.
+/// - a custClaim operation is confirmed on chain at an appropriate depth.
+/// - a merchClaim operation is confirmed on chain at an appropriate depth
 /// - a dispute operation is confirmed on chain at an appropriate depth.
+///
+/// Note: these functions are separate in the merchant implementation. Maybe they should also be
+/// separate here.
 #[allow(unused)]
 async fn finalize_close(config: self::Config) -> Result<(), anyhow::Error> {
     // TODO: update status in db from PENDING to CLOSED with the final balances.
-    // - for claim, this will match the PENDING_CLOSE balances
-    // - for dispute, this will show loss of funds - all money to the merchant.
+    // - for custClaim, this will match the PENDING_CLOSE balances
+    // - for dispute or merchClaim, this will send all money to the merchant.
 
     Ok(())
 }
@@ -175,7 +179,7 @@ async fn mutual_close(
 /// that the mutual close operation has been applied and has reached required confirmation depth.
 /// It will only be called after a successful execution of [`mutual_close()`].
 #[allow(unused)]
-async fn process_mutual_close_confirmation(
+async fn finalize_mutual_close(
     rng: &mut StdRng,
     config: self::Config,
     label: ChannelName,

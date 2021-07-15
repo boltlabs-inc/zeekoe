@@ -6,7 +6,6 @@ use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng};
 use super::{database, Command};
 use rand::SeedableRng;
 
-use tokio_rustls::rustls::sign::any_supported_type;
 use zeekoe::{
     abort,
     merchant::{cli, config::Service, database::QueryMerchant, server::SessionKey, Chan, Config},
