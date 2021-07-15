@@ -21,6 +21,7 @@ $ git clone git@github.com:boltlabs-inc/tezos-contract.git
 Now we can run the merchant server in off-line mode (while in the `pytezos-demo` directory):
 
 ```bash
+$ ../dev/generate-certificates
 $ ../target/debug/zkchannel merchant --config "../dev/Merchant.toml" run
 serving on: [::1]:2611
 ```
