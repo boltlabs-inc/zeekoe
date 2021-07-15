@@ -17,7 +17,16 @@ def read_json_file(json_file):
 
 def convert_mt_to_tez(balance):
     return str(int(balance) /1000000)
+class colors:
+     PURPLE = '\033[95m'
+     GREEN = '\033[92m'
+     ENDC = '\033[0m'
 
+def print_purple(msg):
+    print(f"{colors.PURPLE}{msg}{colors.ENDC}")
+
+def print_green(msg):
+    print(f"{colors.GREEN}{msg}{colors.ENDC}")
 class FeeTracker:
     def __init__(self):
         self.fees = []
@@ -36,10 +45,11 @@ class FeeTracker:
         pprint(self.fees)
 
 def add_funding(ci, amt):
-    print("Adding funds ({})".format(amt))
-    out = ci.addFunding().with_amount(amt).inject(_async=False)
-    print("addFunding ophash: ", out['hash'])
-    return out
+    print_green(f"Adding funds ({amt})")
+    out = ci.addFunding().with_amount(amt).send(min_confirmations=1)
+    print_purple(f"addFunding ophash: {out.hash()}")
+    opg = pytezos.shell.blocks[-20:].find_operation(out.hash())
+    return opg
 
 def originate(cust_py, init_params, cust_funding, merch_funding):
     # Create initial storage for main zkchannel contract
@@ -76,21 +86,20 @@ def originate(cust_py, init_params, cust_funding, merch_funding):
     'status': 0}
 
     # Originate main zkchannel contract
-    print("Originate main zkChannel contract")
-    out = cust_py.origination(script=main_code.script(initial_storage=initial_storage)).autofill().sign().inject(_async=False)
-    print("Originate zkChannel ophash: ", out['hash'])
+    print_green("Originate main zkChannel contract")
+    out = cust_py.origination(script=main_code.script(initial_storage=initial_storage)).autofill().sign().send(min_confirmations=1)
+    print_purple(f"Originate zkChannel ophash: {out.hash()}")
     # Get address of main zkchannel contract
-    opg = pytezos.shell.blocks[-20:].find_operation(out['hash'])
+    opg = pytezos.shell.blocks[-20:].find_operation(out.hash())
     contract_id = opg['contents'][0]['metadata']['operation_result']['originated_contracts'][0]
-    print("zkChannel contract address: ", contract_id)
-    return out, contract_id
+    return opg, contract_id
 
 def cust_close(ci, cust_close_data):
     # Form cust close storage
     cs = cust_close_data.get("closing_signature")
     sigma1, sigma2 = cs.get("sigma1"), cs.get("sigma2")
     revocation_lock = cust_close_data.get("revocation_lock")
-    # assumes it's already in the mutez
+
     cust_balance = convert_mt_to_tez(cust_close_data.get("customer_balance"))
     merch_balance = convert_mt_to_tez(cust_close_data.get("merchant_balance"))
 
@@ -102,24 +111,26 @@ def cust_close(ci, cust_close_data):
         "s2": sigma2
     }
 
-    print("Broadcasting Cust Close: %s" % close_storage)
-    out = ci.custClose(close_storage).inject(_async=False)
-    print("Cust Close ophash: ", out['hash'])
-    return out
+    print_green("Broadcasting Cust Close")
+    out = ci.custClose(close_storage).send(min_confirmations=1)
+    print_purple(f"Cust Close ophash: {out.hash()}")
+    opg = pytezos.shell.blocks[-20:].find_operation(out.hash())
+    return opg
 
 def merch_dispute(ci, entrypoint, rev_secret):
-    print('Broadcasting {}'.format(entrypoint))
-    cmd = 'ci.{e}(\"{r}\").inject(_async=False)'.format(e=entrypoint, r=rev_secret)
-    out = eval(cmd)
-    print("{} ophash: ".format(entrypoint), out['hash'])
-    return out
+    print_green('Broadcasting {entrypoint}')
+    cmd = 'ci.{e}(\"{r}\").send(min_confirmations=1)'.format(e=entrypoint, r=rev_secret)
+    print_purple(f"{entrypoint} ophash: {out.hash()}")
+    opg = pytezos.shell.blocks[-20:].find_operation(out.hash())
+    return opg
 
 def entrypoint_no_args(ci, entrypoint):
-    print('Broadcasting {}'.format(entrypoint))
-    cmd = 'ci.{}().inject(_async=False)'.format(entrypoint)
+    print_green(f"Broadcasting {entrypoint}")
+    cmd = 'ci.{}().send(min_confirmations=1)'.format(entrypoint)
     out = eval(cmd)
-    print("{} ophash: ".format(entrypoint), out['hash'])
-    return out
+    print_purple(f"{entrypoint} ophash: {out.hash()}")
+    opg = pytezos.shell.blocks[-20:].find_operation(out.hash())
+    return opg
 
 def zkchannel_establish(feetracker, cust_py, merch_py, establish_params):
     '''
@@ -130,7 +141,7 @@ def zkchannel_establish(feetracker, cust_py, merch_py, establish_params):
     merch_funding=establish_json.get("merchant_deposit")
     out, contract_id = originate(cust_py, establish_params, cust_funding, merch_funding)
     feetracker.add_result('originate', out) # feetracker is used to track fees for benchmarking purposes 
-    print("Contract ID: ", contract_id)
+    print_purple(f"Contract ID: {contract_id}")
 
     # Set the contract interfaces for cust
     cust_ci = cust_py.contract(contract_id)
@@ -173,7 +184,8 @@ if __name__ == "__main__":
 
     if args.shell:
         pytezos = pytezos.using(shell=args.shell)
-    print("Connecting to edo2net via: " + args.shell)
+    print("Connecting to " + args.shell)
+
     cust_acc = args.cust
     merch_acc = args.merch
     establish_json_file = args.establish
@@ -194,13 +206,13 @@ if __name__ == "__main__":
     if args.establish:
         try:
             print("Activating cust account")
-            cust_py.activate_account().fill().sign().inject()
+            cust_py.activate_account().fill().sign().send()
         except:
             print("Cust account already activated")
 
         try:
             print("Revealing cust pubkey")
-            out = cust_py.reveal().autofill().sign().inject()
+            out = cust_py.reveal().autofill().sign().send()
         except:
             pass
     cust_pubkey = cust_py.key.public_key()
@@ -208,13 +220,13 @@ if __name__ == "__main__":
     if args.establish:
         try:
             print("Activating merch account")
-            merch_py.activate_account().fill().sign().inject()
+            merch_py.activate_account().fill().sign().send()
         except: 
             print("Merch account already activated")
 
         try:
             print("Revealing merch pubkey")
-            out = merch_py.reveal().autofill().sign().inject()
+            out = merch_py.reveal().autofill().sign().send()
         except:
             pass
     merch_pubkey = merch_py.key.public_key()
@@ -223,7 +235,7 @@ if __name__ == "__main__":
     if args.establish:
         establish_json = read_json_file(establish_json_file)
         contract_id = zkchannel_establish(feetracker, cust_py, merch_py, establish_json)
-        print("Contract ID (confirmed): ", contract_id)
+        print_purple(f"Contract ID (confirmed): {contract_id}")
 
     if args.cust_close:
         cust_close_json = read_json_file(cust_close_json_file)
