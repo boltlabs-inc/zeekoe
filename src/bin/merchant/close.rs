@@ -3,15 +3,12 @@
 //* TODO: handle merchant expiry closes.
 use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng};
 
-use std::sync::Arc;
-
-use super::Command;
+use super::{database, Command};
 use rand::SeedableRng;
 
-use sqlx::SqlitePool;
+use tokio_rustls::rustls::sign::any_supported_type;
 use zeekoe::{
     abort,
-    customer::config::DatabaseLocation,
     merchant::{cli, config::Service, database::QueryMerchant, server::SessionKey, Chan, Config},
     offer_abort, proceed,
     protocol::{self, close, ChannelStatus, Party::Merchant},
@@ -97,9 +94,9 @@ async fn process_customer_close() -> Result<(), anyhow::Error> {
 /// **Usage**: this should be called after receiving a notification that a customer close entrypoint
 /// was posted on chain *and* is confirmed at the required confirmation depth.
 #[allow(unused)]
-async fn process_confirmed_customer_close() -> Result<(), anyhow::Error> {
-    // TODO: If status is PENDING, update database channel status to CLOSED.
-    // Otherwise, do nothing.
+async fn finalize_customer_close() -> Result<(), anyhow::Error> {
+    // TODO: assert that status is PENDING
+    // TODO: update database channel status to CLOSED and set final balances.
 
     todo!()
 }
@@ -109,7 +106,7 @@ async fn process_confirmed_customer_close() -> Result<(), anyhow::Error> {
 /// **Usage**: this should be called after receiving a notification that a merchant dispute
 /// entrypoint operation is confirmed at the required confirmation depth.
 #[allow(unused)]
-async fn process_confirmed_dispute() -> Result<(), anyhow::Error> {
+async fn finalize_dispute() -> Result<(), anyhow::Error> {
     // TODO: assert that status is DISPUTE
     // If so, update database channel status to CLOSED.
     // Update final balances to indicate successful dispute (transfer customer balance to merchant).
@@ -122,7 +119,7 @@ async fn process_confirmed_dispute() -> Result<(), anyhow::Error> {
 // **Usage**: this should be called after receiving a notification that a mutual close operation
 // was posted on chain and confirmed to the required depth.
 #[allow(unused)]
-async fn process_confirmed_mutual_close(
+async fn finalize_mutual_close(
     merchant_config: &MerchantConfig,
     database: &dyn QueryMerchant,
     channel_id: &ChannelId,
@@ -137,6 +134,7 @@ async fn process_confirmed_mutual_close(
         .await
         .context("Failed to update database to indicate channel is closed")?;
 
+    // TODO: also update database to indicate final channel balances.
     Ok(())
 }
 
@@ -187,24 +185,75 @@ async fn zkabacus_close(
 impl Command for cli::Close {
     async fn run(self, config: Config) -> Result<(), anyhow::Error> {
         // Retrieve zkAbacus config from the database
-        // TODO: this is copied from main.rs, should it be a nicer function somewhere?
-        let database: Arc<dyn QueryMerchant> = match config.database {
-            DatabaseLocation::InMemory => Arc::new(SqlitePool::connect("file::memory:").await?),
-            DatabaseLocation::Sqlite(ref uri) => Arc::new(SqlitePool::connect(uri).await?),
-            DatabaseLocation::Postgres(_) => {
-                return Err(anyhow::anyhow!(
-                    "Postgres database support is not yet implemented"
-                ))
-            }
-        };
+        let database = database(&config).await?;
 
         // Either initialize the merchant's config afresh, or get existing config if it exists (it should already exist)
-        let _merchant_config = database
+        let merchant_config = database
             .fetch_or_create_config(&mut StdRng::from_entropy()) // TODO: allow determinism
             .await?;
 
-        // Next steps: parse self options, run close.
-
-        todo!()
+        // Make sure exactly one correct command line option is satisfied.
+        if (self.all && self.channel.is_some()) || (!self.all && self.channel.is_none()) {
+            return Err(anyhow::anyhow!(
+                "Invalid command line option: should specify exactly one of --all or --channel."
+            ));
+        }
+        match self.channel {
+            Some(channel_id) => expiry(&merchant_config, database.as_ref(), &channel_id).await,
+            None => {
+                // TODO: iterate through database; call expiry for every channel.
+                Err(anyhow::anyhow!(
+                    "Closing all channels is not yet implemented."
+                ))
+            }
+        }
     }
+}
+
+/// Initiate close procedures with an expiry transaction.
+///
+/// **Usage**: this is called directly from the command line.
+async fn expiry(
+    _merchant_config: &MerchantConfig,
+    _database: &dyn QueryMerchant,
+    _channel_id: &ChannelId,
+) -> Result<(), anyhow::Error> {
+    // TODO: Update database status to PENDING_CLOSE
+
+    // TODO: call expiry entrypoint, which will take
+    // - contract ID
+    // Raise an error if it fails.
+    //
+    // This function will:
+    // - Generate merchant authorization EDDSA signature on the operation with the merchant's
+    //   Tezos public key.
+    // - Send operation to blockchain
+
+    Ok(())
+}
+
+/// Claim the channel balances.
+///
+/// **Usage**: this is called in response to an on-chain event: when the expiry operation
+/// is confirmed on chain to an appropriate depth _and_ the timelock period has passed without
+/// any other operation being posted to the contract.
+#[allow(unused)]
+async fn claim() {
+    // TODO: Assert database status is PENDING_CLOSE
+
+    // TODO: call merchClaim entrypoint, which will take
+    // - contract ID
+    // Raise an error if it fails.
+    //
+    // This function will transfer all the channel funds to the merchant account.
+}
+
+/// Finalize the channel balances for a merchant-closed channel.
+///
+/// **Usage**: this is called after the claim operation is confirmed on chain to an appropriate
+/// depth.
+#[allow(unused)]
+async fn finalize_close() -> Result<(), anyhow::Error> {
+    // TODO: update database status to CLOSED with the correct balances.
+    Ok(())
 }

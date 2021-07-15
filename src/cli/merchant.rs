@@ -1,5 +1,7 @@
 use {std::path::PathBuf, structopt::StructOpt};
 
+use zkabacus_crypto::ChannelId;
+
 pub use crate::merchant;
 
 #[derive(Debug, StructOpt)]
@@ -45,7 +47,6 @@ pub struct Close {
     #[structopt(long)]
     pub all: bool,
 
-    /// TODO: replace this with a ChannelId or a ChannelIdPrefix of some flavor.
     #[structopt(long)]
-    pub channel: bool,
+    pub channel: Option<ChannelId>,
 }
