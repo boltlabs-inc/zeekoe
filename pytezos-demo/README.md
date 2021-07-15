@@ -49,7 +49,7 @@ Separately, run the pytezos script to originate and fund the contract (we includ
 ```bash
 $ ./run_establish.sh $PWD/tezos-contract 5f0b6efabc46808589acc4ffcfa9e9c8412cc097e45d523463da557d2c675c67.establish.json
 
-Connecting to edo2net via: https://rpc.tzkt.io/edo2net/
+Connecting to https://rpc.tzkt.io/edo2net/
 Activating cust account
 Cust account already activated
 Revealing cust pubkey
@@ -57,12 +57,27 @@ Activating merch account
 Merch account already activated
 Revealing merch pubkey
 Originate main zkChannel contract
-Wait 3 seconds until block BLD2AH1enw1cNXZvdcU6CoYRNqBet7kvAjxgiPzNUkvUZNm5x9o is finalized
+Operation oojmM18VzvzjjbRntB8rCn2bu6jrCFZKMwgBk3x9XpwsB4ZXTEF is still in mempool
+Sleep 0 seconds until block BLD2AH1enw1cNXZvdcU6CoYRNqBet7kvAjxgiPzNUkvUZNm5x9o is superseded
+Waiting for a new block (70 sec timeout)
+Found new block BLD2AH1enw1cNXZvdcU6CoYRNqBet7kvAjxgiPzNUkvUZNm5x9o (0 sec delay)
+Operation opPzA32LGW3Uf7fpiTGKaenRB7ftx4xZr8j4nLoYQGkCNxUDRvg is still in mempool
+Sleep 24 seconds until block BLD2AH1enw1cNXZvdcU6CoYRNqBet7kvAjxgiPzNUkvUZNm5x9o is superseded
+Waiting for a new block (70 sec timeout)
+Found new block BKwq6Mwg9BKADs94BVAQkXDuYpe8S2kfjvLxjffEDgbf5tXrEJ5 (1 sec delay)
+Operation oojmM18VzvzjjbRntB8rCn2bu6jrCFZKMwgBk3x9XpwsB4ZXTEF has left mempool
+Operation oojmM18VzvzjjbRntB8rCn2bu6jrCFZKMwgBk3x9XpwsB4ZXTEF has been included to block BLD2AH1enw1cNXZvdcU6CoYRNqBet7kvAjxgiPzNUkvUZNm5x9o
+Operation oojmM18VzvzjjbRntB8rCn2bu6jrCFZKMwgBk3x9XpwsB4ZXTEF has 1/1 confirmations
 Originate zkChannel ophash:  oojmM18VzvzjjbRntB8rCn2bu6jrCFZKMwgBk3x9XpwsB4ZXTEF
-zkChannel contract address:  KT1Dc9vADeBVGzAEQytUD3H1MtgPUUMRCkNE
 Contract ID: KT1Dc9vADeBVGzAEQytUD3H1MtgPUUMRCkNE
 Adding funds (5000000)
-Wait 18 seconds until block BM4b6PfvaEoyoQ53sSExp43pJZqr9z1w1EWSsooE7jjt4BiwNjG is finalized
+Operation oo8FUY2UpoT1enibdaCphLkvfiLjpAJ3nmrcqWpVQZTmvfy3KbJ is still in mempool
+Sleep 11 seconds until block BM4b6PfvaEoyoQ53sSExp43pJZqr9z1w1EWSsooE7jjt4BiwNjG is superseded
+Waiting for a new block (70 sec timeout)
+Found new block BM4b6PfvaEoyoQ53sSExp43pJZqr9z1w1EWSsooE7jjt4BiwNjG (0 sec delay)
+Operation oo8FUY2UpoT1enibdaCphLkvfiLjpAJ3nmrcqWpVQZTmvfy3KbJ has left mempool
+Operation oo8FUY2UpoT1enibdaCphLkvfiLjpAJ3nmrcqWpVQZTmvfy3KbJ has been included to block BM4b6PfvaEoyoQ53sSExp43pJZqr9z1w1EWSsooE7jjt4BiwNjG
+Operation oo8FUY2UpoT1enibdaCphLkvfiLjpAJ3nmrcqWpVQZTmvfy3KbJ has 1/1 confirmations
 addFunding ophash:  oo8FUY2UpoT1enibdaCphLkvfiLjpAJ3nmrcqWpVQZTmvfy3KbJ
 Contract ID (confirmed):  KT1Dc9vADeBVGzAEQytUD3H1MtgPUUMRCkNE
 [{'originate': {'fee': 10879,
@@ -136,13 +151,25 @@ Now we can use pytezos again to broadcast the closing signature on chain:
 
 ```bash
 $ ./run_close.sh $PWD/tezos-contract/ 5f0b6efabc46808589acc4ffcfa9e9c8412cc097e45d523463da557d2c675c67.close.json KT1Dc9vADeBVGzAEQytUD3H1MtgPUUMRCkNE
-Connecting to edo2net via: https://rpc.tzkt.io/edo2net/
+Connecting to https://rpc.tzkt.io/edo2net/
 Getting handle to the contract: 'KT1Dc9vADeBVGzAEQytUD3H1MtgPUUMRCkNE'
-Broadcasting Cust Close: {'custBal': '4.0', 'merchBal': '1.0', 'revLock': '0x7723ecf912ca83f8c637e7341699dad476ba971506cbf5f6bdaaac313b761c2f', 's1': '0x1189f6f8bb0dc1c6d34abb4a00e9d990d1dd62a019bdbedf95c3d51b9b13bf5a38edb316f990c4142f5cc8ad6a14074a18c36110d08d3543d333f6f9c9fe42dc580774cce2f3d3d3e0eb498486cf2617477929e980faf9dc89be569b2b46e7cf', 's2': '0x101cae6b21d198c69532944c3fd06af167ccc256d3c27c4eca5ac501ce928d8c30467f549e8f4a8c82733943e06bd9290a12c39ddd1dc362b48e77a1fb629f3655a87b6a4d499183fc768717bf18666bb065825b8f06e72c40b68c8307a5e630'}
-Wait 4 seconds until block BMFQrEJyq65tV12RPc8RapqGy2P9jnVZuz1NN35819wge1mejp2 is finalized
+Broadcasting Cust Close
+Operation ooCxsogjMt1gHsdqk22DxCAYHHUcymiBuiMNDdvqbWxHBojDoNh is still in mempool
+Sleep 0 seconds until block BMFQrEJyq65tV12RPc8RapqGy2P9jnVZuz1NN35819wge1mejp2 is superseded
+Waiting for a new block (70 sec timeout)
+Found new block BMFQrEJyq65tV12RPc8RapqGy2P9jnVZuz1NN35819wge1mejp2 (1 sec delay)
+Operation ooCxsogjMt1gHsdqk22DxCAYHHUcymiBuiMNDdvqbWxHBojDoNh has left mempool
+Operation ooCxsogjMt1gHsdqk22DxCAYHHUcymiBuiMNDdvqbWxHBojDoNh has been included to block BMFQrEJyq65tV12RPc8RapqGy2P9jnVZuz1NN35819wge1mejp2
+Operation ooCxsogjMt1gHsdqk22DxCAYHHUcymiBuiMNDdvqbWxHBojDoNh has 1/1 confirmations
 Cust Close ophash:  ooCxsogjMt1gHsdqk22DxCAYHHUcymiBuiMNDdvqbWxHBojDoNh
 Broadcasting custClaim
-Wait 27 seconds until block BLpa6JWTG8V7gFZFTaDqtL92smnHtyE7JHD1EpZpsmS9Kt74NTU is finalized
+Operation oo1D81DCH3FELkxQVRVcbCqswUiUePJBj2DyQLZy7gZ9fWFV2Gz is still in mempool
+Sleep 12 seconds until block BLpa6JWTG8V7gFZFTaDqtL92smnHtyE7JHD1EpZpsmS9Kt74NTU is superseded
+Waiting for a new block (70 sec timeout)
+Found new block BLpa6JWTG8V7gFZFTaDqtL92smnHtyE7JHD1EpZpsmS9Kt74NTU (1 sec delay)
+Operation oo1D81DCH3FELkxQVRVcbCqswUiUePJBj2DyQLZy7gZ9fWFV2Gz has left mempool
+Operation oo1D81DCH3FELkxQVRVcbCqswUiUePJBj2DyQLZy7gZ9fWFV2Gz has been included to block BLpa6JWTG8V7gFZFTaDqtL92smnHtyE7JHD1EpZpsmS9Kt74NTU
+Operation oo1D81DCH3FELkxQVRVcbCqswUiUePJBj2DyQLZy7gZ9fWFV2Gz has 1/1 confirmations
 custClaim ophash:  oo1D81DCH3FELkxQVRVcbCqswUiUePJBj2DyQLZy7gZ9fWFV2Gz
 [{'custClose': {'fee': 4797,
                 'gas': 42668,
