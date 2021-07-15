@@ -30,6 +30,7 @@ CREATE TABLE merchant_channels (
       "customer_funded",
       "merchant_funded",
       "active",
+      "pending_close",
       "closed"
     ))
 );
