@@ -47,7 +47,7 @@ Establishment data written to "5f0b6efabc46808589acc4ffcfa9e9c8412cc097e45d52346
 Separately, run the pytezos script to originate and fund the contract (we include some funded accounts in the tezos-contract repo).
 
 ```bash
-$ ./run_establish.sh $pwd/tezos-contract 5f0b6efabc46808589acc4ffcfa9e9c8412cc097e45d523463da557d2c675c67.establish.json
+$ ./run_establish.sh $PWD/tezos-contract 5f0b6efabc46808589acc4ffcfa9e9c8412cc097e45d523463da557d2c675c67.establish.json
 
 Connecting to edo2net via: https://rpc.tzkt.io/edo2net/
 Activating cust account
@@ -135,7 +135,7 @@ Closing data written to "5f0b6efabc46808589acc4ffcfa9e9c8412cc097e45d523463da557
 Now we can use pytezos again to broadcast the closing signature on chain:
 
 ```bash
-$ ./run_close.sh $pwd/tezos-contract/ 5f0b6efabc46808589acc4ffcfa9e9c8412cc097e45d523463da557d2c675c67.close.json KT1Dc9vADeBVGzAEQytUD3H1MtgPUUMRCkNE
+$ ./run_close.sh $PWD/tezos-contract/ 5f0b6efabc46808589acc4ffcfa9e9c8412cc097e45d523463da557d2c675c67.close.json KT1Dc9vADeBVGzAEQytUD3H1MtgPUUMRCkNE
 Connecting to edo2net via: https://rpc.tzkt.io/edo2net/
 Getting handle to the contract: 'KT1Dc9vADeBVGzAEQytUD3H1MtgPUUMRCkNE'
 Broadcasting Cust Close: {'custBal': '4.0', 'merchBal': '1.0', 'revLock': '0x7723ecf912ca83f8c637e7341699dad476ba971506cbf5f6bdaaac313b761c2f', 's1': '0x1189f6f8bb0dc1c6d34abb4a00e9d990d1dd62a019bdbedf95c3d51b9b13bf5a38edb316f990c4142f5cc8ad6a14074a18c36110d08d3543d333f6f9c9fe42dc580774cce2f3d3d3e0eb498486cf2617477929e980faf9dc89be569b2b46e7cf', 's2': '0x101cae6b21d198c69532944c3fd06af167ccc256d3c27c4eca5ac501ce928d8c30467f549e8f4a8c82733943e06bd9290a12c39ddd1dc362b48e77a1fb629f3655a87b6a4d499183fc768717bf18666bb065825b8f06e72c40b68c8307a5e630'}
