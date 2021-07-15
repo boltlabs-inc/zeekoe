@@ -5,7 +5,7 @@ This demo requires that pytezos has been installed:
 
 ```bash
 $ apt install libsodium-dev libsecp256k1-dev libgmp-dev libssl-dev
-$ pip install pytezos
+$ pip install pytezos==3.2.4
 ```
 
 Also, we require that you clone the [tezos-contract](https://github.com/boltlabs-inc/tezos-contract) repo here:
