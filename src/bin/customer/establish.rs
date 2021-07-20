@@ -140,7 +140,7 @@ impl Command for Establish {
             merchant_ps_public_key: zkabacus_customer_config.merchant_public_key().clone(),
             customer_deposit,
             merchant_deposit,
-            channel_id: channel_id.clone(),
+            channel_id,
             close_scalar_bytes: CLOSE_SCALAR.to_bytes(),
         };
 

@@ -115,6 +115,7 @@ struct Closing {
     revocation_lock: RevocationLock,
 }
 
+#[allow(unused)]
 async fn unilateral_close(
     close: &Close,
     rng: StdRng,
