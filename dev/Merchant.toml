@@ -1,5 +1,11 @@
 database = { sqlite = "merchant.db" }
 
 [[service]]
+address = "::1"
+private_key = "localhost.key"
+certificate = "localhost.crt"
+
+[[service]]
+address = "127.0.0.1"
 private_key = "localhost.key"
 certificate = "localhost.crt"

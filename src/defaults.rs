@@ -2,7 +2,7 @@ use {
     dialectic_reconnect::Backoff,
     directories::ProjectDirs,
     std::{
-        net::{IpAddr, Ipv6Addr},
+        net::{IpAddr, Ipv4Addr},
         path::PathBuf,
         time::Duration,
     },
@@ -37,7 +37,7 @@ pub mod merchant {
     pub use super::shared::*;
 
     pub const fn address() -> IpAddr {
-        IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0x1))
+        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))
     }
 
     pub const CONFIG_FILE: &str = "Merchant.toml";
