@@ -36,34 +36,10 @@ on-chain and off-chain actions).
 
 ## Current project status
 
-This project is currently a technology demonstration. It has not yet been formally audited for
-correctness and is not yet ready for use with currency that holds real value.
-
 In general, the zkChannels protocol and most of the underlying software stack are compatible with
 any blockchain or other escrow arbiter that supports the verification of various blind signature
 constructs. The version of the `zkchannel` application in this repository is specialized to the
 Tezos blockchain. Future work will generalize to other escrow arbiters.
-
-## On-chain integration demo
-
-In this repository ([here](https://github.com/boltlabs-inc/zeekoe/blob/demo/pytezos-demo/README.md)), you will also find a first demonstration of the compatibility of
-the zkChannels protocol with Tezos testnet as implemented by the Zeekoe project. This demo
-illustrates how zkChannels can be used to establish a private channel linked to funds in escrow on
-the Tezos testnet, make several payments on that channel, and close the channel, disbursing the
-final channel balances to the merchant and customer.
-
-At present time of writing, Zeekoe does not fully _internally_ integrate with the Tezos network, but
-our highest priority of development is completing this integration. This demonstration shows that
-the implementation of the zkChannels protocol produces correct outputs which can be used in the
-on-chain zkChannels contract to correctly fulfill the protocol, but it does not yet emit those
-transactions to the blockchain from within the `zkchannel` application itself. Instead, during this
-demo, transactions are separately submitted after off-chain establishment or closing using a script
-based on the PyTezos framework.
-
-A full integration with Tezos testnet, including contract origination, funding, and closing, as
-well as active monitoring for salient events, is targeted for completion soon. This integration will
-use the emerging [`tezedge-client`](https://github.com/tezedge/tezedge-client) for the Tezos RPC
-protocol to interact with the network directly from within the `zkchannel` application.
 
 ## Setting up the project
 
