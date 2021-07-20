@@ -77,7 +77,8 @@ async fn close(close: &Close, rng: StdRng, config: self::Config) -> Result<(), a
 /// confirmation depth.
 #[allow(unused)]
 async fn claim_funds(close: &Close, config: self::Config) -> Result<(), anyhow::Error> {
-    // TODO: assert that the db status is PENDING_CLOSE
+    // TODO: assert that the db status is PENDING_CLOSE,
+    // Update final balances to indicate that the merchant balance has been paid out to the merchant.
 
     // TODO: Call the customer claim entrypoint which will take:
     // - contract ID
@@ -97,8 +98,11 @@ async fn claim_funds(close: &Close, config: self::Config) -> Result<(), anyhow::
 #[allow(unused)]
 async fn finalize_close(config: self::Config) -> Result<(), anyhow::Error> {
     // TODO: update status in db from PENDING to CLOSED with the final balances.
-    // - for custClaim, this will match the PENDING_CLOSE balances
-    // - for dispute or merchClaim, this will send all money to the merchant.
+    // - for custClaim, this will match the PENDING_CLOSE balances (the merchant balance was
+    //   already paid out; here, only the customer final balance needs to be updated)
+    // - for dispute, indicate that the customer balance is paid out to the merchant (the
+    //   merchant balance was already paid out)
+    // - for merchClaim, indicate that all balances are paid out to the merchant.
 
     Ok(())
 }

@@ -72,18 +72,17 @@ async fn process_customer_close() -> Result<(), anyhow::Error> {
     // TODO: Extract revocation lock from notification and atomically
     // - check that it is fresh (e.g. not in the database with a revocation secret),
     // - insert it into the database,
-    // - return whatever else is already associated with the lock.
+    // - retrieve any secrets already associated with the lock.
 
-    // TODO: If the lock already has an associated revocation secret, update channel status to DISPUTE,
-    // filling in the "final balances" in the database.
+    // TODO: if the lock *does not* have a revocation secret, update channel status to PENDING_CLOSE.
+
+    // TODO: If the lock already has an associated revocation secret, update channel status to DISPUTE.
 
     // TODO: If the lock already has an associated revocation secret, call the merchant dispute
     // entrypoint with:
     // - contract id
     // - revocation secret
     // E.g. call the "dispute" function from escrow API.
-
-    // TODO: update channel status to PENDING_CLOSE.
 
     todo!()
 }
@@ -94,8 +93,11 @@ async fn process_customer_close() -> Result<(), anyhow::Error> {
 /// was posted on chain *and* is confirmed at the required confirmation depth.
 #[allow(unused)]
 async fn finalize_customer_close() -> Result<(), anyhow::Error> {
-    // TODO: assert that status is PENDING
-    // TODO: update database channel status to CLOSED and set final balances.
+    // TODO: if database status is PENDING_CLOSE, update database channel status to CLOSED and set
+    // final balances.
+
+    // TODO: if database status is DISPUTE, update merchant final balance to include the merchant
+    // balance. (process_customer_close should have already set the other dispute actions in motion).
 
     todo!()
 }
@@ -237,7 +239,7 @@ async fn expiry(
 /// is confirmed on chain to an appropriate depth _and_ the timelock period has passed without
 /// any other operation being posted to the contract.
 #[allow(unused)]
-async fn claim() {
+async fn claim_funds() {
     // TODO: Assert database status is PENDING_CLOSE
 
     // TODO: call merchClaim entrypoint, which will take
@@ -249,10 +251,11 @@ async fn claim() {
 
 /// Finalize the channel balances for a merchant-closed channel.
 ///
-/// **Usage**: this is called after the claim operation is confirmed on chain to an appropriate
+/// **Usage**: this is called after the merchClaim operation is confirmed on chain to an appropriate
 /// depth.
 #[allow(unused)]
 async fn finalize_close() -> Result<(), anyhow::Error> {
+    // TODO: assert database status is PENDING_CLOSE.
     // TODO: update database status to CLOSED with the correct balances.
     Ok(())
 }
