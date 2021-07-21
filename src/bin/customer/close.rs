@@ -44,8 +44,8 @@ impl Command for Close {
 ///
 /// **Usage**: This function can be called
 /// - directly from the command line to initiate unilateral customer channel closure.
-/// - in response to an on-chain event: the merchant posts an expiry operation. In this case,
-///   the function should be called even if the expiry operation is not yet confirmed.
+/// - in response to an on-chain event: the merchant posts an expiry operation and it is confirmed
+///   on chain at any depth.
 async fn close(close: &Close, rng: StdRng, config: self::Config) -> Result<(), anyhow::Error> {
     let database = database(&config)
         .await
@@ -65,24 +65,55 @@ async fn close(close: &Close, rng: StdRng, config: self::Config) -> Result<(), a
     // This function will:
     // - Generate customer authorization EDDSA signature on the operation with the customer's
     //   Tezos public key.
-    // - Send operation to blockchain
+    // - Send cust close operation to blockchain
+    // - Send merchant payout operation to blockchain
 
     Ok(())
+}
+
+/// Update channel balances at first payout in unilateral close flows.
+///
+/// **Usage**: this function is called in response to an on-chain event. It is called after the
+/// custClose operation is confirmed on chain at an appropriate depth.
+async fn process_confirmed_customer_close() {
+    // TODO: assert that the db status is PENDING_CLOSE,
+    // Indicate that the merchant balance has been paid out to the merchant.
 }
 
 /// Claim final balance of the channel.
 ///
 /// **Usage**: this function is called as a response to an on-chain event. It is only called after
-/// the contract claim delay has passed and the claim entrypoint is confirmed at the required
+/// the contract claim delay has passed *and* the custClose entrypoint is confirmed at the required
 /// confirmation depth.
 #[allow(unused)]
 async fn claim_funds(close: &Close, config: self::Config) -> Result<(), anyhow::Error> {
     // TODO: assert that the db status is PENDING_CLOSE,
-    // Update final balances to indicate that the merchant balance has been paid out to the merchant.
+    // If it is DISPUTE, do nothing.
 
-    // TODO: Call the customer claim entrypoint which will take:
+    // TODO: Otherwise, call the customer claim entrypoint which will take:
     // - contract ID
 
+    Ok(())
+}
+
+/// Update channel to indicate a dispute.
+///
+/// **Usage**: this function is called in response to a merchDispute operation being
+/// confirmed on chain (at any depth).
+#[allow(unused)]
+async fn process_dispute(config: self::Config) -> Result<(), anyhow::Error> {
+    // TODO: update status in db from PENDING_CLOSE to DISPUTE
+    Ok(())
+}
+
+/// Update channel state once a disputed unilateral close flow is finalized.
+///
+/// **Usage**: this function is called in response to a merchDispute operation begin confirmed
+/// on chain to an appropriate depth.
+#[allow(unused)]
+async fn finalize_dispute(config: self::Config) -> Result<(), anyhow::Error> {
+    // TODO: Update status in db from DISPUTE to CLOSED
+    // Indicate that all balances are paid out to the merchant.
     Ok(())
 }
 
@@ -91,18 +122,20 @@ async fn claim_funds(close: &Close, config: self::Config) -> Result<(), anyhow::
 /// **Usage**: this function is called as response to an on-chain event, either:
 /// - a custClaim operation is confirmed on chain at an appropriate depth.
 /// - a merchClaim operation is confirmed on chain at an appropriate depth
-/// - a dispute operation is confirmed on chain at an appropriate depth.
 ///
 /// Note: these functions are separate in the merchant implementation. Maybe they should also be
 /// separate here.
 #[allow(unused)]
 async fn finalize_close(config: self::Config) -> Result<(), anyhow::Error> {
-    // TODO: update status in db from PENDING to CLOSED with the final balances.
-    // - for custClaim, this will match the PENDING_CLOSE balances (the merchant balance was
-    //   already paid out; here, only the customer final balance needs to be updated)
-    // - for dispute, indicate that the customer balance is paid out to the merchant (the
-    //   merchant balance was already paid out)
-    // - for merchClaim, indicate that all balances are paid out to the merchant.
+    // TODO: update status in db from PENDING_CLOSE to CLOSED with the final balances.
+    // - for custClaim, indicate that the customer balance is paid out to the customer
+    //   (the merchant balance was already paid out; final balances will match PENDING_CLOSE)
+    //   This happens in any undisputed, unilateral close flow.
+    //
+    // - for merchClaim, indicate that the customer and merchant balances are paid out
+    //   to the merchant.
+    //   This happens in a merchant unilateral close flow when the customer does not post updated
+    //   channel balances with custClose.
 
     Ok(())
 }

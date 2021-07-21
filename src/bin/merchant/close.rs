@@ -66,7 +66,7 @@ impl Method for Close {
 /// Process a customer close event.
 ///
 /// **Usage**: this should be called after receiving a notification that a customer close entrypoint
-/// was posted on chain. Should not wait for the transaction to be confirmed at the required confirmation depth.
+/// was confirmed on chain at any depth.
 #[allow(unused)]
 async fn process_customer_close() -> Result<(), anyhow::Error> {
     // TODO: Extract revocation lock from notification and atomically
@@ -90,14 +90,14 @@ async fn process_customer_close() -> Result<(), anyhow::Error> {
 /// Process a confirmed customer close event.
 ///
 /// **Usage**: this should be called after receiving a notification that a customer close entrypoint
-/// was posted on chain *and* is confirmed at the required confirmation depth.
+/// is confirmed on chain *at the required confirmation depth*.
 #[allow(unused)]
 async fn finalize_customer_close() -> Result<(), anyhow::Error> {
     // TODO: if database status is PENDING_CLOSE, update database channel status to CLOSED and set
     // final balances.
 
     // TODO: if database status is DISPUTE, update merchant final balance to include the merchant
-    // balance. (process_customer_close should have already set the other dispute actions in motion).
+    // balance.
 
     todo!()
 }
@@ -236,7 +236,7 @@ async fn expiry(
 /// Claim the channel balances.
 ///
 /// **Usage**: this is called in response to an on-chain event: when the expiry operation
-/// is confirmed on chain to an appropriate depth _and_ the timelock period has passed without
+/// is confirmed on chain _and_ the timelock period has passed without
 /// any other operation being posted to the contract.
 #[allow(unused)]
 async fn claim_funds() {
@@ -249,13 +249,15 @@ async fn claim_funds() {
     // This function will transfer all the channel funds to the merchant account.
 }
 
-/// Finalize the channel balances for a merchant-closed channel.
+/// Finalize the channel balances. This is called during a unilateral merchant close flow (in the
+/// case that the customer does not post updated balances).
 ///
 /// **Usage**: this is called after the merchClaim operation is confirmed on chain to an appropriate
 /// depth.
 #[allow(unused)]
 async fn finalize_close() -> Result<(), anyhow::Error> {
     // TODO: assert database status is PENDING_CLOSE.
-    // TODO: update database status to CLOSED with the correct balances.
+    // TODO: update database status to CLOSED. Indicate that all balances are paid out
+    // to the merchant.
     Ok(())
 }
