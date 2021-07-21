@@ -75,6 +75,7 @@ async fn close(close: &Close, rng: StdRng, config: self::Config) -> Result<(), a
 ///
 /// **Usage**: this function is called in response to an on-chain event. It is called after the
 /// custClose operation is confirmed on chain at an appropriate depth.
+#[allow(unused)]
 async fn process_confirmed_customer_close() {
     // TODO: assert that the db status is PENDING_CLOSE,
     // Indicate that the merchant balance has been paid out to the merchant.
