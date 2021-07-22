@@ -1,5 +1,7 @@
 use {std::path::PathBuf, structopt::StructOpt};
 
+use zkabacus_crypto::ChannelId;
+
 pub use crate::merchant;
 
 #[derive(Debug, StructOpt)]
@@ -17,6 +19,7 @@ pub enum Merchant {
     Show(Show),
     Configure(Configure),
     Run(Run),
+    Close(Close),
 }
 
 #[derive(Debug, StructOpt)]
@@ -37,3 +40,13 @@ pub struct Configure {}
 #[derive(Debug, StructOpt)]
 #[non_exhaustive]
 pub struct Run {}
+
+#[derive(Debug, StructOpt)]
+#[non_exhaustive]
+pub struct Close {
+    #[structopt(long)]
+    pub all: bool,
+
+    #[structopt(long)]
+    pub channel: Option<ChannelId>,
+}

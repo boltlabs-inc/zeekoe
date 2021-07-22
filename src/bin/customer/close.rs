@@ -39,13 +39,13 @@ impl Command for Close {
     }
 }
 
-/// Closes the channel on the current balances, either unilaterally or in response to the
-/// merchant posting an expiry to the contract.
+/// Closes the channel on the current balances as part of a unilateral customer or a unilateral
+/// merchant close.
 ///
 /// **Usage**: This function can be called
 /// - directly from the command line to initiate unilateral customer channel closure.
-/// - in response to an on-chain event: the merchant posts an expiry operation. In this case,
-///   the function should be called even if the expiry operation is not yet confirmed.
+/// - in response to a unilateral merchant close: upon receipt of a notification that an
+/// operation calling the expiry entrypoint is confirmed on chain at any depth.
 async fn close(close: &Close, rng: StdRng, config: self::Config) -> Result<(), anyhow::Error> {
     let database = database(&config)
         .await
@@ -63,37 +63,80 @@ async fn close(close: &Close, rng: StdRng, config: self::Config) -> Result<(), a
     // Raise an error if it fails.
     //
     // This function will:
-    // - Generate customer authorization EDDSA signature on the operation with the customer's
+    // - Generate customer authorization EdDSA signature on the operation with the customer's
     //   Tezos public key.
-    // - Send operation to blockchain
+    // - Send custClose entrypoint calling operation to blockchain. This operation results in a
+    //   timelock on the customer's balance and an immediate payout of the merchant balance
 
     Ok(())
 }
 
+/// Update channel balances when merchant receives payout in unilateral close flows.
+///
+/// **Usage**: this function is called when the
+/// custClose entrypoint call/operation is confirmed on chain at an appropriate depth.
+#[allow(unused)]
+async fn process_confirmed_customer_close() {
+    // TODO: assert that the db status is PENDING_CLOSE,
+    // Indicate that the merchant balance has been paid out to the merchant.
+}
+
 /// Claim final balance of the channel.
 ///
-/// **Usage**: this function is called as a response to an on-chain event. It is called
-/// after the contract claim delay has passed.
+/// **Usage**: this function is called when
+/// the contract's customer claim delay has passed *and* the custClose entrypoint call/operation
+/// is confirmed on chain at any depth.
 #[allow(unused)]
 async fn claim_funds(close: &Close, config: self::Config) -> Result<(), anyhow::Error> {
-    // TODO: assert that the db status is PENDING_CLOSE
+    // TODO: assert that the db status is PENDING_CLOSE,
+    // If it is DISPUTE, do nothing.
 
-    // TODO: Call the customer claim entrypoint which will take:
+    // TODO: Otherwise, call the custClaim entrypoint which will take:
     // - contract ID
 
+    Ok(())
+}
+
+/// Update channel to indicate a dispute.
+///
+/// **Usage**: this function is called in response to a merchDispute entrypoint call/operation that is
+/// confirmed on chain at any depth.
+#[allow(unused)]
+async fn process_dispute(config: self::Config) -> Result<(), anyhow::Error> {
+    // TODO: update status in db from PENDING_CLOSE to DISPUTE
+    Ok(())
+}
+
+/// Update channel state once a disputed unilateral close flow is finalized.
+///
+/// **Usage**: this function is called when a merchDispute entrypoint call/operation is confirmed
+/// on chain to the required confirmation depth.
+#[allow(unused)]
+async fn finalize_dispute(config: self::Config) -> Result<(), anyhow::Error> {
+    // TODO: Update status in db from DISPUTE to CLOSED
+    // Indicate that all balances are paid out to the merchant.
     Ok(())
 }
 
 /// Update channel state once close operations are finalized.
 ///
 /// **Usage**: this function is called as response to an on-chain event, either:
-/// - a claim operation is confirmed on chain at an appropriate depth.
-/// - a dispute operation is confirmed on chain at an appropriate depth.
+/// - a custClaim entrypoint call operation is confirmed on chain at the required confirmation depth
+/// - a merchClaim entrypoint call operation is confirmed on chain at the required confirmation depth
+///
+/// Note: these functions are separate in the merchant implementation. Maybe they should also be
+/// separate here.
 #[allow(unused)]
 async fn finalize_close(config: self::Config) -> Result<(), anyhow::Error> {
-    // TODO: update status in db from PENDING to CLOSED with the final balances.
-    // - for claim, this will match the PENDING_CLOSE balances
-    // - for dispute, this will show loss of funds - all money to the merchant.
+    // TODO: update status in db from PENDING_CLOSE to CLOSED with the final balances.
+    // - for custClaim, indicate that the customer balance is paid out to the customer
+    //   (the merchant balance was already paid out; final balances will match PENDING_CLOSE)
+    //   This happens in any undisputed, unilateral close flow.
+    //
+    // - for merchClaim, indicate that the customer and merchant balances are paid out
+    //   to the merchant.
+    //   This happens in a merchant unilateral close flow when the customer does not post current
+    //   channel balances with custClose.
 
     Ok(())
 }
@@ -174,7 +217,7 @@ async fn mutual_close(
 /// that the mutual close operation has been applied and has reached required confirmation depth.
 /// It will only be called after a successful execution of [`mutual_close()`].
 #[allow(unused)]
-async fn process_mutual_close_confirmation(
+async fn finalize_mutual_close(
     rng: &mut StdRng,
     config: self::Config,
     label: ChannelName,

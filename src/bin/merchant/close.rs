@@ -3,9 +3,12 @@
 //* TODO: handle merchant expiry closes.
 use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng};
 
+use super::{database, Command};
+use rand::SeedableRng;
+
 use zeekoe::{
     abort,
-    merchant::{config::Service, database::QueryMerchant, server::SessionKey, Chan},
+    merchant::{cli, config::Service, database::QueryMerchant, server::SessionKey, Chan, Config},
     offer_abort, proceed,
     protocol::{self, close, ChannelStatus, Party::Merchant},
 };
@@ -63,61 +66,64 @@ impl Method for Close {
 /// Process a customer close event.
 ///
 /// **Usage**: this should be called after receiving a notification that a customer close entrypoint
-/// was posted on chain. Should not wait for the transaction to be confirmed at the required confirmation depth.
+/// call is confirmed on chain at any depth.
 #[allow(unused)]
 async fn process_customer_close() -> Result<(), anyhow::Error> {
     // TODO: Extract revocation lock from notification and atomically
     // - check that it is fresh (e.g. not in the database with a revocation secret),
     // - insert it into the database,
-    // - return whatever else is already associated with the lock.
+    // - retrieve any secrets already associated with the lock.
 
-    // TODO: Extract channel balances and fill in "final balance" columns in database.
-    // Note: this might be done atomically with the following status updates.
+    // TODO: if the lock *does not* have a revocation secret, update channel status to
+    // PENDING_CLOSE.
 
-    // TODO: If the lock already has an associated revocation secret, update channel status to DISPUTE
+    // TODO: If the lock already has an associated revocation secret, update channel status
+    // to DISPUTE.
 
-    // TODO: If the lock already has an associated revocation secret, call the merchant dispute
+    // TODO: If the lock has an associated revocation secret, call the merchDispute
     // entrypoint with:
     // - contract id
     // - revocation secret
     // E.g. call the "dispute" function from escrow API.
-
-    // TODO: update channel status to PENDING_CLOSE.
 
     todo!()
 }
 
 /// Process a confirmed customer close event.
 ///
-/// **Usage**: this should be called after receiving a notification that a customer close entrypoint
-/// was posted on chain *and* is confirmed at the required confirmation depth.
+/// **Usage**: this should be called after receiving a notification that a custClose entrypoint
+/// call is confirmed on chain *at the required confirmation depth*.
 #[allow(unused)]
-async fn process_confirmed_customer_close() -> Result<(), anyhow::Error> {
-    // TODO: If status is PENDING, update database channel status to CLOSED.
-    // Otherwise, do nothing.
+async fn finalize_customer_close() -> Result<(), anyhow::Error> {
+    // TODO: if database status is PENDING_CLOSE, update database channel status to CLOSED and set
+    // final balances as specified by the custClose entrypoint call
+
+    // TODO: if database status is DISPUTE, update merchant final balance to include the merchant
+    // balance.
 
     todo!()
 }
 
 /// Process a confirmed merchant dispute event.
 ///
-/// **Usage**: this should be called after receiving a notification that a merchant dispute
-/// entrypoint operation is confirmed at the required confirmation depth.
+/// **Usage**: this should be called after receiving a notification that a merchDispute
+/// entrypoint call/operation is confirmed at the required confirmation depth.
 #[allow(unused)]
-async fn process_confirmed_dispute() -> Result<(), anyhow::Error> {
+async fn finalize_dispute() -> Result<(), anyhow::Error> {
     // TODO: assert that status is DISPUTE
     // If so, update database channel status to CLOSED.
-    // Update final balances to indicate successful dispute (transfer customer balance to merchant).
+    // Update final balances to indicate successful dispute (i.e., that the transfer of the
+    // customer's balance to merchant is confirmed).
 
     todo!()
 }
 
 // Process a mutual close event.
 //
-// **Usage**: this should be called after receiving a notification that a mutual close operation
-// was posted on chain and confirmed to the required depth.
+// **Usage**: this should be called after receiving a notification that a mutualClose entrypoint call/operation
+// is confirmed to the required depth.
 #[allow(unused)]
-async fn process_confirmed_mutual_close(
+async fn finalize_mutual_close(
     merchant_config: &MerchantConfig,
     database: &dyn QueryMerchant,
     channel_id: &ChannelId,
@@ -132,6 +138,7 @@ async fn process_confirmed_mutual_close(
         .await
         .context("Failed to update database to indicate channel is closed")?;
 
+    // TODO: also update database to final channel balances as indicated by the mutualClose entrypoint call.
     Ok(())
 }
 
@@ -176,4 +183,86 @@ async fn zkabacus_close(
         // Abort if the close signature was invalid.
         Verification::Failed => abort!(in chan return close::Error::InvalidCloseStateSignature),
     }
+}
+
+#[async_trait]
+impl Command for cli::Close {
+    async fn run(self, config: Config) -> Result<(), anyhow::Error> {
+        // Retrieve zkAbacus config from the database
+        let database = database(&config).await?;
+
+        // Either initialize the merchant's config afresh, or get existing config if it exists
+        // (it should already exist)
+        let merchant_config = database
+            .fetch_or_create_config(&mut StdRng::from_entropy()) // TODO: allow determinism
+            .await?;
+
+        // Make sure exactly one correct command line option is satisfied.
+        if (self.all && self.channel.is_some()) || (!self.all && self.channel.is_none()) {
+            return Err(anyhow::anyhow!(
+                "Invalid command line option: should specify exactly one of --all or --channel."
+            ));
+        }
+        match self.channel {
+            Some(channel_id) => expiry(&merchant_config, database.as_ref(), &channel_id).await,
+            None => {
+                // TODO: iterate through database; call expiry for every channel.
+                Err(anyhow::anyhow!(
+                    "Closing all channels is not yet implemented."
+                ))
+            }
+        }
+    }
+}
+
+/// Initiate close procedures with an expiry transaction.
+///
+/// **Usage**: this is called directly from the command line.
+async fn expiry(
+    _merchant_config: &MerchantConfig,
+    _database: &dyn QueryMerchant,
+    _channel_id: &ChannelId,
+) -> Result<(), anyhow::Error> {
+    // TODO: Update database status to PENDING_CLOSE
+
+    // TODO: call expiry entrypoint, which will take
+    // - contract ID
+    // Raise an error if it fails.
+    //
+    // This function will:
+    // - Generate merchant authorization EdDSA signature on the operation with the merchant's
+    //   Tezos public key.
+    // - Send operation to blockchain
+
+    Ok(())
+}
+
+/// Claim the channel balances.
+///
+/// **Usage**: this is called in response to an on-chain event: when the expiry operation
+/// is confirmed on chain _and_ the timelock period has passed without
+/// any other operation to the contract (i.e., a custClose entrypoint call) confirmed on chain.
+#[allow(unused)]
+async fn claim_funds() {
+    // TODO: Assert database status is PENDING_CLOSE
+
+    // TODO: call merchClaim entrypoint, which will take
+    // - contract ID
+    // Raise an error if it fails.
+    //
+    // This function will transfer all the channel funds to the merchant account.
+}
+
+/// Finalize the channel balances. This is called during a unilateral merchant close flow if the
+/// customer does not call the custClose entrypoint and the merchClaim entrypoint is confirmed to
+/// the required depth.
+///
+/// **Usage**: this is called after the merchClaim operation is confirmed on chain to an appropriate
+/// depth.
+#[allow(unused)]
+async fn finalize_close() -> Result<(), anyhow::Error> {
+    // TODO: assert database status is PENDING_CLOSE.
+    // TODO: update database status to CLOSED. Indicate that all balances are paid out
+    // to the merchant.
+    Ok(())
 }
