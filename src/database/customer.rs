@@ -3,7 +3,11 @@ use {
     thiserror::Error,
 };
 
-use zkabacus_crypto::{customer::Inactive, CustomerBalance, MerchantBalance};
+use rand::{prelude::StdRng, thread_rng};
+use zkabacus_crypto::{
+    customer::{ClosingMessage, Inactive},
+    CustomerBalance, MerchantBalance,
+};
 
 use crate::customer::{client::ZkChannelAddress, ChannelName};
 
@@ -11,7 +15,7 @@ mod state;
 use self::state::{IsZkAbacusState, StateError};
 
 pub use super::connect_sqlite;
-pub use state::{Closed, ImpossibleState, State, StateName, UnexpectedState};
+pub use state::{Closed, ImpossibleState, State, StateName, UncloseableState, UnexpectedState};
 
 type Result<T> = std::result::Result<T, Error>;
 
@@ -24,6 +28,9 @@ pub enum Error {
     /// The state of the channel does not contain the requested data.
     #[error(transparent)]
     ImpossibleState(#[from] ImpossibleState),
+    /// Attempted to close on a channel that is not in a closeable state.
+    #[error(transparent)]
+    UncloseableState(#[from] UncloseableState),
     /// An underlying error occurred in the database.
     #[error(transparent)]
     Database(#[from] sqlx::Error),
@@ -113,6 +120,12 @@ pub trait QueryCustomer: Send + Sync {
 
     /// Get all the information about all the channels.
     async fn get_channels(&self) -> Result<Vec<ChannelDetails>>;
+
+    /// Update a channel to [`PendingClose`]. Returns an error if the channel is not in a closeable state.
+    async fn mark_closing_channel(
+        &self,
+        label: &ChannelName,
+    ) -> Result<std::result::Result<ClosingMessage, Error>>;
 
     /// **Don't call this function directly:** instead call [`QueryCustomer::with_channel_state`].
     /// Note that this method uses `Box<dyn Any + Send>` to avoid the use of generic parameters,
@@ -303,6 +316,43 @@ impl QueryCustomer for SqlitePool {
         Ok(channels)
     }
 
+    async fn mark_closing_channel(
+        &self,
+        label: &ChannelName,
+    ) -> Result<std::result::Result<ClosingMessage, Error>> {
+        self.with_channel_state_erased(
+            label,
+            Box::new(|state| {
+                let close_message = match state {
+                    State::Inactive(inactive) => Ok(inactive.close(&mut rng)),
+                    State::Originated(inactive) => Ok(inactive.close(&mut rng)),
+                    State::CustomerFunded(inactive) => Ok(inactive.close(&mut rng)),
+                    State::MerchantFunded(inactive) => Ok(inactive.close(&mut rng)),
+                    State::Ready(ready) => Ok(ready.close(&mut rng)),
+                    State::Started(started) => Ok(started.close(&mut rng)),
+                    State::Locked(locked) => Ok(locked.close(&mut rng)),
+                    State::PendingClose(close_message) => Ok(close_message),
+                    // Cannot close on Disputed or Closed channels
+                    _ => Err(Box::new(Err::<Error, StateError>(
+                        UncloseableState {
+                            state: state.state_name(),
+                        }
+                        .into(),
+                    ))),
+                    // Err(Box::new(Err::<E, StateError>(unexpected_state_error)))
+                };
+                match close_message {
+                    Ok(msg) => Ok((State::PendingClose(msg), Box::new(msg))),
+                    Err(e) => Err(e),
+                }
+            }),
+        );
+
+        // TODO: find a way to call this correctly - another function that takes a closure but no
+        // specified expected state?
+        todo!()
+    }
+
     async fn with_channel_state_erased<'a>(
         &'a self,
         label: &ChannelName,
@@ -372,7 +422,7 @@ impl<Q: QueryCustomer + ?Sized> QueryCustomerExt for Q {
             label,
             Box::new(|state| match Starting::from_state(state, expected_state) {
                 Ok(zkabacus_state) => match with_zkabacus_state(zkabacus_state) {
-                    Ok((state, t)) => Ok((state.into(), Box::new(t))),
+                    Ok((state, t)) => Ok((state, Box::new(t))),
                     Err(e) => Err(Box::new(Ok::<E, StateError>(e))),
                 },
                 Err((unexpected_state_error, _)) => {
@@ -399,6 +449,7 @@ impl<Q: QueryCustomer + ?Sized> QueryCustomerExt for Q {
                     // Error returned because the state wasn't right
                     Err(StateError::UnexpectedState(e)) => return Err(e.into()),
                     Err(StateError::ImpossibleState(e)) => return Err(e.into()),
+                    Err(StateError::UncloseableState(e)) => return Err(e.into()),
                 }
             }
         }

@@ -194,7 +194,7 @@ impl IsZkAbacusState for ClosingMessage {
     }
 }
 
-macro_rules! impl_is_zkabacus_state {
+macro_rules! impl_try_from {
     ($name:ident($ty:ident)) => {
         impl IsZkAbacusState for $ty {
             fn from_state(
@@ -229,9 +229,9 @@ macro_rules! impl_is_zkabacus_state {
     };
 }
 
-impl_is_zkabacus_state!(Ready(Ready));
-impl_is_zkabacus_state!(Started(Started));
-impl_is_zkabacus_state!(Locked(Locked));
+impl_try_from!(Ready(Ready));
+impl_try_from!(Started(Started));
+impl_try_from!(Locked(Locked));
 //impl_try_from!(Closed(Closed));
 
 impl State {
@@ -318,6 +318,14 @@ pub struct ImpossibleState {
     zkabacus_data: ZkAbacusDataName,
 }
 
+/// Error thrown when an operation attempts to close on a zkChannels state that is not
+/// closeable.
+#[derive(Debug, Serialize, Deserialize, Error)]
+#[error("A channel with status {state} cannot be closed.")]
+pub struct UncloseableState {
+    state: StateName,
+}
+
 /// An error when manipulating zkChannels states.
 #[derive(Debug, Error)]
 pub enum StateError {
@@ -327,4 +335,7 @@ pub enum StateError {
     /// The state does not contain the requested data.
     #[error(transparent)]
     ImpossibleState(#[from] ImpossibleState),
+    /// Attempted to close on a channel that is not in a closeable state.
+    #[error(transparent)]
+    UncloseableState(#[from] UncloseableState),
 }
