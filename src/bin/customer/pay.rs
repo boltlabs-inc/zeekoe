@@ -10,7 +10,7 @@ use zeekoe::{
     customer::{
         cli::{Pay, Refund},
         client::SessionKey,
-        database::{QueryCustomer, QueryCustomerExt},
+        database::{QueryCustomer, QueryCustomerExt, State, StateName},
         Chan, ChannelName, Config,
     },
     offer_abort, proceed,
@@ -187,12 +187,24 @@ async fn start_payment(
     context: ProofContext,
 ) -> Result<StartMessage, anyhow::Error> {
     database
-        .with_channel_state(label, |ready: Ready| {
-            // Attempt to start the payment using the payment amount and proof context
-            ready
-                .start(rng, payment_amount, &context)
-                .map_err(|(_, e)| e)
-                .context("Failed to generate nonce and pay proof")
+        .with_channel_state(label, StateName::Ready, |ready: Ready| {
+            // Check that the channel is in the Ready state.
+            // If so, attempt to start the payment using the payment amount and proof context
+            let (started, start_message) =
+                ready
+                    .start(rng, payment_amount, &context)
+                    .map_err(|(_, e)| {
+                        anyhow::anyhow!(e).context("Failed to generate nonce and pay proof.")
+                    })?;
+            Ok((State::Started(started), start_message))
+            /*
+            match ready.start(rng, payment_amount, &context) {
+                Ok((started, start_message)) => Ok((State::Started(started), start_message)),
+                Err((ready, e)) => {
+                    Err(anyhow::anyhow!(e).context("Failed to generate nonce and pay proof"))
+                }
+            }
+            */
         })
         .await
         .context("Database error while fetching initial pay state")?
@@ -209,10 +221,17 @@ async fn lock_payment(
     closing_signature: ClosingSignature,
 ) -> Result<Option<LockMessage>, anyhow::Error> {
     database
-        .with_channel_state(label, |started: Started| {
-            // Attempt to lock the state using the closing signature
-            started.lock(closing_signature).map_err(|_| ())
-        })
+        .with_channel_state(
+            label,
+            StateName::Started,
+            |started: Started| -> Result<(State, LockMessage), pay::Error> {
+                // Attempt to lock the state using the closing signature. If it fails, raise a `pay::Error`.
+                let (locked, lock_message) = started
+                    .lock(closing_signature)
+                    .map_err(|_| pay::Error::InvalidClosingSignature)?;
+                Ok((State::Locked(locked), lock_message))
+            },
+        )
         .await
         .map(Result::ok)
         .context("Database error while fetching started pay state")
@@ -229,13 +248,13 @@ async fn unlock_payment(
     pay_token: PayToken,
 ) -> Result<(), anyhow::Error> {
     database
-        .with_channel_state(label, |locked: Locked| {
+        .with_channel_state(label, StateName::Locked, |locked: Locked| {
             // Attempt to unlock the state using the pay token
             let ready = locked.unlock(pay_token).map_err(|_| {
                 // Return an error since the state could not be unlocked
                 pay::Error::InvalidPayToken
             })?;
-            Ok((ready, ()))
+            Ok((State::Ready(ready), ()))
         })
         .await
         .context("Database error while fetching locked pay state")?

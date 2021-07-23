@@ -1,8 +1,5 @@
 use {
-    async_trait::async_trait,
-    futures::stream::StreamExt,
-    sqlx::SqlitePool,
-    std::{any::Any, convert::TryInto},
+    async_trait::async_trait, futures::stream::StreamExt, sqlx::SqlitePool, std::any::Any,
     thiserror::Error,
 };
 
@@ -11,8 +8,10 @@ use zkabacus_crypto::{customer::Inactive, CustomerBalance, MerchantBalance};
 use crate::customer::{client::ZkChannelAddress, ChannelName};
 
 mod state;
+use self::state::{IsZkAbacusState, StateError};
+
 pub use super::connect_sqlite;
-pub use state::{Closed, IsState, State, StateName, UnexpectedState};
+pub use state::{Closed, ImpossibleState, State, StateName, UnexpectedState};
 
 type Result<T> = std::result::Result<T, Error>;
 
@@ -22,6 +21,9 @@ pub enum Error {
     /// The state of the channel was not what was expected.
     #[error(transparent)]
     UnexpectedState(#[from] UnexpectedState),
+    /// The state of the channel does not contain the requested data.
+    #[error(transparent)]
+    ImpossibleState(#[from] ImpossibleState),
     /// An underlying error occurred in the database.
     #[error(transparent)]
     Database(#[from] sqlx::Error),
@@ -63,14 +65,16 @@ pub trait QueryCustomerExt {
     /// closure **should not result in communication with the merchant**.
     async fn with_channel_state<
         'a,
-        Starting: IsState + Send + 'static,
-        Final: Into<State> + Send + 'static,
+        Starting: IsZkAbacusState + Send + 'static,
         T: Send + 'static,
         E: Send + 'static,
     >(
         &'a self,
         label: &ChannelName,
-        with_state: impl for<'s> FnOnce(Starting) -> std::result::Result<(Final, T), E> + Send + 'a,
+        expected_state: StateName,
+        with_zkabacus_state: impl for<'s> FnOnce(Starting) -> std::result::Result<(State, T), E>
+            + Send
+            + 'a,
     ) -> Result<std::result::Result<T, E>>;
 }
 
@@ -195,7 +199,7 @@ impl QueryCustomer for SqlitePool {
             Ok(result?)
         })()
         .await
-        .map_err(|e| (state.try_into().unwrap(), e))
+        .map_err(|e| (Inactive::from_state(state, StateName::Inactive).unwrap(), e))
     }
 
     async fn channel_address(&self, label: &ChannelName) -> Result<ZkChannelAddress> {
@@ -352,24 +356,28 @@ impl QueryCustomer for SqlitePool {
 impl<Q: QueryCustomer + ?Sized> QueryCustomerExt for Q {
     async fn with_channel_state<
         'a,
-        Starting: IsState + Send + 'static,
-        Final: Into<State> + Send + 'static,
+        Starting: IsZkAbacusState + Send + 'static,
         T: Send + 'static,
         E: Send + 'static,
     >(
         &'a self,
         label: &ChannelName,
-        with_state: impl for<'s> FnOnce(Starting) -> std::result::Result<(Final, T), E> + Send + 'a,
+        expected_state: StateName,
+        with_zkabacus_state: impl for<'s> FnOnce(Starting) -> std::result::Result<(State, T), E>
+            + Send
+            + 'a,
     ) -> Result<std::result::Result<T, E>> {
         let result = <Self as QueryCustomer>::with_channel_state_erased(
             self,
             label,
-            Box::new(|state| match state.try_into().map_err(|(e, _)| e) {
-                Ok(state) => match with_state(state) {
+            Box::new(|state| match Starting::from_state(state, expected_state) {
+                Ok(zkabacus_state) => match with_zkabacus_state(zkabacus_state) {
                     Ok((state, t)) => Ok((state.into(), Box::new(t))),
-                    Err(e) => Err(Box::new(Ok::<E, UnexpectedState>(e))),
+                    Err(e) => Err(Box::new(Ok::<E, StateError>(e))),
                 },
-                Err(error) => Err(Box::new(Err::<E, UnexpectedState>(error))),
+                Err((unexpected_state_error, _)) => {
+                    Err(Box::new(Err::<E, StateError>(unexpected_state_error)))
+                }
             }),
         )
         .await?;
@@ -383,13 +391,14 @@ impl<Q: QueryCustomer + ?Sized> QueryCustomerExt for Q {
             }
             // Error, which could be one of...
             Err(error_result) => {
-                let error_result: std::result::Result<E, UnexpectedState> =
+                let error_result: std::result::Result<E, StateError> =
                     *error_result.downcast().unwrap();
                 match error_result {
                     // Error returned by the closure
                     Ok(e) => Ok(Err(e)),
                     // Error returned because the state wasn't right
-                    Err(unexpected_state) => return Err(unexpected_state.into()),
+                    Err(StateError::UnexpectedState(e)) => return Err(e.into()),
+                    Err(StateError::ImpossibleState(e)) => return Err(e.into()),
                 }
             }
         }

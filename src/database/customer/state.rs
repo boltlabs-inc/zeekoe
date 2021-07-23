@@ -1,9 +1,6 @@
 use {
     serde::{Deserialize, Serialize},
-    std::{
-        convert::TryFrom,
-        fmt::{Display, Formatter},
-    },
+    std::fmt::{Display, Formatter},
     thiserror::Error,
 };
 
@@ -19,6 +16,12 @@ use zkabacus_crypto::{
 pub enum State {
     /// Funding approved but channel is not yet active.
     Inactive(Inactive),
+    /// Channel has an originated contract but is not funded.
+    Originated(Inactive),
+    /// Channel has a customer-funded contract but has not received merchant funding.
+    CustomerFunded(Inactive),
+    /// Channel has received all funding but is not yet active.
+    MerchantFunded(Inactive),
     /// Channel is ready for payment.
     Ready(Ready),
     /// Payment has been started, which means customer can close on new or old balance.
@@ -26,8 +29,10 @@ pub enum State {
     /// Customer has revoked their ability to close on the old balance, but has not yet received the
     /// ability to make a new payment.
     Locked(Locked),
-    /// Channel has to be closed because of an error, but has not yet been closed.
+    /// A party has initiated closing, but it is not yet finalized on chain.
     PendingClose(ClosingMessage),
+    /// Merchant has evidence that disputes the close balances proposed by the customer.
+    Dispute(ClosingMessage),
     /// Channel has been closed on chain.
     Closed(Closed),
 }
@@ -73,13 +78,17 @@ impl Closed {
 }
 
 /// The names of the different states a channel can be in (does not contain actual state).
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StateName {
     Inactive,
+    Originated,
+    CustomerFunded,
+    MerchantFunded,
     Ready,
     Started,
     Locked,
     PendingClose,
+    Dispute,
     Closed,
 }
 
@@ -87,48 +96,131 @@ impl Display for StateName {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             StateName::Inactive => "inactive",
+            StateName::Originated => "originated",
+            StateName::CustomerFunded => "customer funded",
+            StateName::MerchantFunded => "merchant funded",
             StateName::Ready => "ready",
             StateName::Started => "started",
             StateName::Locked => "locked",
             StateName::PendingClose => "pending close",
+            StateName::Dispute => "disputed",
             StateName::Closed => "closed",
         }
         .fmt(f)
     }
 }
 
-/// The set of states which have a name.
-pub trait IsState: Into<State> + TryFrom<State, Error = (UnexpectedState, State)> {
-    /// Get the [`StateName`] for this state.
-    fn state_name() -> StateName;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ZkAbacusDataName {
+    Inactive,
+    Ready,
+    Started,
+    Locked,
+    CloseMessage,
 }
 
-macro_rules! impl_is_state {
+impl Display for ZkAbacusDataName {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ZkAbacusDataName::Inactive => "inactive",
+            ZkAbacusDataName::Ready => "ready",
+            ZkAbacusDataName::Started => "started",
+            ZkAbacusDataName::Locked => "locked",
+            ZkAbacusDataName::CloseMessage => "pending close",
+        }
+        .fmt(f)
+    }
+}
+
+/// The set of zkAbacus states that are associated with at least one channel status/state.
+pub trait IsZkAbacusState: Sized {
+    /// Extract Self from State if State has the given StateName.
+    fn from_state(state: State, expected: StateName) -> Result<Self, (StateError, State)>;
+}
+
+impl IsZkAbacusState for Inactive {
+    fn from_state(state: State, expected_state: StateName) -> Result<Self, (StateError, State)> {
+        if state.state_name() != expected_state {
+            return Err((
+                UnexpectedState {
+                    expected_state,
+                    actual_state: state.state_name(),
+                }
+                .into(),
+                state,
+            ));
+        }
+        match state {
+            State::Inactive(inactive) => Ok(inactive),
+            State::Originated(inactive) => Ok(inactive),
+            State::CustomerFunded(inactive) => Ok(inactive),
+            State::MerchantFunded(inactive) => Ok(inactive),
+            _ => Err((
+                ImpossibleState {
+                    zkchannels_state: expected_state,
+                    zkabacus_data: ZkAbacusDataName::Inactive,
+                }
+                .into(),
+                state,
+            )),
+        }
+    }
+}
+
+impl IsZkAbacusState for ClosingMessage {
+    fn from_state(state: State, expected_state: StateName) -> Result<Self, (StateError, State)> {
+        if state.state_name() != expected_state {
+            return Err((
+                UnexpectedState {
+                    expected_state,
+                    actual_state: state.state_name(),
+                }
+                .into(),
+                state,
+            ));
+        }
+        match state {
+            State::PendingClose(closing_message) => Ok(closing_message),
+            State::Dispute(closing_message) => Ok(closing_message),
+            _ => Err((
+                ImpossibleState {
+                    zkchannels_state: expected_state,
+                    zkabacus_data: ZkAbacusDataName::CloseMessage,
+                }
+                .into(),
+                state,
+            )),
+        }
+    }
+}
+
+macro_rules! impl_is_zkabacus_state {
     ($name:ident($ty:ident)) => {
-        impl IsState for $ty {
-            fn state_name() -> StateName {
-                StateName::$name
-            }
-        }
+        impl IsZkAbacusState for $ty {
+            fn from_state(
+                state: State,
+                expected_state: StateName,
+            ) -> Result<Self, (StateError, State)> {
+                if state.state_name() != expected_state {
+                    return Err((
+                        UnexpectedState {
+                            expected_state,
+                            actual_state: state.state_name(),
+                        }
+                        .into(),
+                        state,
+                    ));
+                }
 
-        impl From<$ty> for State {
-            fn from(s: $ty) -> Self {
-                Self::$name(s)
-            }
-        }
-
-        impl TryFrom<State> for $ty {
-            type Error = (UnexpectedState, State);
-
-            fn try_from(state: State) -> Result<Self, (UnexpectedState, State)> {
                 if let State::$name(s) = state {
                     Ok(s)
                 } else {
                     Err((
-                        UnexpectedState {
-                            expected_state: <$ty as IsState>::state_name(),
-                            actual_state: state.state_name(),
-                        },
+                        ImpossibleState {
+                            zkchannels_state: expected_state,
+                            zkabacus_data: ZkAbacusDataName::$ty,
+                        }
+                        .into(),
                         state,
                     ))
                 }
@@ -137,22 +229,24 @@ macro_rules! impl_is_state {
     };
 }
 
-impl_is_state!(Inactive(Inactive));
-impl_is_state!(Ready(Ready));
-impl_is_state!(Started(Started));
-impl_is_state!(Locked(Locked));
-impl_is_state!(PendingClose(ClosingMessage));
-impl_is_state!(Closed(Closed));
+impl_is_zkabacus_state!(Ready(Ready));
+impl_is_zkabacus_state!(Started(Started));
+impl_is_zkabacus_state!(Locked(Locked));
+//impl_try_from!(Closed(Closed));
 
 impl State {
     /// Get the name of this state.
     pub fn state_name(&self) -> StateName {
         match self {
             State::Inactive(_) => StateName::Inactive,
+            State::Originated(_) => StateName::Originated,
+            State::CustomerFunded(_) => StateName::CustomerFunded,
+            State::MerchantFunded(_) => StateName::MerchantFunded,
             State::Ready(_) => StateName::Ready,
             State::Started(_) => StateName::Started,
             State::Locked(_) => StateName::Locked,
             State::PendingClose(_) => StateName::PendingClose,
+            State::Dispute(_) => StateName::Dispute,
             State::Closed(_) => StateName::Closed,
         }
     }
@@ -161,10 +255,14 @@ impl State {
     pub fn customer_balance(&self) -> &CustomerBalance {
         match self {
             State::Inactive(inactive) => inactive.customer_balance(),
+            State::Originated(inactive) => inactive.customer_balance(),
+            State::CustomerFunded(inactive) => inactive.customer_balance(),
+            State::MerchantFunded(inactive) => inactive.customer_balance(),
             State::Ready(ready) => ready.customer_balance(),
             State::Started(started) => started.customer_balance(),
             State::Locked(locked) => locked.customer_balance(),
             State::PendingClose(closing_message) => closing_message.customer_balance(),
+            State::Dispute(closing_message) => closing_message.customer_balance(),
             State::Closed(closed) => closed.customer_balance(),
         }
     }
@@ -172,10 +270,14 @@ impl State {
     pub fn merchant_balance(&self) -> &MerchantBalance {
         match self {
             State::Inactive(inactive) => inactive.merchant_balance(),
+            State::Originated(inactive) => inactive.merchant_balance(),
+            State::CustomerFunded(inactive) => inactive.merchant_balance(),
+            State::MerchantFunded(inactive) => inactive.merchant_balance(),
             State::Ready(ready) => ready.merchant_balance(),
             State::Started(started) => started.merchant_balance(),
             State::Locked(locked) => locked.merchant_balance(),
             State::PendingClose(closing_message) => closing_message.merchant_balance(),
+            State::Dispute(closing_message) => closing_message.merchant_balance(),
             State::Closed(closed) => closed.merchant_balance(),
         }
     }
@@ -183,10 +285,14 @@ impl State {
     pub fn channel_id(&self) -> &ChannelId {
         match self {
             State::Inactive(inactive) => inactive.channel_id(),
+            State::Originated(inactive) => inactive.channel_id(),
+            State::MerchantFunded(inactive) => inactive.channel_id(),
+            State::CustomerFunded(inactive) => inactive.channel_id(),
             State::Ready(ready) => ready.channel_id(),
             State::Started(started) => started.channel_id(),
             State::Locked(locked) => locked.channel_id(),
             State::PendingClose(closing_message) => closing_message.channel_id(),
+            State::Dispute(closing_message) => closing_message.channel_id(),
             State::Closed(closed) => closed.channel_id(),
         }
     }
@@ -199,4 +305,26 @@ impl State {
 pub struct UnexpectedState {
     expected_state: StateName,
     actual_state: StateName,
+}
+
+/// Error thrown when an operation requests a variant of zkAbacus data from a zkChannels state and
+/// that does not contain such data.
+#[derive(Debug, Serialize, Deserialize, Error)]
+#[error(
+    "Channel in {zkchannels_state} state does not contain zkAbacus data of type {zkabacus_data}"
+)]
+pub struct ImpossibleState {
+    zkchannels_state: StateName,
+    zkabacus_data: ZkAbacusDataName,
+}
+
+/// An error when manipulating zkChannels states.
+#[derive(Debug, Error)]
+pub enum StateError {
+    /// The state was not what was expected.
+    #[error(transparent)]
+    UnexpectedState(#[from] UnexpectedState),
+    /// The state does not contain the requested data.
+    #[error(transparent)]
+    ImpossibleState(#[from] ImpossibleState),
 }
