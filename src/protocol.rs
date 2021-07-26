@@ -270,10 +270,14 @@ pub mod close {
     use dialectic::types::Done;
     use zkabacus_crypto::{CloseState, CloseStateSignature};
 
+    use crate::database::customer::StateName;
+
     use super::*;
 
     #[derive(Debug, Clone, Serialize, Deserialize, Error)]
     pub enum Error {
+        #[error("Customer tried to close on an uncloseable state \"{0}\"")]
+        UncloseableState(StateName),
         #[error("Customer sent an invalid signature")]
         InvalidCloseStateSignature,
         #[error("Customer sent a close state that has already been seen")]

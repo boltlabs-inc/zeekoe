@@ -5,18 +5,18 @@
 //* This architecture is flexible; we could alternately allow the customer CLI to wait (hang) until
 //* it receives confirmation (e.g. call `process_mutual_close_confirmation` directly from
 //* `mutual_close()`).
-use {async_trait::async_trait, rand::rngs::StdRng, std::convert::Infallible};
+use {async_trait::async_trait, rand::rngs::StdRng};
 
 use zeekoe::{
     customer::{
         cli::Close,
-        database::{self, Closed, QueryCustomer, QueryCustomerExt},
+        database::{Closed, QueryCustomer, QueryCustomerExt, State, StateName},
         Chan, ChannelName, Config,
     },
     offer_abort, proceed,
     protocol::{close, Party::Customer},
 };
-use zkabacus_crypto::customer::{ClosingMessage, Inactive, Locked, Ready, Started};
+use zkabacus_crypto::customer::ClosingMessage;
 
 use super::{connect, database, Command};
 use anyhow::Context;
@@ -228,16 +228,20 @@ async fn finalize_mutual_close(
 
     // Update database channel status from PendingClose to Closed.
     database
-        .with_channel_state(&label, |pending: ClosingMessage| {
-            Ok((
-                Closed::new(
-                    *pending.channel_id(),
-                    *pending.customer_balance(),
-                    *pending.merchant_balance(),
-                ),
-                (),
-            ))
-        })
+        .with_channel_state(
+            &label,
+            StateName::PendingClose,
+            |pending: ClosingMessage| {
+                Ok((
+                    State::Closed(Closed::new(
+                        *pending.channel_id(),
+                        *pending.customer_balance(),
+                        *pending.merchant_balance(),
+                    )),
+                    (),
+                ))
+            },
+        )
         .await
         .context("Database error while updating status to closed")?
 }
@@ -270,33 +274,6 @@ async fn zkabacus_close(
     Ok(chan)
 }
 
-/// Try to extract a close message from the database, assuming that the current channel status
-/// holds type $ty. There are four types that can successfully call close.
-/// If the current channel status is closeable, update the channel status to PENDING_CLOSE and
-/// return the close message.
-/// Otherwise, does nothing.
-macro_rules! try_close {
-    ($rng:expr, $database:expr, $label:expr, $ty:ty) => {{
-        let result = $database
-            .with_channel_state(&$label, |state: $ty| {
-                let message = state.close(&mut $rng);
-                Ok::<_, Infallible>((message.clone(), message))
-            })
-            .await;
-
-        match result {
-            Ok(message) => match message {
-                Ok(message) => return Ok(message),
-                Err(infallible) => match infallible {},
-            },
-            Err(error) => match error {
-                database::Error::UnexpectedState(_) => {}
-                _ => return Err(error).context("Failed to set state to pending close in database"),
-            },
-        }
-    };};
-}
-
 /// Extract the close message from the saved channel status (including the current state
 /// any stored signatures) and update the channel state to PENDING_CLOSE atomically.
 async fn get_close_message(
@@ -304,30 +281,23 @@ async fn get_close_message(
     database: &dyn QueryCustomer,
     label: &ChannelName,
 ) -> Result<ClosingMessage, anyhow::Error> {
-    try_close!(rng, database, label, Inactive);
-    try_close!(rng, database, label, Ready);
-    try_close!(rng, database, label, Started);
-    try_close!(rng, database, label, Locked);
-
-    let result = database
-        .with_channel_state(&label, |message: ClosingMessage| {
-            Ok::<_, Infallible>((message.clone(), message))
+    database
+        .mark_closing_channel(&label, |state| {
+            let close_message = match state {
+                State::Inactive(inactive) => inactive.close(&mut rng),
+                State::Originated(inactive) => inactive.close(&mut rng),
+                State::CustomerFunded(inactive) => inactive.close(&mut rng),
+                State::MerchantFunded(inactive) => inactive.close(&mut rng),
+                State::Ready(ready) => ready.close(&mut rng),
+                State::Started(started) => started.close(&mut rng),
+                State::Locked(locked) => locked.close(&mut rng),
+                State::PendingClose(close_message) => close_message,
+                // Cannot close on Disputed or Closed channels
+                _ => return Err(close::Error::UncloseableState(state.state_name())),
+            };
+            Ok((State::PendingClose(close_message.clone()), close_message))
         })
-        .await;
-
-    match result {
-        Ok(message) => match message {
-            Ok(message) => return Ok(message),
-            Err(infallible) => match infallible {},
-        },
-        Err(error) => match error {
-            database::Error::UnexpectedState(_) => {}
-            _ => return Err(error).context("Failed to set state to pending close in database"),
-        },
-    }
-
-    return Err(anyhow::anyhow!(
-        "The channel with label \"{}\" was already closed",
-        label
-    ));
+        .await
+        .context("Failed to set state to pending close in database.")?
+        .map_err(|e| e.into())
 }

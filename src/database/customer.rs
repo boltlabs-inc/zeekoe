@@ -3,7 +3,6 @@ use {
     thiserror::Error,
 };
 
-use rand::{prelude::StdRng, thread_rng};
 use zkabacus_crypto::{
     customer::{ClosingMessage, Inactive},
     CustomerBalance, MerchantBalance,
@@ -15,7 +14,7 @@ mod state;
 use self::state::{IsZkAbacusState, StateError};
 
 pub use super::connect_sqlite;
-pub use state::{Closed, ImpossibleState, State, StateName, UncloseableState, UnexpectedState};
+pub use state::{Closed, ImpossibleState, State, StateName, UnexpectedState};
 
 type Result<T> = std::result::Result<T, Error>;
 
@@ -28,9 +27,9 @@ pub enum Error {
     /// The state of the channel does not contain the requested data.
     #[error(transparent)]
     ImpossibleState(#[from] ImpossibleState),
-    /// Attempted to close on a channel that is not in a closeable state.
-    #[error(transparent)]
-    UncloseableState(#[from] UncloseableState),
+    /// Channel could not be transitioned to pending close.
+    #[error("Channel closure could not be initiated - it is likely not in a closeable state.")]
+    CloseFailure,
     /// An underlying error occurred in the database.
     #[error(transparent)]
     Database(#[from] sqlx::Error),
@@ -83,6 +82,22 @@ pub trait QueryCustomerExt {
             + Send
             + 'a,
     ) -> Result<std::result::Result<T, E>>;
+
+    /// Given a channel's unique label, mutate its state in the database using a provided closure,
+    /// that is given the current state and must convert it to [`State::PendingClose`].
+    /// Returns the resulting [`ClosingMessage`] if the database update succeeds, otherwise an
+    /// error. An `Ok(Err(e))` indicates an error raised by the closure; an `Err(e)` indicates a
+    /// database [`Error`].
+    ///
+    /// **Important:** The given closure should be idempotent on the state of the world.
+    /// In particular, the closure **should not result in communication with the merchant**.
+    async fn mark_closing_channel<'a, E: Send + 'static>(
+        &self,
+        label: &ChannelName,
+        close_zkabacus_state: impl for<'s> FnOnce(State) -> std::result::Result<(State, ClosingMessage), E>
+            + Send
+            + 'a,
+    ) -> Result<std::result::Result<ClosingMessage, E>>;
 }
 
 /// Trait-object safe version of [`QueryCustomer`]: use this type in trait objects and implement it
@@ -120,12 +135,6 @@ pub trait QueryCustomer: Send + Sync {
 
     /// Get all the information about all the channels.
     async fn get_channels(&self) -> Result<Vec<ChannelDetails>>;
-
-    /// Update a channel to [`PendingClose`]. Returns an error if the channel is not in a closeable state.
-    async fn mark_closing_channel(
-        &self,
-        label: &ChannelName,
-    ) -> Result<std::result::Result<ClosingMessage, Error>>;
 
     /// **Don't call this function directly:** instead call [`QueryCustomer::with_channel_state`].
     /// Note that this method uses `Box<dyn Any + Send>` to avoid the use of generic parameters,
@@ -316,43 +325,6 @@ impl QueryCustomer for SqlitePool {
         Ok(channels)
     }
 
-    async fn mark_closing_channel(
-        &self,
-        label: &ChannelName,
-    ) -> Result<std::result::Result<ClosingMessage, Error>> {
-        self.with_channel_state_erased(
-            label,
-            Box::new(|state| {
-                let close_message = match state {
-                    State::Inactive(inactive) => Ok(inactive.close(&mut rng)),
-                    State::Originated(inactive) => Ok(inactive.close(&mut rng)),
-                    State::CustomerFunded(inactive) => Ok(inactive.close(&mut rng)),
-                    State::MerchantFunded(inactive) => Ok(inactive.close(&mut rng)),
-                    State::Ready(ready) => Ok(ready.close(&mut rng)),
-                    State::Started(started) => Ok(started.close(&mut rng)),
-                    State::Locked(locked) => Ok(locked.close(&mut rng)),
-                    State::PendingClose(close_message) => Ok(close_message),
-                    // Cannot close on Disputed or Closed channels
-                    _ => Err(Box::new(Err::<Error, StateError>(
-                        UncloseableState {
-                            state: state.state_name(),
-                        }
-                        .into(),
-                    ))),
-                    // Err(Box::new(Err::<E, StateError>(unexpected_state_error)))
-                };
-                match close_message {
-                    Ok(msg) => Ok((State::PendingClose(msg), Box::new(msg))),
-                    Err(e) => Err(e),
-                }
-            }),
-        );
-
-        // TODO: find a way to call this correctly - another function that takes a closure but no
-        // specified expected state?
-        todo!()
-    }
-
     async fn with_channel_state_erased<'a>(
         &'a self,
         label: &ChannelName,
@@ -425,9 +397,7 @@ impl<Q: QueryCustomer + ?Sized> QueryCustomerExt for Q {
                     Ok((state, t)) => Ok((state, Box::new(t))),
                     Err(e) => Err(Box::new(Ok::<E, StateError>(e))),
                 },
-                Err((unexpected_state_error, _)) => {
-                    Err(Box::new(Err::<E, StateError>(unexpected_state_error)))
-                }
+                Err((state_error, _)) => Err(Box::new(Err::<E, StateError>(state_error))),
             }),
         )
         .await?;
@@ -446,10 +416,52 @@ impl<Q: QueryCustomer + ?Sized> QueryCustomerExt for Q {
                 match error_result {
                     // Error returned by the closure
                     Ok(e) => Ok(Err(e)),
-                    // Error returned because the state wasn't right
+                    // Error returned because the state didn't match the one in the database.
                     Err(StateError::UnexpectedState(e)) => return Err(e.into()),
+                    // Error returned because the caller requested an impossible state.
                     Err(StateError::ImpossibleState(e)) => return Err(e.into()),
-                    Err(StateError::UncloseableState(e)) => return Err(e.into()),
+                }
+            }
+        }
+    }
+
+    async fn mark_closing_channel<'a, E: Send + 'static>(
+        &self,
+        label: &ChannelName,
+        with_closeable_state: impl for<'s> FnOnce(State) -> std::result::Result<(State, ClosingMessage), E>
+            + Send
+            + 'a,
+    ) -> Result<std::result::Result<ClosingMessage, E>> {
+        let result = <Self as QueryCustomer>::with_channel_state_erased(
+            self,
+            label,
+            Box::new(|state| match with_closeable_state(state) {
+                Ok((state, t)) => {
+                    // Only allow updates that result in the PendingClose status.
+                    if let State::PendingClose(_) = state {
+                        Ok((state, Box::new(t)))
+                    } else {
+                        Err(Box::new(Err::<E, Error>(Error::CloseFailure)))
+                    }
+                }
+                // Closure function failed somehow
+                Err(e) => Err(Box::new(Ok::<E, Error>(e))),
+            }),
+        )
+        .await?;
+
+        // Cast the result back to its true type
+        match result {
+            // Successful result: get the `ClosingMessage` out of the box.
+            Ok(t) => Ok(Ok(*t.downcast().unwrap())),
+            // Error, which could be one of...
+            Err(error_result) => {
+                let err: Result<E> = *error_result.downcast().unwrap();
+                match err {
+                    // Error returned by the closure
+                    Ok(e) => Ok(Err(e)),
+                    // Error returned because the closure didn't return a PendingClose status.
+                    Err(e) => Err(e),
                 }
             }
         }
