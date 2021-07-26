@@ -8,13 +8,6 @@ use {
     thiserror::Error,
 };
 
-pub type Ping = Session! {
-    loop {
-        send String;
-        recv String;
-    }
-};
-
 type OfferAbort<Next, Err> = Session! {
     offer {
         0 => recv Err,
@@ -62,7 +55,7 @@ macro_rules! abort {
             "Failed to send error after choosing to abort",
         )?;
         $chan.close();
-        return ::anyhow::Context::context(Err(err), "Pay protocol aborted");
+        return ::anyhow::Context::context(Err(err), "Protocol aborted");
     }};
 }
 

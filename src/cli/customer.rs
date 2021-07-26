@@ -8,11 +8,7 @@ use {
     structopt::StructOpt,
 };
 
-use crate::{
-    amount::Amount,
-    customer::{AccountName, ChannelName},
-    transport::client::ZkChannelAddress,
-};
+use crate::{amount::Amount, customer::ChannelName, transport::client::ZkChannelAddress};
 
 #[derive(Debug, StructOpt)]
 #[non_exhaustive]
@@ -57,8 +53,6 @@ pub struct Establish {
     pub deposit: Amount,
     #[structopt(long)]
     pub merchant_deposit: Option<Amount>,
-    #[structopt(long)]
-    pub from: AccountName,
     #[structopt(long)]
     pub label: Option<ChannelName>,
     #[structopt(long)]
