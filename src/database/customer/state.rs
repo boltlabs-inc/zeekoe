@@ -110,28 +110,6 @@ impl Display for StateName {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ZkAbacusDataName {
-    Inactive,
-    Ready,
-    Started,
-    Locked,
-    ClosingMessage,
-}
-
-impl Display for ZkAbacusDataName {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ZkAbacusDataName::Inactive => "inactive",
-            ZkAbacusDataName::Ready => "ready",
-            ZkAbacusDataName::Started => "started",
-            ZkAbacusDataName::Locked => "locked",
-            ZkAbacusDataName::ClosingMessage => "pending close",
-        }
-        .fmt(f)
-    }
-}
-
 /// The set of zkAbacus states that are associated with at least one channel status/state.
 pub trait IsZkAbacusState: Sized {
     /// Extract Self from State if State has the given StateName.
@@ -163,7 +141,7 @@ macro_rules! impl_try_from {
                     _ => Err((
                         ImpossibleState {
                             zkchannels_state: expected_state,
-                            zkabacus_data: ZkAbacusDataName::$ty,
+                            zkabacus_data: std::any::type_name::<$ty>(),
                         }
                         .into(),
                         state,
@@ -270,7 +248,7 @@ pub struct UnexpectedState {
 )]
 pub struct ImpossibleState {
     zkchannels_state: StateName,
-    zkabacus_data: ZkAbacusDataName,
+    zkabacus_data: &'static str,
 }
 
 /// An error when manipulating zkChannels states.
