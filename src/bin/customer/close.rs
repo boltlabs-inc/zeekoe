@@ -181,17 +181,12 @@ async fn unilateral_close(
         channel_id: *close_message.channel_id(),
     };
 
-    // Write the closing message to disk
-    let close_json_path = PathBuf::from(format!(
-        "{}.close.json",
-        hex::encode(closing.channel_id.to_bytes())
-    ));
-    let mut close_file = File::create(&close_json_path)
-        .with_context(|| format!("Could not open file for writing: {:?}", &close_json_path))?;
-    serde_json::to_writer(&mut close_file, &closing)
-        .with_context(|| format!("Could not write close data to file: {:?}", &close_json_path))?;
-
-    eprintln!("Closing data written to {:?}", &close_json_path);
+    if close.off_chain {
+        // Write the closing message to disk
+        write_close_json(&closing)?;
+    } else {
+        // TODO: Perform a close on chain.
+    }
 
     // Update database to closed state
     match database
@@ -403,4 +398,18 @@ async fn get_close_message(
         "The channel with label \"{}\" was already closed",
         label
     ));
+}
+
+fn write_close_json(closing: &Closing) -> Result<(), anyhow::Error> {
+    let close_json_path = PathBuf::from(format!(
+        "{}.close.json",
+        hex::encode(closing.channel_id.to_bytes())
+    ));
+    let mut close_file = File::create(&close_json_path)
+        .with_context(|| format!("Could not open file for writing: {:?}", &close_json_path))?;
+    serde_json::to_writer(&mut close_file, &closing)
+        .with_context(|| format!("Could not write close data to file: {:?}", &close_json_path))?;
+
+    eprintln!("Closing data written to {:?}", &close_json_path);
+    Ok(())
 }

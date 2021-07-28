@@ -57,6 +57,8 @@ pub struct Establish {
     pub label: Option<ChannelName>,
     #[structopt(long)]
     pub note: Option<Note>,
+    #[structopt(long)]
+    pub off_chain: bool,
 }
 
 #[derive(Debug, StructOpt)]
@@ -120,6 +122,8 @@ pub struct Close {
     pub label: ChannelName,
     #[structopt(long)]
     pub force: bool,
+    #[structopt(long)]
+    pub off_chain: bool,
 }
 
 /// An argument specified on the command line which may be a string literal, or the special string
