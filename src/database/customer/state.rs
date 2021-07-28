@@ -116,7 +116,7 @@ pub enum ZkAbacusDataName {
     Ready,
     Started,
     Locked,
-    CloseMessage,
+    ClosingMessage,
 }
 
 impl Display for ZkAbacusDataName {
@@ -126,7 +126,7 @@ impl Display for ZkAbacusDataName {
             ZkAbacusDataName::Ready => "ready",
             ZkAbacusDataName::Started => "started",
             ZkAbacusDataName::Locked => "locked",
-            ZkAbacusDataName::CloseMessage => "pending close",
+            ZkAbacusDataName::ClosingMessage => "pending close",
         }
         .fmt(f)
     }
@@ -138,64 +138,8 @@ pub trait IsZkAbacusState: Sized {
     fn from_state(state: State, expected: StateName) -> Result<Self, (StateError, State)>;
 }
 
-impl IsZkAbacusState for Inactive {
-    fn from_state(state: State, expected_state: StateName) -> Result<Self, (StateError, State)> {
-        if state.state_name() != expected_state {
-            return Err((
-                UnexpectedState {
-                    expected_state,
-                    actual_state: state.state_name(),
-                }
-                .into(),
-                state,
-            ));
-        }
-        match state {
-            State::Inactive(inactive) => Ok(inactive),
-            State::Originated(inactive) => Ok(inactive),
-            State::CustomerFunded(inactive) => Ok(inactive),
-            State::MerchantFunded(inactive) => Ok(inactive),
-            _ => Err((
-                ImpossibleState {
-                    zkchannels_state: expected_state,
-                    zkabacus_data: ZkAbacusDataName::Inactive,
-                }
-                .into(),
-                state,
-            )),
-        }
-    }
-}
-
-impl IsZkAbacusState for ClosingMessage {
-    fn from_state(state: State, expected_state: StateName) -> Result<Self, (StateError, State)> {
-        if state.state_name() != expected_state {
-            return Err((
-                UnexpectedState {
-                    expected_state,
-                    actual_state: state.state_name(),
-                }
-                .into(),
-                state,
-            ));
-        }
-        match state {
-            State::PendingClose(closing_message) => Ok(closing_message),
-            State::Dispute(closing_message) => Ok(closing_message),
-            _ => Err((
-                ImpossibleState {
-                    zkchannels_state: expected_state,
-                    zkabacus_data: ZkAbacusDataName::CloseMessage,
-                }
-                .into(),
-                state,
-            )),
-        }
-    }
-}
-
 macro_rules! impl_try_from {
-    ($name:ident($ty:ident)) => {
+    ($ty:ident, [$($case:path),+]) => {
         impl IsZkAbacusState for $ty {
             fn from_state(
                 state: State,
@@ -212,10 +156,11 @@ macro_rules! impl_try_from {
                     ));
                 }
 
-                if let State::$name(s) = state {
-                    Ok(s)
-                } else {
-                    Err((
+                match state {
+                    $(
+                        $case(inner) => Ok(inner),
+                    )*
+                    _ => Err((
                         ImpossibleState {
                             zkchannels_state: expected_state,
                             zkabacus_data: ZkAbacusDataName::$ty,
@@ -229,9 +174,20 @@ macro_rules! impl_try_from {
     };
 }
 
-impl_try_from!(Ready(Ready));
-impl_try_from!(Started(Started));
-impl_try_from!(Locked(Locked));
+impl_try_from!(Ready, [State::Ready]);
+impl_try_from!(Started, [State::Started]);
+impl_try_from!(Locked, [State::Locked]);
+impl_try_from!(ClosingMessage, [State::PendingClose, State::Dispute]);
+
+impl_try_from!(
+    Inactive,
+    [
+        State::Inactive,
+        State::Originated,
+        State::CustomerFunded,
+        State::MerchantFunded
+    ]
+);
 
 impl State {
     /// Get the name of this state.
