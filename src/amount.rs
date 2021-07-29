@@ -9,7 +9,7 @@ use {
     thiserror::Error,
 };
 
-pub use supported::*;
+                         pub use supported::*;
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Amount {
@@ -45,7 +45,7 @@ impl Display for Amount {
 
 impl Amount {
     /// Convert this [`Amount`] into a unitless signed amount of the smallest denomination of its
-    /// currency, or fail if it is not representable as such.
+    ///                                                                                                                                                 currency, or fail if it is not representable as such.
     pub fn try_into_minor_units(&self) -> Option<i64> {
         // The amount of money, as a `Decimal` in *major* units (e.g. 1 USD = 1.00)
         let amount: &Decimal = self.money.amount();
