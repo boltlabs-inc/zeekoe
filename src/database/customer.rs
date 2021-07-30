@@ -103,7 +103,7 @@ pub trait QueryCustomerExt {
     ///
     /// **Important:** The given closure should be idempotent on the state of the world.
     /// In particular, the closure **should not result in communication with the merchant**.
-    async fn mark_closing_channel<'a, E: Send + 'static>(
+    async fn with_closeable_channel<'a, E: Send + 'static>(
         &self,
         channel_name: &ChannelName,
         close_zkabacus_state: impl for<'s> FnOnce(State) -> std::result::Result<(State, ClosingMessage), E>
@@ -455,7 +455,7 @@ impl<Q: QueryCustomer + ?Sized> QueryCustomerExt for Q {
         }
     }
 
-    async fn mark_closing_channel<'a, E: Send + 'static>(
+    async fn with_closeable_channel<'a, E: Send + 'static>(
         &self,
         channel_name: &ChannelName,
         with_closeable_state: impl for<'s> FnOnce(State) -> std::result::Result<(State, ClosingMessage), E>
