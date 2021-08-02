@@ -167,25 +167,35 @@ impl Command for Establish {
         .await
         .context("Failed to initialize the channel")?;
 
-        // TODO: initialize contract on-chain via escrow agent (this should return a stream of
-        // updates to the contract)
+        if !self.off_chain {
+            // TODO: initialize contract on-chain via escrow agent (this should return a stream of
+            // updates to the contract)
 
-        // TODO: fund contract via escrow agent
+            // TODO: fund contract via escrow agent
+        }
 
         // TODO: send contract id to merchant (possibly also send block height, check spec)
 
         // Allow the merchant to indicate whether it funded the channel
         offer_abort!(in chan as Customer);
 
-        // TODO: if merchant contribution was non-zero, check that merchant funding was provided
-        // within a configurable timeout and to the desired block depth and that the status of the
-        // contract is locked: if not, recommend unilateral close
+        if !self.off_chain {
+            // TODO: if merchant contribution was non-zero, check that merchant funding was provided
+            // within a configurable timeout and to the desired block depth and that the status of the
+            // contract is locked: if not, recommend unilateral close
+        }
+
         let merchant_funding_successful: bool = true; // TODO: query tezos for merchant funding
 
         if !merchant_funding_successful {
             abort!(in chan return establish::Error::FailedMerchantFunding);
         }
         proceed!(in chan);
+
+        if self.off_chain {
+            // Write the establishment information to disk
+            write_establish_json(&establishment)?;
+        }
 
         // Run zkAbacus.Activate
         zkabacus_activate(database.as_ref(), &actual_label, chan)
@@ -197,26 +207,6 @@ impl Command for Establish {
             "Successfully established new channel with label \"{}\"",
             actual_label
         );
-
-        // Write the establishment information to disk
-        let establish_json_path = PathBuf::from(format!(
-            "{}.establish.json",
-            hex::encode(establishment.channel_id.to_bytes())
-        ));
-        let mut establish_file = File::create(&establish_json_path).with_context(|| {
-            format!(
-                "Could not open file for writing: {:?}",
-                &establish_json_path
-            )
-        })?;
-        serde_json::to_writer(&mut establish_file, &establishment).with_context(|| {
-            format!(
-                "Could not write establishment data to file: {:?}",
-                &establish_json_path
-            )
-        })?;
-
-        eprintln!("Establishment data written to {:?}", &establish_json_path);
 
         Ok(())
     }
@@ -404,4 +394,28 @@ async fn activate_local(
             Ok((State::Ready(ready), ()))
         })
         .await?
+}
+
+/// Write the establish_json if performing operations off-chain.
+fn write_establish_json(establishment: &Establishment) -> Result<(), anyhow::Error> {
+    // Write the establishment information to disk
+    let establish_json_path = PathBuf::from(format!(
+        "{}.establish.json",
+        hex::encode(establishment.channel_id.to_bytes())
+    ));
+    let mut establish_file = File::create(&establish_json_path).with_context(|| {
+        format!(
+            "Could not open file for writing: {:?}",
+            &establish_json_path
+        )
+    })?;
+    serde_json::to_writer(&mut establish_file, &establishment).with_context(|| {
+        format!(
+            "Could not write establishment data to file: {:?}",
+            &establish_json_path
+        )
+    })?;
+
+    eprintln!("Establishment data written to {:?}", &establish_json_path);
+    Ok(())
 }
