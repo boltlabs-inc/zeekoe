@@ -5,7 +5,10 @@ use {
 };
 
 use zkabacus_crypto::{
-    customer::{ClosingMessage, Inactive, Locked, Ready, Started},
+    customer::{
+        ClosingMessage, Inactive as ZkAbacusInactive, Locked as ZkAbacusLocked,
+        Ready as ZkAbacusReady, Started as ZkAbacusStarted,
+    },
     impl_sqlx_for_bincode_ty, ChannelId, CustomerBalance, MerchantBalance,
 };
 
@@ -15,66 +18,73 @@ use zkabacus_crypto::{
 #[derive(Debug, Serialize, Deserialize)]
 pub enum State {
     /// Funding approved but channel is not yet active.
-    Inactive(Inactive),
+    Inactive(ZkAbacusInactive),
     /// Channel has an originated contract but is not funded.
-    Originated(Inactive),
+    Originated(ZkAbacusInactive),
     /// Channel has a customer-funded contract but has not received merchant funding.
-    CustomerFunded(Inactive),
+    CustomerFunded(ZkAbacusInactive),
     /// Channel has received all funding but is not yet active.
-    MerchantFunded(Inactive),
+    MerchantFunded(ZkAbacusInactive),
     /// Channel is ready for payment.
-    Ready(Ready),
+    Ready(ZkAbacusReady),
     /// Payment has been started, which means customer can close on new or old balance.
-    Started(Started),
+    Started(ZkAbacusStarted),
     /// Customer has revoked their ability to close on the old balance, but has not yet received the
     /// ability to make a new payment.
-    Locked(Locked),
+    Locked(ZkAbacusLocked),
     /// A party has initiated closing, but it is not yet finalized on chain.
     PendingClose(ClosingMessage),
     /// Merchant has evidence that disputes the close balances proposed by the customer.
     Dispute(ClosingMessage),
     /// Channel has been closed on chain.
-    Closed(Closed),
+    Closed(ClosingMessage),
 }
 
 impl_sqlx_for_bincode_ty!(State);
 
-/// The final balances of a channel closed on chain.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Closed {
-    channel_id: ChannelId,
-    customer_balance: CustomerBalance,
-    merchant_balance: MerchantBalance,
+trait ZkChannelState {
+    type ZkAbacusState: IsZkAbacusState;
 }
 
-impl Closed {
-    /// Create a new [`Closed`] state given balances.
-    pub fn new(
-        channel_id: ChannelId,
-        customer_balance: CustomerBalance,
-        merchant_balance: MerchantBalance,
-    ) -> Self {
-        Closed {
-            channel_id,
-            customer_balance,
-            merchant_balance,
-        }
-    }
-
-    /// Get the final [`CustomerBalance`] for this closed channel state.
-    pub fn customer_balance(&self) -> &CustomerBalance {
-        &self.customer_balance
-    }
-
-    /// Get the final [`MerchantBalance`] for this closed channel state.
-    pub fn merchant_balance(&self) -> &MerchantBalance {
-        &self.merchant_balance
-    }
-
-    /// Get the [`ChannelId`] for this closed channel state.
-    pub fn channel_id(&self) -> &ChannelId {
-        &self.channel_id
-    }
+struct Inactive;
+impl ZkChannelState for Inactive {
+    type ZkAbacusState = ZkAbacusInactive;
+}
+struct Originated;
+impl ZkChannelState for Originated {
+    type ZkAbacusState = ZkAbacusInactive;
+}
+struct CustomerFunded;
+impl ZkChannelState for CustomerFunded {
+    type ZkAbacusState = ZkAbacusInactive;
+}
+struct MerchantFunded;
+impl ZkChannelState for MerchantFunded {
+    type ZkAbacusState = ZkAbacusInactive;
+}
+struct Ready;
+impl ZkChannelState for Ready {
+    type ZkAbacusState = ZkAbacusReady;
+}
+struct Started;
+impl ZkChannelState for Started {
+    type ZkAbacusState = ZkAbacusStarted;
+}
+struct Locked;
+impl ZkChannelState for Locked {
+    type ZkAbacusState = ZkAbacusLocked;
+}
+struct PendingClose;
+impl ZkChannelState for PendingClose {
+    type ZkAbacusState = ClosingMessage;
+}
+struct Dispute;
+impl ZkChannelState for Dispute {
+    type ZkAbacusState = ClosingMessage;
+}
+struct Closed;
+impl ZkChannelState for Closed {
+    type ZkAbacusState = ClosingMessage;
 }
 
 /// The names of the different states a channel can be in (does not contain actual state).
@@ -152,13 +162,16 @@ macro_rules! impl_try_from {
     };
 }
 
-impl_try_from!(Ready, [State::Ready]);
-impl_try_from!(Started, [State::Started]);
-impl_try_from!(Locked, [State::Locked]);
-impl_try_from!(ClosingMessage, [State::PendingClose, State::Dispute]);
+impl_try_from!(ZkAbacusReady, [State::Ready]);
+impl_try_from!(ZkAbacusStarted, [State::Started]);
+impl_try_from!(ZkAbacusLocked, [State::Locked]);
+impl_try_from!(
+    ClosingMessage,
+    [State::PendingClose, State::Dispute, State::Closed]
+);
 
 impl_try_from!(
-    Inactive,
+    ZkAbacusInactive,
     [
         State::Inactive,
         State::Originated,

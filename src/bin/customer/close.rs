@@ -15,7 +15,7 @@ use {
 use zeekoe::{
     customer::{
         cli::Close,
-        database::{Closed, QueryCustomer, QueryCustomerExt, State, StateName},
+        database::{QueryCustomer, QueryCustomerExt, State, StateName},
         Chan, ChannelName, Config,
     },
     offer_abort, proceed,
@@ -193,16 +193,7 @@ async fn unilateral_close(
         .with_channel_state(
             &close.label,
             StateName::PendingClose,
-            |pending: ClosingMessage| -> Result<_, Infallible> {
-                Ok((
-                    State::Closed(Closed::new(
-                        *pending.channel_id(),
-                        *pending.customer_balance(),
-                        *pending.merchant_balance(),
-                    )),
-                    (),
-                ))
-            },
+            |pending: ClosingMessage| -> Result<_, Infallible> { Ok((State::Closed(pending), ())) },
         )
         .await
         .context("Could not update channel state to closed")?
@@ -304,16 +295,7 @@ async fn finalize_mutual_close(
         .with_channel_state(
             &label,
             StateName::PendingClose,
-            |pending: ClosingMessage| {
-                Ok((
-                    State::Closed(Closed::new(
-                        *pending.channel_id(),
-                        *pending.customer_balance(),
-                        *pending.merchant_balance(),
-                    )),
-                    (),
-                ))
-            },
+            |pending: ClosingMessage| Ok((State::Closed(pending), ())),
         )
         .await
         .context("Database error while updating status to closed")?

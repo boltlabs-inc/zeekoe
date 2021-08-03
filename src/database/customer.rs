@@ -14,7 +14,7 @@ mod state;
 use self::state::{IsZkAbacusState, StateError};
 
 pub use super::connect_sqlite;
-pub use state::{Closed, ImpossibleState, State, StateName, UnexpectedState};
+pub use state::{ImpossibleState, State, StateName, UnexpectedState};
 
 type Result<T> = std::result::Result<T, Error>;
 
