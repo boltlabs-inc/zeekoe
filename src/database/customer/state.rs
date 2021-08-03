@@ -42,49 +42,91 @@ pub enum State {
 
 impl_sqlx_for_bincode_ty!(State);
 
-trait ZkChannelState {
-    type ZkAbacusState: IsZkAbacusState;
-}
+pub mod zkchannels_state {
+    use super::{IsZkAbacusState, State, StateName, UnexpectedState};
+    use zkabacus_crypto::customer::{
+        ClosingMessage, Inactive as ZkAbacusInactive, Locked as ZkAbacusLocked,
+        Ready as ZkAbacusReady, Started as ZkAbacusStarted,
+    };
 
-struct Inactive;
-impl ZkChannelState for Inactive {
-    type ZkAbacusState = ZkAbacusInactive;
-}
-struct Originated;
-impl ZkChannelState for Originated {
-    type ZkAbacusState = ZkAbacusInactive;
-}
-struct CustomerFunded;
-impl ZkChannelState for CustomerFunded {
-    type ZkAbacusState = ZkAbacusInactive;
-}
-struct MerchantFunded;
-impl ZkChannelState for MerchantFunded {
-    type ZkAbacusState = ZkAbacusInactive;
-}
-struct Ready;
-impl ZkChannelState for Ready {
-    type ZkAbacusState = ZkAbacusReady;
-}
-struct Started;
-impl ZkChannelState for Started {
-    type ZkAbacusState = ZkAbacusStarted;
-}
-struct Locked;
-impl ZkChannelState for Locked {
-    type ZkAbacusState = ZkAbacusLocked;
-}
-struct PendingClose;
-impl ZkChannelState for PendingClose {
-    type ZkAbacusState = ClosingMessage;
-}
-struct Dispute;
-impl ZkChannelState for Dispute {
-    type ZkAbacusState = ClosingMessage;
-}
-struct Closed;
-impl ZkChannelState for Closed {
-    type ZkAbacusState = ClosingMessage;
+    macro_rules! impl_zkchannel_state {
+        ($state:ident, $zkabacus_state:ident, $state_enum:path, $name:path) => {
+            impl ZkChannelState for $state {
+                type ZkAbacusState = $zkabacus_state;
+
+                fn to_zkabacus_state(
+                    channel_state: State,
+                ) -> Result<Self::ZkAbacusState, UnexpectedState> {
+                    match channel_state {
+                        $state_enum(inner) => Ok(inner),
+                        wrong_state => Err(UnexpectedState {
+                            expected_state: $name,
+                            actual_state: wrong_state.state_name(),
+                        }),
+                    }
+                }
+            }
+        };
+    }
+    pub trait ZkChannelState {
+        type ZkAbacusState: IsZkAbacusState;
+        fn to_zkabacus_state(channel_state: State) -> Result<Self::ZkAbacusState, UnexpectedState>;
+    }
+
+    pub struct Inactive;
+    impl_zkchannel_state!(
+        Inactive,
+        ZkAbacusInactive,
+        State::Inactive,
+        StateName::Inactive
+    );
+
+    pub struct Originated;
+    impl_zkchannel_state!(
+        Originated,
+        ZkAbacusInactive,
+        State::Originated,
+        StateName::Originated
+    );
+
+    pub struct CustomerFunded;
+    impl_zkchannel_state!(
+        CustomerFunded,
+        ZkAbacusInactive,
+        State::CustomerFunded,
+        StateName::CustomerFunded
+    );
+
+    pub struct MerchantFunded;
+    impl_zkchannel_state!(
+        MerchantFunded,
+        ZkAbacusInactive,
+        State::MerchantFunded,
+        StateName::MerchantFunded
+    );
+
+    pub struct Ready;
+    impl_zkchannel_state!(Ready, ZkAbacusReady, State::Ready, StateName::Ready);
+
+    pub struct Started;
+    impl_zkchannel_state!(Started, ZkAbacusStarted, State::Started, StateName::Started);
+
+    pub struct Locked;
+    impl_zkchannel_state!(Locked, ZkAbacusLocked, State::Locked, StateName::Locked);
+
+    pub struct PendingClose;
+    impl_zkchannel_state!(
+        PendingClose,
+        ClosingMessage,
+        State::PendingClose,
+        StateName::PendingClose
+    );
+
+    pub struct Dispute;
+    impl_zkchannel_state!(Dispute, ClosingMessage, State::Dispute, StateName::Dispute);
+
+    pub struct Closed;
+    impl_zkchannel_state!(Closed, ClosingMessage, State::Closed, StateName::Closed);
 }
 
 /// The names of the different states a channel can be in (does not contain actual state).

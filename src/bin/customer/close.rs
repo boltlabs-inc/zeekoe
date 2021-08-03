@@ -15,7 +15,7 @@ use {
 use zeekoe::{
     customer::{
         cli::Close,
-        database::{QueryCustomer, QueryCustomerExt, State, StateName},
+        database::{zkchannels_state, QueryCustomer, QueryCustomerExt, State},
         Chan, ChannelName, Config,
     },
     offer_abort, proceed,
@@ -190,9 +190,8 @@ async fn unilateral_close(
 
     // Update database to closed state
     match database
-        .with_channel_state(
+        .with_channel_state::<zkchannels_state::PendingClose, _, _, _>(
             &close.label,
-            StateName::PendingClose,
             |pending: ClosingMessage| -> Result<_, Infallible> { Ok((State::Closed(pending), ())) },
         )
         .await
@@ -292,9 +291,8 @@ async fn finalize_mutual_close(
 
     // Update database channel status from PendingClose to Closed.
     database
-        .with_channel_state(
+        .with_channel_state::<zkchannels_state::PendingClose, _, _, _>(
             &label,
-            StateName::PendingClose,
             |pending: ClosingMessage| Ok((State::Closed(pending), ())),
         )
         .await

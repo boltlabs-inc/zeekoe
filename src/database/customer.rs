@@ -11,10 +11,10 @@ use zkabacus_crypto::{
 use crate::customer::{client::ZkChannelAddress, ChannelName};
 
 mod state;
-use self::state::{IsZkAbacusState, StateError};
+use self::state::{zkchannels_state::ZkChannelState, IsZkAbacusState, StateError};
 
 pub use super::connect_sqlite;
-pub use state::{ImpossibleState, State, StateName, UnexpectedState};
+pub use state::{zkchannels_state, ImpossibleState, State, StateName, UnexpectedState};
 
 type Result<T> = std::result::Result<T, Error>;
 
@@ -78,18 +78,30 @@ pub trait QueryCustomerExt {
     /// In particular, the closure **should not result in communication with the merchant**.
     async fn with_channel_state<
         'a,
-        Starting: IsZkAbacusState + Send + 'static,
+        S: ZkChannelState + Send,
+        F: FnOnce(S::ZkAbacusState) -> std::result::Result<(State, T), E> + Send + 'a,
         T: Send + 'static,
         E: Send + 'static,
     >(
         &'a self,
         channel_name: &ChannelName,
-        expected_state_name: StateName,
-        with_zkabacus_state: impl for<'s> FnOnce(Starting) -> std::result::Result<(State, T), E>
-            + Send
-            + 'a,
+        with_zkabacus_state: F,
     ) -> Result<std::result::Result<T, E>>;
 
+    /*
+       async fn with_channel_state<
+           'a,
+           S: ZkChannelState + Send,
+           T: Send + 'static,
+           E: Send + 'static,
+       >(
+           &'a self,
+           channel_name: &ChannelName,
+           with_zkabacus_state: impl for<'s> FnOnce(S::ZkAbacusState) -> std::result::Result<(State, T), E>
+               + Send
+               + 'a,
+       ) -> Result<std::result::Result<T, E>>;
+    */
     /// Given a channel's unique name, mutate its state in the database using a provided closure,
     /// that is given the current state and must convert it to [`State::PendingClose`].
     ///
@@ -406,27 +418,28 @@ impl QueryCustomer for SqlitePool {
 impl<Q: QueryCustomer + ?Sized> QueryCustomerExt for Q {
     async fn with_channel_state<
         'a,
-        Starting: IsZkAbacusState + Send + 'static,
+        S: ZkChannelState + Send,
+        F: FnOnce(S::ZkAbacusState) -> std::result::Result<(State, T), E> + Send + 'a,
         T: Send + 'static,
         E: Send + 'static,
     >(
         &'a self,
         channel_name: &ChannelName,
-        expected_state_name: StateName,
-        with_zkabacus_state: impl for<'s> FnOnce(Starting) -> std::result::Result<(State, T), E>
-            + Send
-            + 'a,
+        with_zkabacus_state: F,
     ) -> Result<std::result::Result<T, E>> {
         let result = <Self as QueryCustomer>::with_channel_state_erased(
             self,
             channel_name,
             Box::new(
-                |state| match Starting::from_state(state, expected_state_name) {
+                // Extract the inner zkAbacus type from the state enum and make sure it matches
+                |state| match S::to_zkabacus_state(state) {
                     Ok(zkabacus_state) => match with_zkabacus_state(zkabacus_state) {
                         Ok((state, t)) => Ok((state, Box::new(t))),
                         Err(e) => Err(Box::new(Ok::<E, StateError>(e))),
                     },
-                    Err((state_error, _)) => Err(Box::new(Err::<E, StateError>(state_error))),
+                    Err(unexpected_state) => {
+                        Err(Box::new(Err::<E, StateError>(unexpected_state.into())))
+                    }
                 },
             ),
         )

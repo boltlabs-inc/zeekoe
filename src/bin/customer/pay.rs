@@ -10,7 +10,7 @@ use zeekoe::{
     customer::{
         cli::{Pay, Refund},
         client::SessionKey,
-        database::{QueryCustomer, QueryCustomerExt, State, StateName},
+        database::{zkchannels_state, QueryCustomer, QueryCustomerExt, State},
         Chan, ChannelName, Config,
     },
     offer_abort, proceed,
@@ -187,7 +187,7 @@ async fn start_payment(
     context: ProofContext,
 ) -> Result<StartMessage, anyhow::Error> {
     database
-        .with_channel_state(label, StateName::Ready, |ready: Ready| {
+        .with_channel_state::<zkchannels_state::Ready, _, _, _>(label, |ready: Ready| {
             // Check that the channel is in the Ready state.
             // If so, attempt to start the payment using the payment amount and proof context
             let (started, start_message) =
@@ -221,9 +221,9 @@ async fn lock_payment(
     closing_signature: ClosingSignature,
 ) -> Result<Option<LockMessage>, anyhow::Error> {
     database
-        .with_channel_state(
+        .with_channel_state::<zkchannels_state::Started, _, _, _>(
             label,
-            StateName::Started,
+            //StateName::Started,
             |started: Started| -> Result<(State, LockMessage), pay::Error> {
                 // Attempt to lock the state using the closing signature. If it fails, raise a `pay::Error`.
                 let (locked, lock_message) = started
@@ -248,7 +248,7 @@ async fn unlock_payment(
     pay_token: PayToken,
 ) -> Result<(), anyhow::Error> {
     database
-        .with_channel_state(label, StateName::Locked, |locked: Locked| {
+        .with_channel_state::<zkchannels_state::Locked, _, _, _>(label, |locked: Locked| {
             // Attempt to unlock the state using the pay token
             let ready = locked.unlock(pay_token).map_err(|_| {
                 // Return an error since the state could not be unlocked
