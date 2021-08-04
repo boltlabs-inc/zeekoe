@@ -6,6 +6,8 @@ use {
     std::{convert::TryInto, fs::File, path::PathBuf},
 };
 
+use std::convert::Infallible;
+
 use zkabacus_crypto::{
     customer::{Inactive, Requested},
     ChannelId, Context as ProofContext, CustomerBalance, CustomerRandomness, MerchantBalance,
@@ -171,7 +173,27 @@ impl Command for Establish {
             // TODO: initialize contract on-chain via escrow agent (this should return a stream of
             // updates to the contract)
 
+            let _ = database
+                .with_channel_state(
+                    &actual_label,
+                    zkchannels_state::Inactive,
+                    |inactive| -> Result<_, Infallible> { Ok((State::Originated(inactive), ())) },
+                )
+                .await
+                .context("Failed to update database")?;
+
             // TODO: fund contract via escrow agent
+
+            let _ = database
+                .with_channel_state(
+                    &actual_label,
+                    zkchannels_state::Originated,
+                    |inactive| -> Result<_, Infallible> {
+                        Ok((State::CustomerFunded(inactive), ()))
+                    },
+                )
+                .await
+                .context("Failed to update database")?;
         }
 
         // TODO: send contract id to merchant (possibly also send block height, check spec)
@@ -181,8 +203,21 @@ impl Command for Establish {
 
         if !self.off_chain {
             // TODO: if merchant contribution was non-zero, check that merchant funding was provided
-            // within a configurable timeout and to the desired block depth and that the status of the
-            // contract is locked: if not, recommend unilateral close
+            // within a configurable timeout and to the desired block depth and that the status of
+            // the contract is locked: if not, recommend unilateral close
+            // Note: the following database update may be moved around once the merchant funding
+            // check is added.
+
+            let _ = database
+                .with_channel_state(
+                    &actual_label,
+                    zkchannels_state::CustomerFunded,
+                    |inactive| -> Result<_, Infallible> {
+                        Ok((State::MerchantFunded(inactive), ()))
+                    },
+                )
+                .await
+                .context("Failed to update database")?;
         }
 
         let merchant_funding_successful: bool = true; // TODO: query tezos for merchant funding
@@ -386,7 +421,7 @@ async fn activate_local(
     database
         .with_channel_state(
             label,
-            zkchannels_state::Inactive,
+            zkchannels_state::MerchantFunded,
             |inactive: Inactive| match inactive.activate(pay_token) {
                 Ok(ready) => Ok((State::Ready(ready), ())),
                 Err(_) => Err(establish::Error::InvalidPayToken),
