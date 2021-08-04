@@ -236,7 +236,7 @@ async fn get_parameters(
         .context("Failed to receive merchant's revocation commitment parameters")?;
 
     // Get the merchant's range proof parameters
-    let (range_proof_parameters, chan) = chan
+    let (range_constraint_parameters, chan) = chan
         .recv()
         .await
         .context("Failed to receive merchant's range proof parameters")?;
@@ -260,7 +260,7 @@ async fn get_parameters(
     Ok(zkabacus_crypto::customer::Config::from_parts(
         merchant_public_key,
         revocation_commitment_parameters,
-        range_proof_parameters,
+        range_constraint_parameters,
     ))
 }
 
@@ -316,7 +316,7 @@ async fn zkabacus_initialize(
     proceed!(in chan);
 
     // Store the inactive channel state in the database
-    let actual_label = store_inactive_local(database, label, &address, inactive)
+    let actual_label = store_inactive_local(database, label, address, inactive)
         .await
         .context("Failed to store inactive channel state in local database")?;
 
@@ -342,10 +342,7 @@ async fn store_inactive_local(
         };
 
         // Try inserting the inactive state with this label
-        match database
-            .new_channel(&actual_label, &address, inactive)
-            .await
-        {
+        match database.new_channel(&actual_label, address, inactive).await {
             Ok(()) => break actual_label, // report the label that worked
             Err((returned_inactive, database::Error::ChannelExists(_))) => {
                 inactive = returned_inactive; // restore the inactive state, try again

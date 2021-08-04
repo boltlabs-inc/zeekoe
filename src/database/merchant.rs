@@ -6,7 +6,7 @@ use crate::protocol::{ChannelStatus, ContractId};
 use zkabacus_crypto::{
     revlock::{RevocationLock, RevocationSecret},
     ChannelId, CommitmentParameters, CustomerBalance, KeyPair, MerchantBalance, Nonce,
-    RangeProofParameters,
+    RangeConstraintParameters,
 };
 
 type Result<T> = std::result::Result<T, Error>;
@@ -164,8 +164,8 @@ impl QueryMerchant for SqlitePool {
                     AS "signing_keypair: KeyPair",
                 revocation_commitment_parameters
                     AS "revocation_commitment_parameters: CommitmentParameters",
-                range_proof_parameters
-                    AS "range_proof_parameters: RangeProofParameters"
+                range_constraint_parameters
+                    AS "range_constraint_parameters: RangeConstraintParameters"
             FROM
                 merchant_config
             "#,
@@ -180,7 +180,7 @@ impl QueryMerchant for SqlitePool {
                 return Ok(zkabacus_crypto::merchant::Config::from_parts(
                     existing.signing_keypair,
                     existing.revocation_commitment_parameters,
-                    existing.range_proof_parameters,
+                    existing.range_constraint_parameters,
                 ));
             }
             Some(Err(err)) => return Err(err.into()),
@@ -191,19 +191,19 @@ impl QueryMerchant for SqlitePool {
 
         let signing_keypair = new_config.signing_keypair();
         let revocation_commitment_parameters = new_config.revocation_commitment_parameters();
-        let range_proof_parameters = new_config.range_proof_parameters();
+        let range_constraint_parameters = new_config.range_constraint_parameters();
 
         sqlx::query!(
             r#"
             INSERT INTO
                 merchant_config
-            (signing_keypair, revocation_commitment_parameters, range_proof_parameters)
+            (signing_keypair, revocation_commitment_parameters, range_constraint_parameters)
                 VALUES
             (?, ?, ?)
             "#,
             signing_keypair,
             revocation_commitment_parameters,
-            range_proof_parameters,
+            range_constraint_parameters,
         )
         .execute(&mut transaction)
         .await?;
@@ -434,8 +434,8 @@ mod tests {
             config2.revocation_commitment_parameters()
         );
         assert_eq!(
-            config1.range_proof_parameters(),
-            config1.range_proof_parameters()
+            config1.range_constraint_parameters(),
+            config1.range_constraint_parameters()
         );
 
         Ok(())

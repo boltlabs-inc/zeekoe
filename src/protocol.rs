@@ -168,7 +168,7 @@ pub type ZkChannels = Session! {
 };
 
 pub mod parameters {
-    use zkabacus_crypto::{CommitmentParameters, PublicKey, RangeProofParameters};
+    use zkabacus_crypto::{CommitmentParameters, PublicKey, RangeConstraintParameters};
 
     use super::*;
 
@@ -176,7 +176,7 @@ pub mod parameters {
     pub type Parameters = Session! {
         recv PublicKey;
         recv CommitmentParameters; // TODO: this is a global default, does not need to be sent
-        recv RangeProofParameters;
+        recv RangeConstraintParameters;
         // TODO: tz1 address corresponding to merchant's public key
         // TODO: merchant's tezos eddsa public key
     };

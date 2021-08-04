@@ -355,7 +355,7 @@ async fn get_close_message(
     label: &ChannelName,
 ) -> Result<ClosingMessage, anyhow::Error> {
     database
-        .with_closeable_channel(&label, |state| {
+        .with_closeable_channel(label, |state| {
             let close_message = match state {
                 State::Inactive(inactive) => inactive.close(&mut rng),
                 State::Originated(inactive) => inactive.close(&mut rng),

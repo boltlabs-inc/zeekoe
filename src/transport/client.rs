@@ -295,7 +295,7 @@ fn reconnect_unless<E>(
 ) -> impl Fn(usize, &E) -> retry::Recovery {
     let backoff = backoff.build(retry::Recovery::ReconnectAfter);
     move |retries, error| {
-        if unless(&error) {
+        if unless(error) {
             retry::Recovery::Fail
         } else {
             backoff(retries, error)
