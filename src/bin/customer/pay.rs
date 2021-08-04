@@ -1,7 +1,7 @@
 use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng};
 
 use zkabacus_crypto::{
-    customer::{LockMessage, Locked, Ready, StartMessage, Started},
+    customer::{LockMessage, StartMessage},
     ClosingSignature, Context as ProofContext, PayToken, PaymentAmount,
 };
 
@@ -187,27 +187,16 @@ async fn start_payment(
     context: ProofContext,
 ) -> Result<StartMessage, anyhow::Error> {
     database
-        .with_channel_state::<zkchannels_state::Ready, _, _, _>(label, |ready: Ready| {
-            // Check that the channel is in the Ready state.
-            // If so, attempt to start the payment using the payment amount and proof context
-            let (started, start_message) =
-                ready
-                    .start(rng, payment_amount, &context)
-                    .map_err(|(_, e)| {
-                        anyhow::anyhow!(e).context("Failed to generate nonce and pay proof.")
-                    })?;
-            Ok((State::Started(started), start_message))
-            /*
+        .with_channel_state::<zkchannels_state::Ready, _, _, _>(label, |ready| {
+            // Try to start the payment using the payment amount and proof context
             match ready.start(rng, payment_amount, &context) {
                 Ok((started, start_message)) => Ok((State::Started(started), start_message)),
-                Err((ready, e)) => {
-                    Err(anyhow::anyhow!(e).context("Failed to generate nonce and pay proof"))
-                }
+                Err((_, e)) => Err(pay::Error::StartFailed(e)),
             }
-            */
         })
         .await
         .context("Database error while fetching initial pay state")?
+        .map_err(|e| e.into())
 }
 
 /// Attempt to lock a started payment for the channel of the given label, using the given
@@ -221,16 +210,13 @@ async fn lock_payment(
     closing_signature: ClosingSignature,
 ) -> Result<Option<LockMessage>, anyhow::Error> {
     database
-        .with_channel_state::<zkchannels_state::Started, _, _, _>(
-            label,
-            |started: Started| -> Result<(State, LockMessage), pay::Error> {
-                // Attempt to lock the state using the closing signature. If it fails, raise a `pay::Error`.
-                let (locked, lock_message) = started
-                    .lock(closing_signature)
-                    .map_err(|_| pay::Error::InvalidClosingSignature)?;
-                Ok((State::Locked(locked), lock_message))
-            },
-        )
+        .with_channel_state::<zkchannels_state::Started, _, _, _>(label, |started| {
+            // Attempt to lock the state using the closing signature. If it fails, raise a `pay::Error`.
+            match started.lock(closing_signature) {
+                Ok((locked, lock_message)) => Ok((State::Locked(locked), lock_message)),
+                Err(_) => Err(pay::Error::InvalidClosingSignature),
+            }
+        })
         .await
         .map(Result::ok)
         .context("Database error while fetching started pay state")
@@ -247,16 +233,16 @@ async fn unlock_payment(
     pay_token: PayToken,
 ) -> Result<(), anyhow::Error> {
     database
-        .with_channel_state::<zkchannels_state::Locked, _, _, _>(label, |locked: Locked| {
+        .with_channel_state::<zkchannels_state::Locked, _, _, _>(label, |locked| {
             // Attempt to unlock the state using the pay token
-            let ready = locked.unlock(pay_token).map_err(|_| {
-                // Return an error since the state could not be unlocked
-                pay::Error::InvalidPayToken
-            })?;
-            Ok((State::Ready(ready), ()))
+            match locked.unlock(pay_token) {
+                Ok(ready) => Ok((State::Ready(ready), ())),
+                Err(_) => Err(pay::Error::InvalidPayToken),
+            }
         })
         .await
         .context("Database error while fetching locked pay state")?
+        .map_err(|e| anyhow::anyhow!(e))
 }
 
 #[async_trait]

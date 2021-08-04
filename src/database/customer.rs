@@ -58,8 +58,8 @@ pub struct ChannelDetails {
 /// this one.
 #[async_trait]
 pub trait QueryCustomerExt {
-    /// Given a channel's unique name, mutate its state in the database using a provided closure,
-    /// that is given the current state.
+    /// Given a channel's unique name, mutate its state in the database using a provided closure
+    /// if the stored state matches type `S`.
     ///
     /// The return type for this function can be interpreted as follows:
     /// - A successful run returns `Ok(Ok(T))`, where `T` is returned by the closure. It holds any
@@ -426,7 +426,7 @@ impl<Q: QueryCustomer + ?Sized> QueryCustomerExt for Q {
                         Err(e) => Err(Box::new(Ok::<E, UnexpectedState>(e))),
                     },
                     Err(unexpected_state) => {
-                        Err(Box::new(Err::<E, UnexpectedState>(unexpected_state.into())))
+                        Err(Box::new(Err::<E, UnexpectedState>(unexpected_state)))
                     }
                 },
             ),

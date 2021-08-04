@@ -298,12 +298,14 @@ pub mod close {
 
 pub mod pay {
     use super::*;
-    use zkabacus_crypto::PaymentAmount;
+    use zkabacus_crypto::{self, PaymentAmount};
 
     #[derive(Debug, Clone, Serialize, Deserialize, Error)]
     pub enum Error {
         #[error("Payment rejected: {0}")]
         Rejected(String),
+        #[error("Customer failed to generate nonce and pay proof: {0}")]
+        StartFailed(#[from] zkabacus_crypto::Error),
         #[error("Customer submitted reused nonce")]
         ReusedNonce,
         #[error("Merchant returned invalid closing signature")]

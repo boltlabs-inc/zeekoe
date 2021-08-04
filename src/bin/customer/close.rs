@@ -189,19 +189,14 @@ async fn unilateral_close(
     }
 
     // Update database to closed state
-    match database
+    database
         .with_channel_state::<zkchannels_state::PendingClose, _, _, _>(
             &close.label,
             |pending: ClosingMessage| -> Result<_, Infallible> { Ok((State::Closed(pending), ())) },
         )
         .await
         .context("Could not update channel state to closed")?
-    {
-        Ok(closing) => closing,
-        Err(infallible) => match infallible {},
-    };
-
-    Ok(())
+        .map_err(|e| e.into())
 }
 
 async fn mutual_close(
