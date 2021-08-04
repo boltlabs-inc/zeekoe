@@ -223,7 +223,6 @@ async fn lock_payment(
     database
         .with_channel_state::<zkchannels_state::Started, _, _, _>(
             label,
-            //StateName::Started,
             |started: Started| -> Result<(State, LockMessage), pay::Error> {
                 // Attempt to lock the state using the closing signature. If it fails, raise a `pay::Error`.
                 let (locked, lock_message) = started

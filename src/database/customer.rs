@@ -11,10 +11,10 @@ use zkabacus_crypto::{
 use crate::customer::{client::ZkChannelAddress, ChannelName};
 
 mod state;
-use self::state::{zkchannels_state::ZkChannelState, IsZkAbacusState, StateError};
+use self::state::zkchannels_state::ZkChannelState;
 
 pub use super::connect_sqlite;
-pub use state::{zkchannels_state, ImpossibleState, State, StateName, UnexpectedState};
+pub use state::{zkchannels_state, State, StateName, UnexpectedState};
 
 type Result<T> = std::result::Result<T, Error>;
 
@@ -24,9 +24,6 @@ pub enum Error {
     /// The state of the channel was not what was expected.
     #[error(transparent)]
     UnexpectedState(#[from] UnexpectedState),
-    /// The state of the channel does not contain the requested data.
-    #[error(transparent)]
-    ImpossibleState(#[from] ImpossibleState),
     /// Channel could not be transitioned to pending close.
     #[error("Channel closure could not be initiated - it is likely not in a closeable state.")]
     CloseFailure,
@@ -71,8 +68,8 @@ pub trait QueryCustomerExt {
     /// - A run where the closure fails to execute returns `Ok(Err(E))`, where `E` is the error
     ///   type returned by the closure.
     /// - A run where something other than the closure fails to execute returns `Err(Error)`. This
-    ///   includes [`StateError`]s (e.g. if the current state does not match `expected_state_name`)
-    ///   as well as database failures.
+    ///   is either an [`UnexpectedState`] error, where the stored state does not match the
+    ///   expected value, or a database failure.
     ///
     /// **Important:** The given closure should be idempotent on the state of the world.
     /// In particular, the closure **should not result in communication with the merchant**.
@@ -88,20 +85,6 @@ pub trait QueryCustomerExt {
         with_zkabacus_state: F,
     ) -> Result<std::result::Result<T, E>>;
 
-    /*
-       async fn with_channel_state<
-           'a,
-           S: ZkChannelState + Send,
-           T: Send + 'static,
-           E: Send + 'static,
-       >(
-           &'a self,
-           channel_name: &ChannelName,
-           with_zkabacus_state: impl for<'s> FnOnce(S::ZkAbacusState) -> std::result::Result<(State, T), E>
-               + Send
-               + 'a,
-       ) -> Result<std::result::Result<T, E>>;
-    */
     /// Given a channel's unique name, mutate its state in the database using a provided closure,
     /// that is given the current state and must convert it to [`State::PendingClose`].
     ///
@@ -118,7 +101,7 @@ pub trait QueryCustomerExt {
     async fn with_closeable_channel<'a, E: Send + 'static>(
         &self,
         channel_name: &ChannelName,
-        close_zkabacus_state: impl for<'s> FnOnce(State) -> std::result::Result<(State, ClosingMessage), E>
+        close_zkabacus_state: impl FnOnce(State) -> std::result::Result<(State, ClosingMessage), E>
             + Send
             + 'a,
     ) -> Result<std::result::Result<ClosingMessage, E>>;
@@ -252,7 +235,12 @@ impl QueryCustomer for SqlitePool {
             Ok(result?)
         })()
         .await
-        .map_err(|e| (Inactive::from_state(state, StateName::Inactive).unwrap(), e))
+        .map_err(|e| {
+            (
+                zkchannels_state::Inactive::to_zkabacus_state(state).unwrap(),
+                e,
+            )
+        })
     }
 
     async fn channel_address(&self, channel_name: &ChannelName) -> Result<ZkChannelAddress> {
@@ -435,10 +423,10 @@ impl<Q: QueryCustomer + ?Sized> QueryCustomerExt for Q {
                 |state| match S::to_zkabacus_state(state) {
                     Ok(zkabacus_state) => match with_zkabacus_state(zkabacus_state) {
                         Ok((state, t)) => Ok((state, Box::new(t))),
-                        Err(e) => Err(Box::new(Ok::<E, StateError>(e))),
+                        Err(e) => Err(Box::new(Ok::<E, UnexpectedState>(e))),
                     },
                     Err(unexpected_state) => {
-                        Err(Box::new(Err::<E, StateError>(unexpected_state.into())))
+                        Err(Box::new(Err::<E, UnexpectedState>(unexpected_state.into())))
                     }
                 },
             ),
@@ -454,15 +442,13 @@ impl<Q: QueryCustomer + ?Sized> QueryCustomerExt for Q {
             }
             // Error, which could be one of...
             Err(error_result) => {
-                let error_result: std::result::Result<E, StateError> =
+                let error_result: std::result::Result<E, UnexpectedState> =
                     *error_result.downcast().unwrap();
                 match error_result {
                     // Error returned by the closure
                     Ok(e) => Ok(Err(e)),
                     // Error returned because the state didn't match the one in the database.
-                    Err(StateError::UnexpectedState(e)) => return Err(e.into()),
-                    // Error returned because the caller requested an impossible state.
-                    Err(StateError::ImpossibleState(e)) => return Err(e.into()),
+                    Err(e) => return Err(e.into()),
                 }
             }
         }
@@ -471,7 +457,7 @@ impl<Q: QueryCustomer + ?Sized> QueryCustomerExt for Q {
     async fn with_closeable_channel<'a, E: Send + 'static>(
         &self,
         channel_name: &ChannelName,
-        with_closeable_state: impl for<'s> FnOnce(State) -> std::result::Result<(State, ClosingMessage), E>
+        with_closeable_state: impl FnOnce(State) -> std::result::Result<(State, ClosingMessage), E>
             + Send
             + 'a,
     ) -> Result<std::result::Result<ClosingMessage, E>> {
