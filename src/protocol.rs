@@ -111,6 +111,7 @@ pub enum ChannelStatus {
     MerchantFunded,
     Active,
     PendingClose,
+    Dispute,
     Closed,
 }
 
@@ -125,6 +126,7 @@ impl Display for ChannelStatus {
                 Self::MerchantFunded => "merchant and customer funded",
                 Self::Active => "active",
                 Self::PendingClose => "pending close",
+                Self::Dispute => "dispute",
                 Self::Closed => "closed",
             }
         )
@@ -279,6 +281,8 @@ pub mod close {
         InvalidMerchantAuthSignature,
         #[error("Arbiter failed to accept mutual close")]
         ArbiterRejectedMutualClose,
+        #[error("Channel is in an unexpected status while processing arbiter notification")]
+        UnexpectedStatus,
     }
 
     /// Mutual close session.
