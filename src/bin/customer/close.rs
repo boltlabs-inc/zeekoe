@@ -59,7 +59,7 @@ async fn close(close: &Close, rng: StdRng, config: self::Config) -> Result<(), a
         .await
         .context("Failed to connect to local database")?;
 
-    // Retrieve the close state and update channel status to PENDING_CLOSE.
+    // Retrieve the close state and update channel status to PendingClose.
     let _close_message = get_close_message(rng, database.as_ref(), &close.label)
         .await
         .context("Failed to get closing information.")?;
@@ -85,7 +85,7 @@ async fn close(close: &Close, rng: StdRng, config: self::Config) -> Result<(), a
 /// custClose entrypoint call/operation is confirmed on chain at an appropriate depth.
 #[allow(unused)]
 async fn process_confirmed_customer_close() {
-    // TODO: assert that the db status is PENDING_CLOSE,
+    // TODO: assert that the db status is PendingClose,
     // Indicate that the merchant balance has been paid out to the merchant.
 }
 
@@ -96,8 +96,8 @@ async fn process_confirmed_customer_close() {
 /// is confirmed on chain at any depth.
 #[allow(unused)]
 async fn claim_funds(close: &Close, config: self::Config) -> Result<(), anyhow::Error> {
-    // TODO: assert that the db status is PENDING_CLOSE,
-    // If it is DISPUTE, do nothing.
+    // TODO: assert that the db status is PendingClose,
+    // If it is Dispute, do nothing.
 
     // TODO: Otherwise, call the custClaim entrypoint which will take:
     // - contract ID
@@ -110,8 +110,27 @@ async fn claim_funds(close: &Close, config: self::Config) -> Result<(), anyhow::
 /// **Usage**: this function is called in response to a merchDispute entrypoint call/operation that is
 /// confirmed on chain at any depth.
 #[allow(unused)]
-async fn process_dispute(config: self::Config) -> Result<(), anyhow::Error> {
-    // TODO: update status in db from PENDING_CLOSE to DISPUTE
+async fn process_dispute(
+    config: self::Config,
+    channel_name: &ChannelName,
+) -> Result<(), anyhow::Error> {
+    let database = database(&config)
+        .await
+        .context("Failed to connect to local database")?;
+
+    // Update channel status to Dispute
+    // TODO: Update closing_message to reflect final channel balances from the dispute operation.
+    let _ = database
+        .with_channel_state(
+            channel_name,
+            zkchannels_state::PendingClose,
+            |closing_message| -> Result<_, Infallible> {
+                Ok((State::Dispute(closing_message), ()))
+            },
+        )
+        .await
+        .context("Failed to updated channel status.")?;
+
     Ok(())
 }
 
@@ -120,8 +139,24 @@ async fn process_dispute(config: self::Config) -> Result<(), anyhow::Error> {
 /// **Usage**: this function is called when a merchDispute entrypoint call/operation is confirmed
 /// on chain to the required confirmation depth.
 #[allow(unused)]
-async fn finalize_dispute(config: self::Config) -> Result<(), anyhow::Error> {
-    // TODO: Update status in db from DISPUTE to CLOSED
+async fn finalize_dispute(
+    config: self::Config,
+    channel_name: &ChannelName,
+) -> Result<(), anyhow::Error> {
+    let database = database(&config)
+        .await
+        .context("Failed to connect to local database")?;
+
+    // Update channel status from Dispute to Closed
+    // TODO: make sure balances match the ones in the dispute operation
+    let _ = database
+        .with_channel_state(
+            channel_name,
+            zkchannels_state::Dispute,
+            |closing_message| -> Result<_, Infallible> { Ok((State::Closed(closing_message), ())) },
+        )
+        .await
+        .context("Failed to updated channel status.")?;
     // Indicate that all balances are paid out to the merchant.
     Ok(())
 }
@@ -135,16 +170,33 @@ async fn finalize_dispute(config: self::Config) -> Result<(), anyhow::Error> {
 /// Note: these functions are separate in the merchant implementation. Maybe they should also be
 /// separate here.
 #[allow(unused)]
-async fn finalize_close(config: self::Config) -> Result<(), anyhow::Error> {
-    // TODO: update status in db from PENDING_CLOSE to CLOSED with the final balances.
+async fn finalize_close(
+    config: self::Config,
+    channel_name: &ChannelName,
+) -> Result<(), anyhow::Error> {
+    let database = database(&config)
+        .await
+        .context("Failed to connect to local database")?;
+
+    // Update status from PendingClose to Closed with the final balances.
+    // TODO: make sure balances are correct:
     // - for custClaim, indicate that the customer balance is paid out to the customer
-    //   (the merchant balance was already paid out; final balances will match PENDING_CLOSE)
+    //   (the merchant balance was already paid out; final balances will match PendingClose)
     //   This happens in any undisputed, unilateral close flow.
     //
     // - for merchClaim, indicate that the customer and merchant balances are paid out
     //   to the merchant.
     //   This happens in a merchant unilateral close flow when the customer does not post current
     //   channel balances with custClose.
+
+    let _ = database
+        .with_channel_state(
+            channel_name,
+            zkchannels_state::PendingClose,
+            |closing_message| -> Result<_, Infallible> { Ok((State::Closed(closing_message), ())) },
+        )
+        .await
+        .context("Failed to updated channel status.")?;
 
     Ok(())
 }
@@ -225,6 +277,8 @@ async fn mutual_close(
         .await
         .context("Failed selecting close session with merchant")?;
 
+    // Run zkAbacus mutual close, which sets the channel status to PendingClose and gives the
+    // customer authorization to call the mutual close entrypoint.
     let chan = zkabacus_close(rng, database.as_ref(), &close.label, chan)
         .await
         .context("zkAbacus close failed.")?;
@@ -270,7 +324,7 @@ async fn mutual_close(
     Ok(())
 }
 
-/// Update the channel state from pending to closed.
+/// Update the channel state from PendingClose to Closed at completion of mutual close.
 ///
 /// **Usage**: This should be called when the customer receives a confirmation from the blockchain
 /// that the mutual close operation has been applied and has reached required confirmation depth.
@@ -293,7 +347,7 @@ async fn finalize_mutual_close(
             |pending: ClosingMessage| Ok((State::Closed(pending), ())),
         )
         .await
-        .context("Database error while updating status to closed")?
+        .context("Database error while updating status.")?
 }
 
 async fn zkabacus_close(
@@ -302,7 +356,7 @@ async fn zkabacus_close(
     label: &ChannelName,
     chan: Chan<close::Close>,
 ) -> Result<Chan<close::MerchantSendAuthorization>, anyhow::Error> {
-    // Generate the closing message and update state to pending-close.
+    // Generate the closing message and update state to PendingClose
     let closing_message = get_close_message(rng, database, label)
         .await
         .context("Failed to generate mutual close data.")?;
@@ -325,7 +379,7 @@ async fn zkabacus_close(
 }
 
 /// Extract the close message from the saved channel status (including the current state
-/// any stored signatures) and update the channel state to PENDING_CLOSE atomically.
+/// any stored signatures) and update the channel state to PendingClose atomically.
 async fn get_close_message(
     mut rng: StdRng,
     database: &dyn QueryCustomer,
