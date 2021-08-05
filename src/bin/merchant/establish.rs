@@ -306,15 +306,6 @@ async fn zkabacus_activate(
     state_commitment: StateCommitment,
     chan: Chan<establish::Activate>,
 ) -> Result<(), anyhow::Error> {
-    // Transition the channel state to active
-    database
-        .compare_and_swap_channel_status(
-            channel_id,
-            &ChannelStatus::MerchantFunded,
-            &ChannelStatus::Active,
-        )
-        .await?;
-
     // Generate the pay token to send to the customer
     let pay_token = config.activate(rng, state_commitment);
 
@@ -323,6 +314,15 @@ async fn zkabacus_activate(
         .send(pay_token)
         .await
         .context("Failed to send pay token")?;
+
+    // Transition the channel state to active
+    database
+        .compare_and_swap_channel_status(
+            channel_id,
+            &ChannelStatus::MerchantFunded,
+            &ChannelStatus::Active,
+        )
+        .await?;
 
     // Close communication with the customer
     chan.close();
