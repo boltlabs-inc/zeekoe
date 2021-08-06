@@ -180,7 +180,7 @@ impl Command for Establish {
                     |inactive| -> Result<_, Infallible> { Ok((State::Originated(inactive), ())) },
                 )
                 .await
-                .context("Failed to update database")?;
+                .context("Failed to update channel status to Originated")?;
 
             // TODO: fund contract via escrow agent
 
@@ -193,7 +193,7 @@ impl Command for Establish {
                     },
                 )
                 .await
-                .context("Failed to update database")?;
+                .context("Failed to update channel status to CustomerFunded")?;
         }
 
         // TODO: send contract id to merchant (possibly also send block height, check spec)
@@ -204,7 +204,7 @@ impl Command for Establish {
         if !self.off_chain {
             // TODO: if merchant contribution was non-zero, check that merchant funding was provided
             // within a configurable timeout and to the desired block depth and that the status of
-            // the contract is locked: if not, recommend unilateral close
+            // the contract is locked. if not, recommend unilateral close
             // Note: the following database update may be moved around once the merchant funding
             // check is added.
 
@@ -217,7 +217,7 @@ impl Command for Establish {
                     },
                 )
                 .await
-                .context("Failed to update database")?;
+                .context("Failed to update channel status to MerchantFunded")?;
         }
 
         let merchant_funding_successful: bool = true; // TODO: query tezos for merchant funding
@@ -428,7 +428,7 @@ async fn activate_local(
             },
         )
         .await
-        .context("Failed to activate channel")?
+        .context("Failed to update channel status to Ready")?
         .map_err(|e| e.into())
 }
 

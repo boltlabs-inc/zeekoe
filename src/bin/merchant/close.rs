@@ -70,7 +70,7 @@ async fn process_customer_close(
 
     // Retrieve current channel status.
     let current_status = database
-        .get_channel_details(&channel_id.to_string())
+        .get_channel_details(channel_id)
         .await
         .context("Failed to check channel status")?
         .status;
@@ -84,7 +84,7 @@ async fn process_customer_close(
                 &ChannelStatus::PendingClose,
             )
             .await
-            .context("Failed to update channel status")?;
+            .context("Failed to update channel status to PendingClose")?;
         Ok(())
     } else {
         // If the lock already has an associated revocation secret, update channel status
@@ -92,7 +92,7 @@ async fn process_customer_close(
         database
             .compare_and_swap_channel_status(channel_id, &current_status, &ChannelStatus::Dispute)
             .await
-            .context("Failed to update channel status")?;
+            .context("Failed to update channel status to Dispute")?;
 
         // TODO: If the lock has an associated revocation secret, call the merchDispute
         // entrypoint with:
@@ -114,7 +114,7 @@ async fn finalize_customer_close(
 ) -> Result<(), anyhow::Error> {
     // Retrieve current channel status.
     let current_status = database
-        .get_channel_details(&channel_id.to_string())
+        .get_channel_details(channel_id)
         .await
         .context("Failed to check channel status")?
         .status;
@@ -130,7 +130,7 @@ async fn finalize_customer_close(
                     &ChannelStatus::Closed,
                 )
                 .await
-                .context("Failed to update channel status")?;
+                .context("Failed to update channel status to Closed")?;
             // TODO: Set final balances.
             todo!()
         }
@@ -160,7 +160,7 @@ async fn finalize_dispute(
             &ChannelStatus::Closed,
         )
         .await
-        .context("Failed to update channel status")?;
+        .context("Failed to update channel status to Closed")?;
 
     // TODO: Update final balances to indicate successful dispute (i.e., that the transfer of the
     // customer's balance to merchant is confirmed).
@@ -185,7 +185,7 @@ async fn finalize_mutual_close(
             &ChannelStatus::Closed,
         )
         .await
-        .context("Failed to update channel status")?;
+        .context("Failed to update channel status to Closed")?;
 
     // TODO: also update database to final channel balances as indicated by the mutualClose entrypoint call.
     Ok(())
@@ -216,7 +216,7 @@ async fn zkabacus_close(
             &ChannelStatus::PendingClose,
         )
         .await
-        .context("Failed to update channel state")?;
+        .context("Failed to update channel status to PendingClose")?;
 
     // Confirm that customer sent a valid Pointcheval-Sanders signature under the merchant's
     // zkAbacus public key on the given close state.
@@ -285,7 +285,7 @@ async fn expiry(
 ) -> Result<(), anyhow::Error> {
     // Retrieve current channel status.
     let current_status = database
-        .get_channel_details(&channel_id.to_string())
+        .get_channel_details(channel_id)
         .await
         .context("Failed to retrieve current channel status")?
         .status;
@@ -294,7 +294,7 @@ async fn expiry(
     database
         .compare_and_swap_channel_status(channel_id, &current_status, &ChannelStatus::PendingClose)
         .await
-        .context("Failed to update channel status")?;
+        .context("Failed to update channel status to PendingClose")?;
 
     // TODO: call expiry entrypoint, which will take
     // - contract ID
@@ -319,14 +319,11 @@ async fn claim_funds(
     channel_id: &ChannelId,
 ) -> Result<(), anyhow::Error> {
     // Assert database status is PendingClose
-    if !matches!(
-        database
-            .get_channel_details(&channel_id.to_string())
+    let channel_details = database
+            .get_channel_details(channel_id)
             .await
-            .context("Failed to retrieve current channel status")?
-            .status,
-        ChannelStatus::PendingClose
-    ) {
+            .context("Failed to retrieve current channel status")?;
+    if channel_details.status != ChannelStatus::PendingClose {
         return Err(close::Error::UnexpectedStatus.into());
     }
 
@@ -357,7 +354,7 @@ async fn finalize_close(
             &ChannelStatus::Closed,
         )
         .await
-        .context("Failed to update channel state")?;
+        .context("Failed to update channel status to Closed")?;
 
     // TODO: Indicate that all balances are paid out
     // to the merchant.

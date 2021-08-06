@@ -195,7 +195,7 @@ async fn start_payment(
             }
         })
         .await
-        .context("Database error while fetching initial pay state")?
+        .context("Failed to update channel status to Started")?
         .map_err(|e| e.into())
 }
 
@@ -219,7 +219,7 @@ async fn lock_payment(
         })
         .await
         .map(Result::ok)
-        .context("Database error while fetching started pay state")
+        .context("Failed to update channel status to Locked")
 }
 
 /// Attempt to unlock a locked payment for a channel of the given label, using the given
@@ -241,7 +241,7 @@ async fn unlock_payment(
             }
         })
         .await
-        .context("Database error while fetching locked pay state")?
+        .context("Failed to update channel status to Ready")?
         .map_err(|e| anyhow::anyhow!(e))
 }
 

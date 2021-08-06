@@ -213,7 +213,7 @@ async fn approve_and_establish(
             &ChannelStatus::CustomerFunded,
         )
         .await
-        .context("Failed to update database to indicate channel was customer-funded")?;
+        .context("Failed to update channel status to CustomerFunded")?;
 
     // TODO: If the merchant contribution was greater than zero, fund the channel on chain, and
     // await confirmation that the funding has gone through to the required confirmation depth
@@ -229,7 +229,7 @@ async fn approve_and_establish(
             &ChannelStatus::MerchantFunded,
         )
         .await
-        .context("Failed to update database to indicate channel was merchant-funded")?;
+        .context("Failed to update channel status to MerchantFunded")?;
 
     // Move forward in the protocol
     proceed!(in chan);
@@ -322,7 +322,8 @@ async fn zkabacus_activate(
             &ChannelStatus::MerchantFunded,
             &ChannelStatus::Active,
         )
-        .await?;
+        .await
+        .context("Failed to update channel status to Active")?;
 
     // Close communication with the customer
     chan.close();

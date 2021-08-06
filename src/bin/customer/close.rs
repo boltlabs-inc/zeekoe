@@ -120,7 +120,7 @@ async fn process_dispute(
 
     // Update channel status to Dispute
     // TODO: Update closing_message to reflect final channel balances from the dispute operation.
-    let _ = database
+    database
         .with_channel_state(
             channel_name,
             zkchannels_state::PendingClose,
@@ -129,7 +129,7 @@ async fn process_dispute(
             },
         )
         .await
-        .context("Failed to updated channel status.")?;
+        .context("Failed to updated channel status to Dispute")?;
 
     Ok(())
 }
@@ -149,14 +149,14 @@ async fn finalize_dispute(
 
     // Update channel status from Dispute to Closed
     // TODO: make sure balances match the ones in the dispute operation
-    let _ = database
+    database
         .with_channel_state(
             channel_name,
             zkchannels_state::Dispute,
             |closing_message| -> Result<_, Infallible> { Ok((State::Closed(closing_message), ())) },
         )
         .await
-        .context("Failed to updated channel status.")?;
+        .context("Failed to updated channel status to Closed")?;
     // Indicate that all balances are paid out to the merchant.
     Ok(())
 }
@@ -188,15 +188,14 @@ async fn finalize_close(
     //   to the merchant.
     //   This happens in a merchant unilateral close flow when the customer does not post current
     //   channel balances with custClose.
-
-    let _ = database
+    database
         .with_channel_state(
             channel_name,
             zkchannels_state::PendingClose,
             |closing_message| -> Result<_, Infallible> { Ok((State::Closed(closing_message), ())) },
         )
         .await
-        .context("Failed to updated channel status.")?;
+        .context("Failed to updated channel status to PendingClose")?;
 
     Ok(())
 }
@@ -248,7 +247,7 @@ async fn unilateral_close(
             |pending: ClosingMessage| -> Result<_, Infallible> { Ok((State::Closed(pending), ())) },
         )
         .await
-        .context("Could not update channel state to closed")?
+        .context("Failed to update channel status to Closed")?
         .map_err(|e| e.into())
 }
 
@@ -347,7 +346,7 @@ async fn finalize_mutual_close(
             |pending: ClosingMessage| Ok((State::Closed(pending), ())),
         )
         .await
-        .context("Database error while updating status.")?
+        .context("Failed to update channel status to Closed")?
 }
 
 async fn zkabacus_close(

@@ -55,9 +55,12 @@ pub trait QueryMerchant: Send + Sync {
     /// Get information about every channel in the database.
     async fn get_channels(&self) -> Result<Vec<(ChannelId, ChannelStatus)>>;
 
+    /// Get details about a particular channel based on its [`ChannelId`].
+    async fn get_channel_details(&self, channel_id: &ChannelId) -> Result<ChannelDetails>;
+
     /// Get details about a particular channel based on a unique prefix of its [`ChannelId`].
     // TODO: This currently does not implement prefix matching
-    async fn get_channel_details(&self, prefix: &str) -> Result<ChannelDetails>;
+    async fn get_channel_details_by_prefix(&self, prefix: &str) -> Result<ChannelDetails>;
 }
 
 /// An error when accessing the merchant database.
@@ -301,7 +304,43 @@ impl QueryMerchant for SqlitePool {
         Ok(channels)
     }
 
-    async fn get_channel_details(&self, prefix: &str) -> Result<ChannelDetails> {
+    async fn get_channel_details(&self, channel_id: &ChannelId) -> Result<ChannelDetails> {
+        let mut results = sqlx::query!(
+            r#"SELECT
+                channel_id AS "channel_id: ChannelId",
+                status as "status: ChannelStatus",
+                contract_id AS "contract_id: ContractId",
+                merchant_deposit AS "merchant_deposit: MerchantBalance",
+                customer_deposit AS "customer_deposit: CustomerBalance"
+            FROM merchant_channels
+            WHERE channel_id = ?
+            LIMIT 2"#,
+            channel_id
+        )
+        .fetch_all(self)
+        .await?
+        .into_iter();
+
+        let details = match results.next() {
+            None => return Err(Error::ChannelNotFound(*channel_id)),
+            Some(channel) => ChannelDetails {
+                channel_id: channel.channel_id,
+                status: channel.status,
+                contract_id: channel.contract_id,
+                merchant_deposit: channel.merchant_deposit,
+                customer_deposit: channel.customer_deposit,
+            },
+        };
+
+        if results.next().is_some() {
+            return Err(Error::ChannelIdCollision(channel_id.to_string()));
+        }
+
+        Ok(details)
+
+    }
+
+    async fn get_channel_details_by_prefix(&self, prefix: &str) -> Result<ChannelDetails> {
         let query = format!("{}%", &prefix);
         let mut results = sqlx::query!(
             r#"
