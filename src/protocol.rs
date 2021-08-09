@@ -281,8 +281,6 @@ pub mod close {
         InvalidMerchantAuthSignature,
         #[error("Arbiter failed to accept mutual close")]
         ArbiterRejectedMutualClose,
-        #[error("Channel is in an unexpected status while processing arbiter notification")]
-        UnexpectedStatus,
     }
 
     /// Mutual close session.

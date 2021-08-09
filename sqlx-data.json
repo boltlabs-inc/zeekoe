@@ -42,44 +42,20 @@
       ]
     }
   },
-  "197d450e34ff3cf548bbc1a4935de6fa5fe0b12b7e576e6750dc2a903bde5a91": {
-    "query": "SELECT\n                channel_id AS \"channel_id: ChannelId\",\n                status as \"status: ChannelStatus\",\n                contract_id AS \"contract_id: ContractId\",\n                merchant_deposit AS \"merchant_deposit: MerchantBalance\",\n                customer_deposit AS \"customer_deposit: CustomerBalance\"\n            FROM merchant_channels\n            WHERE channel_id = ?\n            LIMIT 2",
+  "076cdf23f2787d9df26bcbf900a6c8205379dabc0efdb0e5fd6d9a83e7e3745a": {
+    "query": "SELECT\n                status as \"status: ChannelStatus\"\n            FROM merchant_channels\n            WHERE channel_id = ?\n            LIMIT 2",
     "describe": {
       "columns": [
         {
-          "name": "channel_id: ChannelId",
+          "name": "status: ChannelStatus",
           "ordinal": 0,
           "type_info": "Text"
-        },
-        {
-          "name": "status: ChannelStatus",
-          "ordinal": 1,
-          "type_info": "Text"
-        },
-        {
-          "name": "contract_id: ContractId",
-          "ordinal": 2,
-          "type_info": "Blob"
-        },
-        {
-          "name": "merchant_deposit: MerchantBalance",
-          "ordinal": 3,
-          "type_info": "Blob"
-        },
-        {
-          "name": "customer_deposit: CustomerBalance",
-          "ordinal": 4,
-          "type_info": "Blob"
         }
       ],
       "parameters": {
         "Right": 1
       },
       "nullable": [
-        false,
-        false,
-        false,
-        false,
         false
       ]
     }

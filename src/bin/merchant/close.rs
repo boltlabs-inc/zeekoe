@@ -8,7 +8,13 @@ use rand::SeedableRng;
 
 use zeekoe::{
     abort,
-    merchant::{cli, config::Service, database::QueryMerchant, server::SessionKey, Chan, Config},
+    merchant::{
+        cli,
+        config::Service,
+        database::{Error, QueryMerchant},
+        server::SessionKey,
+        Chan, Config,
+    },
     offer_abort, proceed,
     protocol::{self, close, ChannelStatus, Party::Merchant},
 };
@@ -70,10 +76,9 @@ async fn process_customer_close(
 
     // Retrieve current channel status.
     let current_status = database
-        .get_channel_details(channel_id)
+        .get_channel_status(channel_id)
         .await
-        .context("Failed to check channel status")?
-        .status;
+        .context("Failed to check channel status")?;
 
     // If the lock *does not* have a revocation secret, update channel status to PendingClose.
     if revlock_is_fresh {
@@ -124,10 +129,9 @@ async fn finalize_customer_close(
 ) -> Result<(), anyhow::Error> {
     // Retrieve current channel status.
     let current_status = database
-        .get_channel_details(channel_id)
+        .get_channel_status(channel_id)
         .await
-        .context("Failed to check channel status")?
-        .status;
+        .context("Failed to check channel status")?;
 
     match current_status {
         // If database status is PendingClose, update channel status to Closed and
@@ -154,7 +158,12 @@ async fn finalize_customer_close(
         ChannelStatus::Dispute => {
             todo!()
         }
-        _ => Err(close::Error::UnexpectedStatus.into()),
+        _ => Err(Error::UnexpectedChannelStatus {
+            channel_id: *channel_id,
+            expected: vec![ChannelStatus::PendingClose, ChannelStatus::Dispute],
+            found: current_status,
+        }
+        .into()),
     }
 }
 
@@ -315,10 +324,9 @@ async fn expiry(
 ) -> Result<(), anyhow::Error> {
     // Retrieve current channel status.
     let current_status = database
-        .get_channel_details(channel_id)
+        .get_channel_status(channel_id)
         .await
-        .context("Failed to retrieve current channel status")?
-        .status;
+        .context("Failed to retrieve current channel status")?;
 
     // Update database status to PendingClose
     database
@@ -354,12 +362,17 @@ async fn claim_funds(
     channel_id: &ChannelId,
 ) -> Result<(), anyhow::Error> {
     // Assert database status is PendingClose
-    let channel_details = database
-        .get_channel_details(channel_id)
+    let channel_status = database
+        .get_channel_status(channel_id)
         .await
         .context("Failed to retrieve current channel status")?;
-    if channel_details.status != ChannelStatus::PendingClose {
-        return Err(close::Error::UnexpectedStatus.into());
+    if channel_status != ChannelStatus::PendingClose {
+        return Err(Error::UnexpectedChannelStatus {
+            channel_id: *channel_id,
+            expected: vec![ChannelStatus::PendingClose],
+            found: channel_status,
+        }
+        .into());
     }
 
     // TODO: call merchClaim entrypoint, which will take

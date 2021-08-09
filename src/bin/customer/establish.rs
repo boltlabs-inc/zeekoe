@@ -173,7 +173,7 @@ impl Command for Establish {
             // TODO: initialize contract on-chain via escrow agent (this should return a stream of
             // updates to the contract)
 
-            let _ = database
+            database
                 .with_channel_state(
                     &actual_label,
                     zkchannels_state::Inactive,
@@ -185,11 +185,11 @@ impl Command for Establish {
                         "Failed to update channel {} to Originated status",
                         &actual_label
                     )
-                })?;
+                })??;
 
             // TODO: fund contract via escrow agent
 
-            let _ = database
+            database
                 .with_channel_state(
                     &actual_label,
                     zkchannels_state::Originated,
@@ -203,7 +203,7 @@ impl Command for Establish {
                         "Failed to update channel {} to CustomerFunded status",
                         &actual_label
                     )
-                })?;
+                })??;
         }
 
         // TODO: send contract id to merchant (possibly also send block height, check spec)
@@ -218,7 +218,7 @@ impl Command for Establish {
             // Note: the following database update may be moved around once the merchant funding
             // check is added.
 
-            let _ = database
+            database
                 .with_channel_state(
                     &actual_label,
                     zkchannels_state::CustomerFunded,
@@ -232,7 +232,7 @@ impl Command for Establish {
                         "Failed to update channel {} to MerchantFunded status",
                         &actual_label
                     )
-                })?;
+                })??;
         }
 
         let merchant_funding_successful: bool = true; // TODO: query tezos for merchant funding

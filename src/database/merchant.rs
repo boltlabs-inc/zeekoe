@@ -56,10 +56,9 @@ pub trait QueryMerchant: Send + Sync {
     async fn get_channels(&self) -> Result<Vec<(ChannelId, ChannelStatus)>>;
 
     /// Get details about a particular channel based on its [`ChannelId`].
-    async fn get_channel_details(&self, channel_id: &ChannelId) -> Result<ChannelDetails>;
+    async fn get_channel_status(&self, channel_id: &ChannelId) -> Result<ChannelStatus>;
 
     /// Get details about a particular channel based on a unique prefix of its [`ChannelId`].
-    // TODO: This currently does not implement prefix matching
     async fn get_channel_details_by_prefix(&self, prefix: &str) -> Result<ChannelDetails>;
 }
 
@@ -79,10 +78,10 @@ pub enum Error {
     #[error("Invalid channel id: {0}")]
     MalformedChannelId(String),
     /// The channel status was expected to be one thing, but it was another.
-    #[error("Unexpected status for channel {channel_id} (expected {expected}, found {found})")]
+    #[error("Unexpected status for channel {channel_id} (expected {expected:?}, found {found})")]
     UnexpectedChannelStatus {
         channel_id: ChannelId,
-        expected: ChannelStatus,
+        expected: Vec<ChannelStatus>,
         found: ChannelStatus,
     },
     /// An underlying database error occurred.
@@ -282,7 +281,7 @@ impl QueryMerchant for SqlitePool {
             }
             Some(unexpected_status) => Err(Error::UnexpectedChannelStatus {
                 channel_id: *channel_id,
-                expected: *expected,
+                expected: vec![*expected],
                 found: unexpected_status,
             }),
         }
@@ -304,14 +303,10 @@ impl QueryMerchant for SqlitePool {
         Ok(channels)
     }
 
-    async fn get_channel_details(&self, channel_id: &ChannelId) -> Result<ChannelDetails> {
+    async fn get_channel_status(&self, channel_id: &ChannelId) -> Result<ChannelStatus> {
         let mut results = sqlx::query!(
             r#"SELECT
-                channel_id AS "channel_id: ChannelId",
-                status as "status: ChannelStatus",
-                contract_id AS "contract_id: ContractId",
-                merchant_deposit AS "merchant_deposit: MerchantBalance",
-                customer_deposit AS "customer_deposit: CustomerBalance"
+                status as "status: ChannelStatus"
             FROM merchant_channels
             WHERE channel_id = ?
             LIMIT 2"#,
@@ -321,22 +316,16 @@ impl QueryMerchant for SqlitePool {
         .await?
         .into_iter();
 
-        let details = match results.next() {
+        let status = match results.next() {
             None => return Err(Error::ChannelNotFound(*channel_id)),
-            Some(channel) => ChannelDetails {
-                channel_id: channel.channel_id,
-                status: channel.status,
-                contract_id: channel.contract_id,
-                merchant_deposit: channel.merchant_deposit,
-                customer_deposit: channel.customer_deposit,
-            },
+            Some(record) => record.status,
         };
 
         if results.next().is_some() {
             return Err(Error::ChannelIdCollision(channel_id.to_string()));
         }
 
-        Ok(details)
+        Ok(status)
     }
 
     async fn get_channel_details_by_prefix(&self, prefix: &str) -> Result<ChannelDetails> {
