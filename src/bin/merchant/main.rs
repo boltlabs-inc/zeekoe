@@ -79,8 +79,7 @@ impl Command for Run {
 
                 async move {
                     // Initialize a new `Server` with parameters taken from the configuration
-                    let mut server: Server<ZkChannels> =
-                        Server::new(&service.certificate, &service.private_key)?;
+                    let mut server: Server<ZkChannels> = Server::new();
                     server
                         .timeout(service.connection_timeout)
                         .max_pending_retries(Some(service.max_pending_connection_retries))
@@ -88,6 +87,8 @@ impl Command for Run {
 
                     // Serve on this address
                     let address = (service.address, service.port);
+                    let certificate = service.certificate.clone();
+                    let private_key = service.private_key.clone();
 
                     // There is no meaningful initialization necessary per request
                     let initialize = || async { Some(()) };
@@ -152,7 +153,13 @@ impl Command for Run {
 
                     // Run the server until graceful shutdown
                     server
-                        .serve_while(address, initialize, interact, wait_terminate)
+                        .serve_while(
+                            address,
+                            Some((&certificate, &private_key)),
+                            initialize,
+                            interact,
+                            wait_terminate,
+                        )
                         .await?;
                     Ok::<_, anyhow::Error>(())
                 }
