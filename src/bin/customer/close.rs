@@ -190,8 +190,9 @@ async fn unilateral_close(
 
     // Update database to closed state
     database
-        .with_channel_state::<zkchannels_state::PendingClose, _, _, _>(
+        .with_channel_state(
             &close.label,
+            zkchannels_state::PendingClose,
             |pending: ClosingMessage| -> Result<_, Infallible> { Ok((State::Closed(pending), ())) },
         )
         .await
@@ -286,8 +287,9 @@ async fn finalize_mutual_close(
 
     // Update database channel status from PendingClose to Closed.
     database
-        .with_channel_state::<zkchannels_state::PendingClose, _, _, _>(
+        .with_channel_state(
             &label,
+            zkchannels_state::PendingClose,
             |pending: ClosingMessage| Ok((State::Closed(pending), ())),
         )
         .await

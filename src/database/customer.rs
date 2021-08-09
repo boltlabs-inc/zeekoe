@@ -75,13 +75,14 @@ pub trait QueryCustomerExt {
     /// In particular, the closure **should not result in communication with the merchant**.
     async fn with_channel_state<
         'a,
-        S: ZkChannelState + Send,
+        S: ZkChannelState + Send + 'static,
         F: FnOnce(S::ZkAbacusState) -> std::result::Result<(State, T), E> + Send + 'a,
         T: Send + 'static,
         E: Send + 'static,
     >(
         &'a self,
         channel_name: &ChannelName,
+        expected_state: S,
         with_zkabacus_state: F,
     ) -> Result<std::result::Result<T, E>>;
 
@@ -406,13 +407,14 @@ impl QueryCustomer for SqlitePool {
 impl<Q: QueryCustomer + ?Sized> QueryCustomerExt for Q {
     async fn with_channel_state<
         'a,
-        S: ZkChannelState + Send,
+        S: ZkChannelState + Send + 'static,
         F: FnOnce(S::ZkAbacusState) -> std::result::Result<(State, T), E> + Send + 'a,
         T: Send + 'static,
         E: Send + 'static,
     >(
         &'a self,
         channel_name: &ChannelName,
+        _expected_state: S,
         with_zkabacus_state: F,
     ) -> Result<std::result::Result<T, E>> {
         let result = <Self as QueryCustomer>::with_channel_state_erased(

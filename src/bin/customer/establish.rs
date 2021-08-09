@@ -384,12 +384,14 @@ async fn activate_local(
     pay_token: PayToken,
 ) -> Result<(), anyhow::Error> {
     database
-        .with_channel_state::<zkchannels_state::Inactive, _, _, _>(label, |inactive: Inactive| {
-            match inactive.activate(pay_token) {
+        .with_channel_state(
+            label,
+            zkchannels_state::Inactive,
+            |inactive: Inactive| match inactive.activate(pay_token) {
                 Ok(ready) => Ok((State::Ready(ready), ())),
                 Err(_) => Err(establish::Error::InvalidPayToken),
-            }
-        })
+            },
+        )
         .await
         .context("Failed to activate channel")?
         .map_err(|e| e.into())

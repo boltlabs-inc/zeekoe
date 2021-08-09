@@ -187,7 +187,7 @@ async fn start_payment(
     context: ProofContext,
 ) -> Result<StartMessage, anyhow::Error> {
     database
-        .with_channel_state::<zkchannels_state::Ready, _, _, _>(label, |ready| {
+        .with_channel_state(label, zkchannels_state::Ready, |ready| {
             // Try to start the payment using the payment amount and proof context
             match ready.start(rng, payment_amount, &context) {
                 Ok((started, start_message)) => Ok((State::Started(started), start_message)),
@@ -210,7 +210,7 @@ async fn lock_payment(
     closing_signature: ClosingSignature,
 ) -> Result<Option<LockMessage>, anyhow::Error> {
     database
-        .with_channel_state::<zkchannels_state::Started, _, _, _>(label, |started| {
+        .with_channel_state(label, zkchannels_state::Started, |started| {
             // Attempt to lock the state using the closing signature. If it fails, raise a `pay::Error`.
             match started.lock(closing_signature) {
                 Ok((locked, lock_message)) => Ok((State::Locked(locked), lock_message)),
@@ -233,7 +233,7 @@ async fn unlock_payment(
     pay_token: PayToken,
 ) -> Result<(), anyhow::Error> {
     database
-        .with_channel_state::<zkchannels_state::Locked, _, _, _>(label, |locked| {
+        .with_channel_state(label, zkchannels_state::Locked, |locked| {
             // Attempt to unlock the state using the pay token
             match locked.unlock(pay_token) {
                 Ok(ready) => Ok((State::Ready(ready), ())),

@@ -67,6 +67,8 @@ pub mod zkchannels_state {
     /// Links the state struct, [`State`] variant, [`StateName`] variant, and zkAbacus data.
     macro_rules! impl_zkchannel_state {
         ($state:ident, $zkabacus:ident) => {
+            pub struct $state;
+
             impl ZkChannelState for $state {
                 type ZkAbacusState = zkabacus::$zkabacus;
 
@@ -84,34 +86,16 @@ pub mod zkchannels_state {
             }
         };
     }
-    pub struct Inactive;
+
     impl_zkchannel_state!(Inactive, Inactive);
-
-    pub struct Originated;
     impl_zkchannel_state!(Originated, Inactive);
-
-    pub struct CustomerFunded;
     impl_zkchannel_state!(CustomerFunded, Inactive);
-
-    pub struct MerchantFunded;
     impl_zkchannel_state!(MerchantFunded, Inactive);
-
-    pub struct Ready;
     impl_zkchannel_state!(Ready, Ready);
-
-    pub struct Started;
     impl_zkchannel_state!(Started, Started);
-
-    pub struct Locked;
     impl_zkchannel_state!(Locked, Locked);
-
-    pub struct PendingClose;
     impl_zkchannel_state!(PendingClose, ClosingMessage);
-
-    pub struct Dispute;
     impl_zkchannel_state!(Dispute, ClosingMessage);
-
-    pub struct Closed;
     impl_zkchannel_state!(Closed, ClosingMessage);
 }
 
