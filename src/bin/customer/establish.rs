@@ -180,7 +180,12 @@ impl Command for Establish {
                     |inactive| -> Result<_, Infallible> { Ok((State::Originated(inactive), ())) },
                 )
                 .await
-                .context("Failed to update channel status to Originated")?;
+                .with_context(|| {
+                    format!(
+                        "Failed to update channel {} to Originated status",
+                        &actual_label
+                    )
+                })?;
 
             // TODO: fund contract via escrow agent
 
@@ -193,7 +198,12 @@ impl Command for Establish {
                     },
                 )
                 .await
-                .context("Failed to update channel status to CustomerFunded")?;
+                .with_context(|| {
+                    format!(
+                        "Failed to update channel {} to CustomerFunded status",
+                        &actual_label
+                    )
+                })?;
         }
 
         // TODO: send contract id to merchant (possibly also send block height, check spec)
@@ -217,7 +227,12 @@ impl Command for Establish {
                     },
                 )
                 .await
-                .context("Failed to update channel status to MerchantFunded")?;
+                .with_context(|| {
+                    format!(
+                        "Failed to update channel {} to MerchantFunded status",
+                        &actual_label
+                    )
+                })?;
         }
 
         let merchant_funding_successful: bool = true; // TODO: query tezos for merchant funding
@@ -428,7 +443,7 @@ async fn activate_local(
             },
         )
         .await
-        .context("Failed to update channel status to Ready")?
+        .with_context(|| format!("Failed to update channel {} to Ready status", &label))?
         .map_err(|e| e.into())
 }
 

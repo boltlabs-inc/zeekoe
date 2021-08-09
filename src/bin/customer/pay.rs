@@ -195,7 +195,7 @@ async fn start_payment(
             }
         })
         .await
-        .context("Failed to update channel status to Started")?
+        .with_context(|| format!("Failed to update channel {} to Started status", &label))?
         .map_err(|e| e.into())
 }
 
@@ -219,7 +219,7 @@ async fn lock_payment(
         })
         .await
         .map(Result::ok)
-        .context("Failed to update channel status to Locked")
+        .with_context(|| format!("Failed to update channel {} to Locked status", &label))
 }
 
 /// Attempt to unlock a locked payment for a channel of the given label, using the given
@@ -241,7 +241,7 @@ async fn unlock_payment(
             }
         })
         .await
-        .context("Failed to update channel status to Ready")?
+        .with_context(|| format!("Failed to update channel {} to Ready status", &label))?
         .map_err(|e| anyhow::anyhow!(e))
 }
 

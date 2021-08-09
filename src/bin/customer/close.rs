@@ -247,7 +247,7 @@ async fn unilateral_close(
             |pending: ClosingMessage| -> Result<_, Infallible> { Ok((State::Closed(pending), ())) },
         )
         .await
-        .context("Failed to update channel status to Closed")?
+        .with_context(|| format!("Failed to update channel {} to Closed status", &close.label))?
         .map_err(|e| e.into())
 }
 
@@ -346,7 +346,7 @@ async fn finalize_mutual_close(
             |pending: ClosingMessage| Ok((State::Closed(pending), ())),
         )
         .await
-        .context("Failed to update channel status to Closed")?
+        .with_context(|| format!("Failed to update channel {} to Closed status", &label))?
 }
 
 async fn zkabacus_close(

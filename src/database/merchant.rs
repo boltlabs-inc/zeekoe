@@ -337,7 +337,6 @@ impl QueryMerchant for SqlitePool {
         }
 
         Ok(details)
-
     }
 
     async fn get_channel_details_by_prefix(&self, prefix: &str) -> Result<ChannelDetails> {
