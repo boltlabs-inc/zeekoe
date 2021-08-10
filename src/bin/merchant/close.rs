@@ -357,7 +357,7 @@ async fn expiry(
 /// is confirmed on chain _and_ the timelock period has passed without
 /// any other operation to the contract (i.e., a custClose entrypoint call) confirmed on chain.
 #[allow(unused)]
-async fn claim_funds(
+async fn claim_expiry_funds(
     database: &dyn QueryMerchant,
     channel_id: &ChannelId,
 ) -> Result<(), anyhow::Error> {
@@ -390,7 +390,7 @@ async fn claim_funds(
 /// **Usage**: this is called after the merchClaim operation is confirmed on chain to an appropriate
 /// depth.
 #[allow(unused)]
-async fn finalize_close(
+async fn finalize_expiry_close(
     database: &dyn QueryMerchant,
     channel_id: &ChannelId,
 ) -> Result<(), anyhow::Error> {

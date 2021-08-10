@@ -11,7 +11,7 @@ use std::convert::Infallible;
 use zkabacus_crypto::{
     customer::{Inactive, Requested},
     ChannelId, Context as ProofContext, CustomerBalance, CustomerRandomness, MerchantBalance,
-    PayToken, PublicKey, CLOSE_SCALAR,
+    PublicKey, CLOSE_SCALAR,
 };
 
 use zeekoe::{
@@ -173,6 +173,7 @@ impl Command for Establish {
             // TODO: initialize contract on-chain via escrow agent (this should return a stream of
             // updates to the contract)
 
+            // Update database to indicate successful contract origination.
             database
                 .with_channel_state(
                     &actual_label,
@@ -189,6 +190,7 @@ impl Command for Establish {
 
             // TODO: fund contract via escrow agent
 
+            // Update database to indicate successful customer funding.
             database
                 .with_channel_state(
                     &actual_label,
@@ -218,6 +220,7 @@ impl Command for Establish {
             // Note: the following database update may be moved around once the merchant funding
             // check is added.
 
+            // Update database to indicate successful merchant funding.
             database
                 .with_channel_state(
                     &actual_label,
@@ -408,7 +411,7 @@ async fn store_inactive_local(
     Ok(actual_label)
 }
 
-/// The core zkAbacus.Initialize protocol.
+/// The core zkAbacus.Activate protocol.
 async fn zkabacus_activate(
     database: &dyn QueryCustomer,
     label: &ChannelName,
@@ -423,20 +426,13 @@ async fn zkabacus_activate(
     // Close communication with the merchant
     chan.close();
 
-    // Step the local channel state forward to `Ready`
-    activate_local(database, label, pay_token).await
-}
-
-/// Update the local state for a channel from [`Inactive`] to [`Ready`] in the database.
-async fn activate_local(
-    database: &dyn QueryCustomer,
-    label: &ChannelName,
-    pay_token: PayToken,
-) -> Result<(), anyhow::Error> {
+    // Try to run the zkAbacus.Activate subprotocol.
+    // If it succeeds, update the channel status to `Ready`.
     database
         .with_channel_state(
             label,
             zkchannels_state::MerchantFunded,
+            // This closure tries to run zkAbacus.Activate
             |inactive: Inactive| match inactive.activate(pay_token) {
                 Ok(ready) => Ok((State::Ready(ready), ())),
                 Err(_) => Err(establish::Error::InvalidPayToken),

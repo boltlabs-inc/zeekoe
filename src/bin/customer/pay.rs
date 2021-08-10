@@ -186,6 +186,7 @@ async fn start_payment(
     payment_amount: PaymentAmount,
     context: ProofContext,
 ) -> Result<StartMessage, anyhow::Error> {
+    // Try to start the payment. If successful, update channel status to `Started`.
     database
         .with_channel_state(label, zkchannels_state::Ready, |ready| {
             // Try to start the payment using the payment amount and proof context
@@ -209,6 +210,7 @@ async fn lock_payment(
     label: &ChannelName,
     closing_signature: ClosingSignature,
 ) -> Result<Option<LockMessage>, anyhow::Error> {
+    // Try to continue (lock) the payment. If successful, update channel status to `Locked`.
     database
         .with_channel_state(label, zkchannels_state::Started, |started| {
             // Attempt to lock the state using the closing signature. If it fails, raise a `pay::Error`.
@@ -232,6 +234,7 @@ async fn unlock_payment(
     label: &ChannelName,
     pay_token: PayToken,
 ) -> Result<(), anyhow::Error> {
+    // Try to finish (unlock) the payment. If successful, update channel status to `Ready`.
     database
         .with_channel_state(label, zkchannels_state::Locked, |locked| {
             // Attempt to unlock the state using the pay token
