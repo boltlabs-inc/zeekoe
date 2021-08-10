@@ -1,44 +1,120 @@
+use std::{
+    pin::Pin,
+    task::{Context, Poll},
+};
+
 use {
-    skiplist::SkipMap,
+    futures::stream::Stream,
     std::{
         cmp::Reverse,
-        collections::{BTreeMap, HashMap, VecDeque},
         future::Future,
         hash::Hash,
         ops::{Add, Sub},
-        sync::Arc,
     },
-    tokio::sync::{oneshot, RwLock},
 };
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Height(usize);
+pub struct Notifications {}
 
-impl From<usize> for Height {
+pub struct ContractEventStream {}
+
+pub struct ContractEvent {
+    contract: ContractHash,
+    operation: OperationHash,
+    event: ZkChannelEvent,
+}
+
+pub enum ZkChannelEvent {
+    // TODO: zkchannels domain specific event types
+}
+
+pub enum Error {
+    Reorg,
+    Io(std::io::Error),
+    // TODO: maybe other kinds of errors, add them here
+}
+
+impl Stream for ContractEventStream {
+    type Item = Result<ContractEvent, std::io::Error>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        todo!()
+    }
+}
+
+pub struct ContractEventStreamHandle {}
+
+impl ContractEventStreamHandle {
+    /// Add the given [`ContractHash`] to the set of streamed contracts.
+    /// The [`Level`] parameter indicates the level at which the [`ContractHash`] was originated
+    /// on chain.
+    pub async fn add_contract(&self, contract_hash: &ContractHash, originated: Level) {
+        todo!()
+    }
+
+    /// Remove the given [`ContractHash`] from the set of streamed contracts.
+    pub async fn remove_contract(&self, contract_hash: &ContractHash) {
+        todo!()
+    }
+
+    /// Replace the set of streamed contracts with the given `contract_hashes`.
+    /// The [`Level`] parameters indicate the level at which the [`ContractHash`]es are originated
+    /// on chain.
+    pub async fn set_contracts(
+        &self,
+        contract_hashes: impl IntoIterator<Item = &(ContractHash, Level)>,
+    ) {
+        todo!()
+    }
+}
+
+impl Notifications {
+    /// Wait for confirmation that the specified operation is confirmed at the given [`Depth`].
+    ///
+    /// This can be used for confirmation that an operation will not be lost in a reorg
+    /// or for checking that a specified timeout has elapsed.
+    pub async fn confirm_operation(
+        &self,
+        operation_hash: &OperationHash,
+        confirmations: Depth,
+    ) -> Result<(), Error> {
+        todo!()
+    }
+
+    /// Get a stream of events and a linked handle that allows the contents of the stream to be
+    /// updated by another task.
+    pub async fn contract_events(&self) -> (ContractEventStreamHandle, ContractEventStream) {
+        todo!()
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Level(usize);
+
+impl From<usize> for Level {
     fn from(n: usize) -> Self {
         Self(n)
     }
 }
 
-impl From<Height> for usize {
-    fn from(h: Height) -> Self {
+impl From<Level> for usize {
+    fn from(h: Level) -> Self {
         h.0
     }
 }
 
-impl Add<usize> for Height {
-    type Output = Height;
+impl Add<usize> for Level {
+    type Output = Level;
 
     fn add(self, rhs: usize) -> Self::Output {
-        Height(self.0 + rhs)
+        Level(self.0 + rhs)
     }
 }
 
-impl Sub<usize> for Height {
-    type Output = Height;
+impl Sub<usize> for Level {
+    type Output = Level;
 
     fn sub(self, rhs: usize) -> Self::Output {
-        Height(self.0 - rhs)
+        Level(self.0 - rhs)
     }
 }
 
@@ -76,7 +152,7 @@ pub trait Block {
 
     fn predecessor(&self) -> &Self::Id;
 
-    fn height(&self) -> Height;
+    fn height(&self) -> Level;
 }
 
 pub trait Fetch {
