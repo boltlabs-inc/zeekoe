@@ -5,12 +5,7 @@ use zkabacus_crypto::{
     CustomerRandomness, MerchantBalance, MerchantRandomness, StateCommitment,
 };
 
-use zeekoe::{
-    abort,
-    merchant::{config::Service, database::QueryMerchant, server::SessionKey, Chan},
-    offer_abort, proceed,
-    protocol::{self, establish, ChannelStatus, ContractId, Party::Merchant},
-};
+use zeekoe::{abort, escrow::types::ContractId, merchant::{config::Service, database::QueryMerchant, server::SessionKey, Chan}, offer_abort, proceed, protocol::{self, establish, ChannelStatus, Party::Merchant}};
 
 use super::{approve, Method};
 
@@ -163,7 +158,7 @@ async fn approve_and_establish(
     .context("Failed to initialize channel")?;
 
     // TODO: receive contract id from customer (possibly also send block height, check spec)
-    let contract_id = ContractId {};
+    let contract_id: ContractId = todo!();
 
     // NOTE: This set of on-chain verification checks is **subtly insufficient** unless the
     // on-chain contract's state machine is acyclic, which at the time of writing of this note

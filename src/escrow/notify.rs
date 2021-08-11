@@ -3,12 +3,9 @@ use std::{
     task::{Context, Poll},
 };
 
-use tezedge::{OperationHash, OriginatedAddress};
+use tezedge::OperationHash;
 
-/// Rename this type to match zkChannels written notation.
-/// Also, so we can easily change the tezedge type in case it is wrong.
-pub type ContractId = OriginatedAddress;
-
+use super::types::ContractId;
 use {
     futures::stream::Stream,
     std::{
