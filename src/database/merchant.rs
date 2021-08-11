@@ -2,7 +2,7 @@ use {async_trait::async_trait, futures::StreamExt, rand::rngs::StdRng, thiserror
 
 pub use super::connect_sqlite;
 use crate::database::SqlitePool;
-use crate::{protocol::ChannelStatus, escrow::types::ContractId};
+use crate::{escrow::types::ContractId, protocol::ChannelStatus};
 use zkabacus_crypto::{
     revlock::{RevocationLock, RevocationSecret},
     ChannelId, CommitmentParameters, CustomerBalance, KeyPair, MerchantBalance, Nonce,
@@ -451,7 +451,9 @@ mod tests {
         let cid_c = CustomerRandomness::new(&mut rng);
         let pk = KeyPair::new(&mut rng).public_key().clone();
         let channel_id = ChannelId::new(cid_m, cid_c, &pk, &[], &[]);
-        let contract_id = ContractId::new(OriginatedAddress::from_base58check("KT1Mjjcb6tmSsLm7Cb3DSQszePjfchPM4Uxm").unwrap());
+        let contract_id = ContractId::new(
+            OriginatedAddress::from_base58check("KT1Mjjcb6tmSsLm7Cb3DSQszePjfchPM4Uxm").unwrap(),
+        );
 
         let merchant_deposit = MerchantBalance::try_new(5).unwrap();
         let customer_deposit = CustomerBalance::try_new(5).unwrap();

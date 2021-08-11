@@ -5,7 +5,13 @@ use zkabacus_crypto::{
     CustomerRandomness, MerchantBalance, MerchantRandomness, StateCommitment,
 };
 
-use zeekoe::{abort, escrow::types::ContractId, merchant::{config::Service, database::QueryMerchant, server::SessionKey, Chan}, offer_abort, proceed, protocol::{self, establish, ChannelStatus, Party::Merchant}};
+use zeekoe::{
+    abort,
+    escrow::types::ContractId,
+    merchant::{config::Service, database::QueryMerchant, server::SessionKey, Chan},
+    offer_abort, proceed,
+    protocol::{self, establish, ChannelStatus, Party::Merchant},
+};
 
 use super::{approve, Method};
 
