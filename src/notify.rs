@@ -3,6 +3,12 @@ use std::{
     task::{Context, Poll},
 };
 
+use tezedge::{OperationHash, OriginatedAddress};
+
+/// Rename this type to match zkChannels written notation.
+/// Also, so we can easily change the tezedge type in case it is wrong.
+pub type ContractId = OriginatedAddress;
+
 use {
     futures::stream::Stream,
     std::{
@@ -17,8 +23,9 @@ pub struct Notifications {}
 
 pub struct ContractEventStream {}
 
+#[allow(unused)]
 pub struct ContractEvent {
-    contract: ContractHash,
+    contract: ContractId,
     operation: OperationHash,
     event: ZkChannelEvent,
 }
@@ -33,6 +40,7 @@ pub enum Error {
     // TODO: maybe other kinds of errors, add them here
 }
 
+#[allow(unused)]
 impl Stream for ContractEventStream {
     type Item = Result<ContractEvent, std::io::Error>;
 
@@ -43,30 +51,40 @@ impl Stream for ContractEventStream {
 
 pub struct ContractEventStreamHandle {}
 
+#[allow(unused)]
 impl ContractEventStreamHandle {
-    /// Add the given [`ContractHash`] to the set of streamed contracts.
-    /// The [`Level`] parameter indicates the level at which the [`ContractHash`] was originated
+    /// Add the given [`ContractId`] to the set of streamed contracts.
+    /// The [`Level`] parameter indicates the level at which the [`ContractId`] was originated
     /// on chain.
-    pub async fn add_contract(&self, contract_hash: &ContractHash, originated: Level) {
+    ///
+    /// This will stream all events for the [`ContractId`] that have occurred on chain between
+    /// [`Level`] and the current chain height.
+    pub async fn add_contract(&self, contract_hash: &ContractId, originated: Level) {
         todo!()
     }
 
-    /// Remove the given [`ContractHash`] from the set of streamed contracts.
-    pub async fn remove_contract(&self, contract_hash: &ContractHash) {
+    /// Remove the given [`ContractId`] from the set of streamed contracts.
+    pub async fn remove_contract(&self, contract_hash: &ContractId) {
         todo!()
     }
 
     /// Replace the set of streamed contracts with the given `contract_hashes`.
-    /// The [`Level`] parameters indicate the level at which the [`ContractHash`]es are originated
+    /// The [`Level`] parameters indicate the level at which the [`ContractId`]s are originated
     /// on chain.
+    ///
+    /// This will not cause duplicated events for [`ContractId`]s that were already
+    /// in the set of streamed contracts.
+    /// This will stream all events for each _new_ [`ContractId`] that have occurred on chain
+    /// between [`Level`] and the current chain height.
     pub async fn set_contracts(
         &self,
-        contract_hashes: impl IntoIterator<Item = &(ContractHash, Level)>,
+        contract_hashes: impl IntoIterator<Item = &(ContractId, Level)>,
     ) {
         todo!()
     }
 }
 
+#[allow(unused)]
 impl Notifications {
     /// Wait for confirmation that the specified operation is confirmed at the given [`Depth`].
     ///
@@ -138,6 +156,7 @@ pub enum Confirmation {
     Dropped,
 }
 
+#[allow(unused)]
 pub struct Cache<B: Block, F: Fetch> {
     blocks: Vec<B>,
     fetcher: F,
