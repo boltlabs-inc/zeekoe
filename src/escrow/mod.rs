@@ -1,4 +1,5 @@
 pub mod notify;
+pub mod tezos;
 
 pub mod types {
 
@@ -27,4 +28,7 @@ pub mod types {
             Self(addr)
         }
     }
+
+    pub type TezosPublicKey = tezedge::PublicKey;
+    pub type TezosFundingAccount = tezedge::ImplicitAddress;
 }
