@@ -176,3 +176,68 @@ mod establish {
         todo!()
     }
 }
+
+
+mod close {
+    use crate::escrow::{types::{ContractId, TezosFundingAccount}};
+
+    use {
+        serde::{Deserialize, Serialize},
+        thiserror::Error,
+    };
+
+    #[derive(Clone, Debug, Error, Serialize, Deserialize)]
+    pub enum Error {
+        #[error("Encountered a network error")]
+        NetworkFailed,
+        #[error("The expiry operation could not be posted because it is invalid (id = {0})")]
+        ExpiryInvalid(ContractId),
+        #[error("The expiry operation failed to post on chain (id = {0})")]
+        ExpiryFailed(ContractId),
+        #[error("The merch claim operation could not be posted because it is invalid (id = {0})")]
+        MerchClaimInvalid(ContractId),
+        #[error("The merch claim operation failed to post on chain (id = {0})")]
+        MerchClaimFailed(ContractId),
+    }
+
+    /// Initiate expiry close flow via the `expiry` entrypoint on the given [`ContractId`].
+    ///
+    /// This function will wait until the expiry operation is confirmed at depth and is called
+    /// by the merchant.
+    ///
+    /// Errors:
+    /// - [`Error::ExpiryInvalid`]: Contract status is not OPEN or the
+    ///   [`TezosFundingAccount`] specified does not match the merchant address in [`ContractId`].
+    /// - [`Error::ExpiryFailed`]: The operation was not confirmed on chain within the expected 
+    ///   timeout period.
+    /// - [`Error::NetworkFailed`]: Something else happened.
+    #[allow(unused)]
+    pub async fn expiry(
+        contract_id: &ContractId,
+        merchant_tezos_account: &TezosFundingAccount,
+    ) -> Result<(), Error> {
+        todo!()
+    }
+
+    /// Complete expiry close flow by claiming the entire channel balance on the [`ContractId`] 
+    /// via the `merchClaim` entrypoint.
+    ///
+    /// This function will wait until the self-delay period on the `expiry` entrypoint has passed.
+    /// After posting the `merchClaim` operation, it will wait until it has been confirmed at 
+    /// depth. It is called by the merchant.
+    ///
+    /// Errors:
+    /// - [`Error::MerchClaimInvalid`]: Contract status is not EXPIRY or the 
+    ///   [`TezosFundingAccount`] specified does not match the merchant address in [`ContractId`].
+    /// - [`Error::MerchClaimFailed`]: The operation was not confirmed on chain within the expected 
+    ///   timeout period.
+    /// - [`Error::NetworkFailed`]: Something else happened.
+    #[allow(unused)]
+    pub async fn merch_claim(
+        contract_id: &ContractId,
+        merchant_tezos_account: &TezosFundingAccount,
+    ) -> Result<(), Error> {
+        todo!()
+    }
+
+}
