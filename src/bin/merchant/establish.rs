@@ -117,7 +117,8 @@ impl Method for Establish {
 /// end of the channel establishment protocol.
 #[allow(clippy::too_many_arguments)]
 #[allow(unused)]
-#[allow(clippy::unreachable_code)]
+#[allow(clippy::unreachable)]
+#[allow(clippy::diverging_sub_expression)]
 async fn approve_and_establish(
     rng: &mut StdRng,
     database: &dyn QueryMerchant,
