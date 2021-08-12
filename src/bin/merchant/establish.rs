@@ -82,8 +82,9 @@ impl Method for Establish {
         {
             Ok(confirm_url) => confirm_url,
             Err(approval_error) => {
-                let error =
-                    establish::Error::Rejected(approval_error.unwrap_or("internal error".into()));
+                let error = establish::Error::Rejected(
+                    approval_error.unwrap_or_else(|| "internal error".into()),
+                );
                 abort!(in chan return error);
             }
         };
@@ -114,6 +115,9 @@ impl Method for Establish {
 
 /// Signal to the customer that the channel has been approved to be established, and continue to the
 /// end of the channel establishment protocol.
+#[allow(clippy::too_many_arguments)]
+#[allow(unused)]
+#[allow(clippy::unreachable_code)]
 async fn approve_and_establish(
     rng: &mut StdRng,
     database: &dyn QueryMerchant,
@@ -212,7 +216,12 @@ async fn approve_and_establish(
             &ChannelStatus::CustomerFunded,
         )
         .await
-        .context("Failed to update database to indicate channel was customer-funded")?;
+        .with_context(|| {
+            format!(
+                "Failed to update channel to CustomerFunded status (id: {})",
+                &channel_id
+            )
+        })?;
 
     // TODO: If the merchant contribution was greater than zero, fund the channel on chain, and
     // await confirmation that the funding has gone through to the required confirmation depth
@@ -228,7 +237,12 @@ async fn approve_and_establish(
             &ChannelStatus::MerchantFunded,
         )
         .await
-        .context("Failed to update database to indicate channel was merchant-funded")?;
+        .with_context(|| {
+            format!(
+                "Failed to update channel to MerchantFunded status (id: {})",
+                &channel_id
+            )
+        })?;
 
     // Move forward in the protocol
     proceed!(in chan);
@@ -305,15 +319,6 @@ async fn zkabacus_activate(
     state_commitment: StateCommitment,
     chan: Chan<establish::Activate>,
 ) -> Result<(), anyhow::Error> {
-    // Transition the channel state to active
-    database
-        .compare_and_swap_channel_status(
-            channel_id,
-            &ChannelStatus::MerchantFunded,
-            &ChannelStatus::Active,
-        )
-        .await?;
-
     // Generate the pay token to send to the customer
     let pay_token = config.activate(rng, state_commitment);
 
@@ -322,6 +327,21 @@ async fn zkabacus_activate(
         .send(pay_token)
         .await
         .context("Failed to send pay token")?;
+
+    // Transition the channel state to active
+    database
+        .compare_and_swap_channel_status(
+            channel_id,
+            &ChannelStatus::MerchantFunded,
+            &ChannelStatus::Active,
+        )
+        .await
+        .with_context(|| {
+            format!(
+                "Failed to update channel to Active status (id: {})",
+                &channel_id
+            )
+        })?;
 
     // Close communication with the customer
     chan.close();

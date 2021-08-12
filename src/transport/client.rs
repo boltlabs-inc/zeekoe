@@ -3,7 +3,9 @@
 use {
     dialectic::prelude::*,
     dialectic_reconnect::retry,
-    dialectic_tokio_serde_bincode::length_delimited,
+    dialectic_tokio_serde::codec::LengthDelimitedCodec,
+    dialectic_tokio_serde::{RecvError, SendError},
+    dialectic_tokio_serde_bincode::{length_delimited, Bincode},
     http::uri::{InvalidUri, Uri},
     std::{
         fmt::{self, Display},
@@ -195,10 +197,10 @@ where
             handshake::client::retry::<_, _, TransportError>,
             Protocol::default(),
         )
-        .recover_rx(self.backoff.build(retry::Recovery::ReconnectAfter))
-        .recover_tx(self.backoff.build(retry::Recovery::ReconnectAfter))
-        .recover_connect(self.backoff.build(retry::Recovery::ReconnectAfter))
-        .recover_handshake(self.backoff.build(retry::Recovery::ReconnectAfter))
+        .recover_rx(reconnect_unless(&self.backoff, permanent_rx_error))
+        .recover_tx(reconnect_unless(&self.backoff, permanent_tx_error))
+        .recover_connect(reconnect_unless(&self.backoff, permanent_connect_error))
+        .recover_handshake(reconnect_unless(&self.backoff, permanent_handshake_error))
         .timeout(self.timeout)
         .max_pending_retries(self.max_pending_retries)
         .connect((
@@ -281,5 +283,74 @@ impl Display for ZkChannelAddress {
             write!(f, ":{}", port)?;
         }
         Ok(())
+    }
+}
+
+/// Given a backoff and a predicate on errors, return a reconnection strategy which uses that
+/// backoff unless the predicate returns true. This is marginally more efficient than rebuilding the
+/// backoff every time inside a closure.
+fn reconnect_unless<E>(
+    backoff: &Backoff,
+    unless: impl Fn(&E) -> bool,
+) -> impl Fn(usize, &E) -> retry::Recovery {
+    let backoff = backoff.build(retry::Recovery::ReconnectAfter);
+    move |retries, error| {
+        if unless(error) {
+            retry::Recovery::Fail
+        } else {
+            backoff(retries, error)
+        }
+    }
+}
+
+/// Determine if a given [`io::ErrorKind`] should be considered a permanent error, or if it should
+/// be retried. If this predicate returns `false`, a retry is executed.
+fn permanent_error_kind(error_kind: &io::ErrorKind) -> bool {
+    matches!(
+        error_kind,
+        io::ErrorKind::NotFound
+            | io::ErrorKind::PermissionDenied
+            | io::ErrorKind::ConnectionRefused
+            | io::ErrorKind::AddrInUse
+            | io::ErrorKind::AddrNotAvailable
+            | io::ErrorKind::InvalidInput
+            | io::ErrorKind::InvalidData
+            | io::ErrorKind::Unsupported
+    )
+}
+
+/// Determine if a sending error should be considered permanent.
+fn permanent_tx_error(error: &SendError<Bincode, LengthDelimitedCodec>) -> bool {
+    permanent_error_kind(&match error {
+        SendError::Serialize(err) => match &**err {
+            bincode::ErrorKind::Io(err) => err.kind(),
+            _ => return true,
+        },
+        SendError::Encode(err) => err.kind(),
+    })
+}
+
+/// Determine if a receiving error should be considered permanent.
+fn permanent_rx_error(error: &RecvError<Bincode, LengthDelimitedCodec>) -> bool {
+    permanent_error_kind(&match error {
+        RecvError::Deserialize(err) => match &**err {
+            bincode::ErrorKind::Io(err) => err.kind(),
+            _ => return true,
+        },
+        RecvError::Decode(err) => err.kind(),
+        RecvError::Closed => return true,
+    })
+}
+
+/// Determine if a connecting error should be considered permanent.
+fn permanent_connect_error(error: &io::Error) -> bool {
+    permanent_error_kind(&error.kind())
+}
+
+/// Determine if a handshake error should be considered permanent.
+fn permanent_handshake_error(error: &TransportError) -> bool {
+    match error {
+        dialectic_tokio_serde::Error::Send(err) => permanent_tx_error(err),
+        dialectic_tokio_serde::Error::Recv(err) => permanent_rx_error(err),
     }
 }

@@ -1,7 +1,7 @@
 use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng};
 
 use zkabacus_crypto::{
-    customer::{LockMessage, Locked, Ready, StartMessage, Started},
+    customer::{LockMessage, StartMessage},
     ClosingSignature, Context as ProofContext, PayToken, PaymentAmount,
 };
 
@@ -10,7 +10,7 @@ use zeekoe::{
     customer::{
         cli::{Pay, Refund},
         client::SessionKey,
-        database::{QueryCustomer, QueryCustomerExt},
+        database::{zkchannels_state, QueryCustomer, QueryCustomerExt, State},
         Chan, ChannelName, Config,
     },
     offer_abort, proceed,
@@ -186,16 +186,18 @@ async fn start_payment(
     payment_amount: PaymentAmount,
     context: ProofContext,
 ) -> Result<StartMessage, anyhow::Error> {
+    // Try to start the payment. If successful, update channel status to `Started`.
     database
-        .with_channel_state(label, |ready: Ready| {
-            // Attempt to start the payment using the payment amount and proof context
-            ready
-                .start(rng, payment_amount, &context)
-                .map_err(|(_, e)| e)
-                .context("Failed to generate nonce and pay proof")
+        .with_channel_state(label, zkchannels_state::Ready, |ready| {
+            // Try to start the payment using the payment amount and proof context
+            match ready.start(rng, payment_amount, &context) {
+                Ok((started, start_message)) => Ok((State::Started(started), start_message)),
+                Err((_, e)) => Err(pay::Error::StartFailed(e)),
+            }
         })
         .await
-        .context("Database error while fetching initial pay state")?
+        .with_context(|| format!("Failed to update channel {} to Started status", &label))?
+        .map_err(|e| e.into())
 }
 
 /// Attempt to lock a started payment for the channel of the given label, using the given
@@ -208,14 +210,18 @@ async fn lock_payment(
     label: &ChannelName,
     closing_signature: ClosingSignature,
 ) -> Result<Option<LockMessage>, anyhow::Error> {
+    // Try to continue (lock) the payment. If successful, update channel status to `Locked`.
     database
-        .with_channel_state(label, |started: Started| {
-            // Attempt to lock the state using the closing signature
-            started.lock(closing_signature).map_err(|_| ())
+        .with_channel_state(label, zkchannels_state::Started, |started| {
+            // Attempt to lock the state using the closing signature. If it fails, raise a `pay::Error`.
+            match started.lock(closing_signature) {
+                Ok((locked, lock_message)) => Ok((State::Locked(locked), lock_message)),
+                Err(_) => Err(pay::Error::InvalidClosingSignature),
+            }
         })
         .await
         .map(Result::ok)
-        .context("Database error while fetching started pay state")
+        .with_context(|| format!("Failed to update channel {} to Locked status", &label))
 }
 
 /// Attempt to unlock a locked payment for a channel of the given label, using the given
@@ -228,17 +234,18 @@ async fn unlock_payment(
     label: &ChannelName,
     pay_token: PayToken,
 ) -> Result<(), anyhow::Error> {
+    // Try to finish (unlock) the payment. If successful, update channel status to `Ready`.
     database
-        .with_channel_state(label, |locked: Locked| {
+        .with_channel_state(label, zkchannels_state::Locked, |locked| {
             // Attempt to unlock the state using the pay token
-            let ready = locked.unlock(pay_token).map_err(|_| {
-                // Return an error since the state could not be unlocked
-                pay::Error::InvalidPayToken
-            })?;
-            Ok((ready, ()))
+            match locked.unlock(pay_token) {
+                Ok(ready) => Ok((State::Ready(ready), ())),
+                Err(_) => Err(pay::Error::InvalidPayToken),
+            }
         })
         .await
-        .context("Database error while fetching locked pay state")?
+        .with_context(|| format!("Failed to update channel {} to Ready status", &label))?
+        .map_err(|e| anyhow::anyhow!(e))
 }
 
 #[async_trait]

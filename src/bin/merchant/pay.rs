@@ -44,7 +44,8 @@ impl Method for Pay {
             Ok(response_url) => response_url,
             Err(approval_error) => {
                 // If the payment was not approved, indicate to the client why
-                let error = pay::Error::Rejected(approval_error.unwrap_or("internal error".into()));
+                let error =
+                    pay::Error::Rejected(approval_error.unwrap_or_else(|| "internal error".into()));
                 abort!(in chan return error);
             }
         };

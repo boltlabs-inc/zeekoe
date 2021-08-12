@@ -1,9 +1,17 @@
-use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng, std::convert::TryInto};
+use {
+    anyhow::Context,
+    async_trait::async_trait,
+    rand::rngs::StdRng,
+    serde::Serialize,
+    std::{convert::TryInto, fs::File, path::PathBuf},
+};
+
+use std::convert::Infallible;
 
 use zkabacus_crypto::{
     customer::{Inactive, Requested},
     ChannelId, Context as ProofContext, CustomerBalance, CustomerRandomness, MerchantBalance,
-    PayToken,
+    PublicKey, CLOSE_SCALAR,
 };
 
 use zeekoe::{
@@ -11,7 +19,7 @@ use zeekoe::{
     customer::{
         cli::Establish,
         client::ZkChannelAddress,
-        database::{self, QueryCustomer, QueryCustomerExt},
+        database::{self, zkchannels_state, QueryCustomer, QueryCustomerExt, State},
         Chan, ChannelName, Config,
     },
     offer_abort, proceed,
@@ -22,6 +30,15 @@ use zeekoe::{
 };
 
 use super::{connect, database, Command};
+
+#[derive(Debug, Clone, Serialize)]
+struct Establishment {
+    merchant_ps_public_key: PublicKey,
+    customer_deposit: CustomerBalance,
+    merchant_deposit: MerchantBalance,
+    channel_id: ChannelId,
+    close_scalar_bytes: [u8; 32],
+}
 
 #[async_trait]
 impl Command for Establish {
@@ -120,6 +137,15 @@ impl Command for Establish {
             &[], // TODO: fill this in with bytes of customer's tezos public key
         );
 
+        // Generate structure holding information about the establishment that's about to take place
+        let establishment = Establishment {
+            merchant_ps_public_key: zkabacus_customer_config.merchant_public_key().clone(),
+            customer_deposit,
+            merchant_deposit,
+            channel_id,
+            close_scalar_bytes: CLOSE_SCALAR.to_bytes(),
+        };
+
         // Generate the proof context for the establish proof
         // TODO: the context should actually be formed from a session transcript up to this point
         let context = ProofContext::new(&session_key.to_bytes());
@@ -143,25 +169,86 @@ impl Command for Establish {
         .await
         .context("Failed to initialize the channel")?;
 
-        // TODO: initialize contract on-chain via escrow agent (this should return a stream of
-        // updates to the contract)
+        if !self.off_chain {
+            // TODO: initialize contract on-chain via escrow agent (this should return a stream of
+            // updates to the contract)
 
-        // TODO: fund contract via escrow agent
+            // Update database to indicate successful contract origination.
+            database
+                .with_channel_state(
+                    &actual_label,
+                    zkchannels_state::Inactive,
+                    |inactive| -> Result<_, Infallible> { Ok((State::Originated(inactive), ())) },
+                )
+                .await
+                .with_context(|| {
+                    format!(
+                        "Failed to update channel {} to Originated status",
+                        &actual_label
+                    )
+                })??;
+
+            // TODO: fund contract via escrow agent
+
+            // Update database to indicate successful customer funding.
+            database
+                .with_channel_state(
+                    &actual_label,
+                    zkchannels_state::Originated,
+                    |inactive| -> Result<_, Infallible> {
+                        Ok((State::CustomerFunded(inactive), ()))
+                    },
+                )
+                .await
+                .with_context(|| {
+                    format!(
+                        "Failed to update channel {} to CustomerFunded status",
+                        &actual_label
+                    )
+                })??;
+        }
 
         // TODO: send contract id to merchant (possibly also send block height, check spec)
 
         // Allow the merchant to indicate whether it funded the channel
         offer_abort!(in chan as Customer);
 
-        // TODO: if merchant contribution was non-zero, check that merchant funding was provided
-        // within a configurable timeout and to the desired block depth and that the status of the
-        // contract is locked: if not, recommend unilateral close
+        if !self.off_chain {
+            // TODO: if merchant contribution was non-zero, check that merchant funding was provided
+            // within a configurable timeout and to the desired block depth and that the status of
+            // the contract is locked. if not, recommend unilateral close
+            // Note: the following database update may be moved around once the merchant funding
+            // check is added.
+
+            // Update database to indicate successful merchant funding.
+            database
+                .with_channel_state(
+                    &actual_label,
+                    zkchannels_state::CustomerFunded,
+                    |inactive| -> Result<_, Infallible> {
+                        Ok((State::MerchantFunded(inactive), ()))
+                    },
+                )
+                .await
+                .with_context(|| {
+                    format!(
+                        "Failed to update channel {} to MerchantFunded status",
+                        &actual_label
+                    )
+                })??;
+        }
+
         let merchant_funding_successful: bool = true; // TODO: query tezos for merchant funding
 
         if !merchant_funding_successful {
             abort!(in chan return establish::Error::FailedMerchantFunding);
         }
         proceed!(in chan);
+
+        if self.off_chain {
+            // Write the establishment information to disk
+            write_establish_json(&establishment)?;
+        }
 
         // Run zkAbacus.Activate
         zkabacus_activate(database.as_ref(), &actual_label, chan)
@@ -202,7 +289,7 @@ async fn get_parameters(
         .context("Failed to receive merchant's revocation commitment parameters")?;
 
     // Get the merchant's range proof parameters
-    let (range_proof_parameters, chan) = chan
+    let (range_constraint_parameters, chan) = chan
         .recv()
         .await
         .context("Failed to receive merchant's range proof parameters")?;
@@ -226,7 +313,7 @@ async fn get_parameters(
     Ok(zkabacus_crypto::customer::Config::from_parts(
         merchant_public_key,
         revocation_commitment_parameters,
-        range_proof_parameters,
+        range_constraint_parameters,
     ))
 }
 
@@ -235,6 +322,7 @@ async fn get_parameters(
 /// If successful returns the [`ChannelName`] that the channel was *actually* inserted into the
 /// database using (which may differ from the one specified if the one specified was already in
 /// use!), and the [`Chan`] ready for the next part of the establish protocol.
+#[allow(clippy::too_many_arguments)]
 async fn zkabacus_initialize(
     mut rng: &mut StdRng,
     database: &dyn QueryCustomer,
@@ -281,7 +369,7 @@ async fn zkabacus_initialize(
     proceed!(in chan);
 
     // Store the inactive channel state in the database
-    let actual_label = store_inactive_local(database, label, &address, inactive)
+    let actual_label = store_inactive_local(database, label, address, inactive)
         .await
         .context("Failed to store inactive channel state in local database")?;
 
@@ -307,10 +395,7 @@ async fn store_inactive_local(
         };
 
         // Try inserting the inactive state with this label
-        match database
-            .new_channel(&actual_label, &address, inactive)
-            .await
-        {
+        match database.new_channel(&actual_label, address, inactive).await {
             Ok(()) => break actual_label, // report the label that worked
             Err((returned_inactive, database::Error::ChannelExists(_))) => {
                 inactive = returned_inactive; // restore the inactive state, try again
@@ -326,7 +411,7 @@ async fn store_inactive_local(
     Ok(actual_label)
 }
 
-/// The core zkAbacus.Initialize protocol.
+/// The core zkAbacus.Activate protocol.
 async fn zkabacus_activate(
     database: &dyn QueryCustomer,
     label: &ChannelName,
@@ -341,22 +426,43 @@ async fn zkabacus_activate(
     // Close communication with the merchant
     chan.close();
 
-    // Step the local channel state forward to `Ready`
-    activate_local(database, label, pay_token).await
+    // Try to run the zkAbacus.Activate subprotocol.
+    // If it succeeds, update the channel status to `Ready`.
+    database
+        .with_channel_state(
+            label,
+            zkchannels_state::MerchantFunded,
+            // This closure tries to run zkAbacus.Activate
+            |inactive: Inactive| match inactive.activate(pay_token) {
+                Ok(ready) => Ok((State::Ready(ready), ())),
+                Err(_) => Err(establish::Error::InvalidPayToken),
+            },
+        )
+        .await
+        .with_context(|| format!("Failed to update channel {} to Ready status", &label))?
+        .map_err(|e| e.into())
 }
 
-/// Update the local state for a channel from [`Inactive`] to [`Ready`] in the database.
-async fn activate_local(
-    database: &dyn QueryCustomer,
-    label: &ChannelName,
-    pay_token: PayToken,
-) -> Result<(), anyhow::Error> {
-    database
-        .with_channel_state(label, |inactive: Inactive| {
-            let ready = inactive
-                .activate(pay_token)
-                .map_err(|_| establish::Error::InvalidPayToken)?;
-            Ok((ready, ()))
-        })
-        .await?
+/// Write the establish_json if performing operations off-chain.
+fn write_establish_json(establishment: &Establishment) -> Result<(), anyhow::Error> {
+    // Write the establishment information to disk
+    let establish_json_path = PathBuf::from(format!(
+        "{}.establish.json",
+        hex::encode(establishment.channel_id.to_bytes())
+    ));
+    let mut establish_file = File::create(&establish_json_path).with_context(|| {
+        format!(
+            "Could not open file for writing: {:?}",
+            &establish_json_path
+        )
+    })?;
+    serde_json::to_writer(&mut establish_file, &establishment).with_context(|| {
+        format!(
+            "Could not write establishment data to file: {:?}",
+            &establish_json_path
+        )
+    })?;
+
+    eprintln!("Establishment data written to {:?}", &establish_json_path);
+    Ok(())
 }

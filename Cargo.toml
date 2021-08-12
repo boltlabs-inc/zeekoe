@@ -59,6 +59,8 @@ reqwest = "0.11"
 rand = "0.8"
 serde_with = "1.9"
 skiplist = "0.4"
+serde_json = "1"
+hex = "0.4"
 url = { version = "2.2", features = ["serde"] }
 rusty-money = { version = "0.4", features = ["crypto"] }
 uuid = { version = "0.8", features = ["serde", "v4"] }

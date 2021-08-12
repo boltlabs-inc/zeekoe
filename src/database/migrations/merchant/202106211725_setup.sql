@@ -15,7 +15,7 @@ CREATE TABLE merchant_config (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   signing_keypair BLOB NOT NULL,
   revocation_commitment_parameters BLOB NOT NULL,
-  range_proof_parameters BLOB NOT NULL
+  range_constraint_parameters BLOB NOT NULL
 );
 
 CREATE TABLE merchant_channels (
@@ -30,6 +30,7 @@ CREATE TABLE merchant_channels (
       "customer_funded",
       "merchant_funded",
       "active",
+      "pending_close",
       "closed"
     ))
 );

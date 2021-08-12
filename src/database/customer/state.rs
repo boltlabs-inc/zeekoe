@@ -1,15 +1,11 @@
 use {
     serde::{Deserialize, Serialize},
-    std::{
-        convert::TryFrom,
-        fmt::{Display, Formatter},
-    },
+    std::fmt::{Display, Formatter},
     thiserror::Error,
 };
 
 use zkabacus_crypto::{
-    customer::{ClosingMessage, Inactive, Locked, Ready, Started},
-    impl_sqlx_for_bincode_ty, ChannelId, CustomerBalance, MerchantBalance,
+    customer as zkabacus, impl_sqlx_for_bincode_ty, ChannelId, CustomerBalance, MerchantBalance,
 };
 
 /// The current state of the channel, from the perspective of the customer.
@@ -18,68 +14,103 @@ use zkabacus_crypto::{
 #[derive(Debug, Serialize, Deserialize)]
 pub enum State {
     /// Funding approved but channel is not yet active.
-    Inactive(Inactive),
+    Inactive(zkabacus::Inactive),
+    /// Channel has an originated contract but is not funded.
+    Originated(zkabacus::Inactive),
+    /// Channel has a customer-funded contract but has not received merchant funding.
+    CustomerFunded(zkabacus::Inactive),
+    /// Channel has received all funding but is not yet active.
+    MerchantFunded(zkabacus::Inactive),
     /// Channel is ready for payment.
-    Ready(Ready),
+    Ready(zkabacus::Ready),
     /// Payment has been started, which means customer can close on new or old balance.
-    Started(Started),
+    Started(zkabacus::Started),
     /// Customer has revoked their ability to close on the old balance, but has not yet received the
     /// ability to make a new payment.
-    Locked(Locked),
-    /// Channel has to be closed because of an error, but has not yet been closed.
-    PendingClose(ClosingMessage),
+    Locked(zkabacus::Locked),
+    /// A party has initiated closing, but it is not yet finalized on chain.
+    PendingClose(zkabacus::ClosingMessage),
+    /// Merchant has evidence that disputes the close balances proposed by the customer.
+    Dispute(zkabacus::ClosingMessage),
     /// Channel has been closed on chain.
-    Closed(Closed),
+    Closed(zkabacus::ClosingMessage),
 }
+
+/// The set of zkAbacus states that are associated with at least one channel status.
+pub trait IsZkAbacusState: Sized {}
+
+impl IsZkAbacusState for zkabacus::Inactive {}
+impl IsZkAbacusState for zkabacus::Ready {}
+impl IsZkAbacusState for zkabacus::Started {}
+impl IsZkAbacusState for zkabacus::Locked {}
+impl IsZkAbacusState for zkabacus::ClosingMessage {}
 
 impl_sqlx_for_bincode_ty!(State);
 
-/// The final balances of a channel closed on chain.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Closed {
-    channel_id: ChannelId,
-    merchant_balance: MerchantBalance,
-    customer_balance: CustomerBalance,
-}
+pub mod zkchannels_state {
+    //! Individual structs that compose the ZkChannel statuses and conversion functions to
+    //! unambiguously retrieve channel states from the database.
 
-impl Closed {
-    /// Create a new [`Closed`] state given balances.
-    pub fn new(
-        channel_id: ChannelId,
-        customer_balance: CustomerBalance,
-        merchant_balance: MerchantBalance,
-    ) -> Self {
-        Closed {
-            channel_id,
-            customer_balance,
-            merchant_balance,
-        }
+    use super::{IsZkAbacusState, State, StateName, UnexpectedState};
+    use zkabacus_crypto::customer as zkabacus;
+
+    /// The set of states that a zkChannel can be in.
+    pub trait ZkChannelState {
+        type ZkAbacusState: IsZkAbacusState;
+
+        /// Retrieve the zkAbacus state from a [`State`] variant. Fails if the `State` variant
+        /// does not match `Self`.
+        fn to_zkabacus_state(channel_state: State) -> Result<Self::ZkAbacusState, UnexpectedState>;
     }
 
-    /// Get the final [`CustomerBalance`] for this closed channel state.
-    pub fn customer_balance(&self) -> &CustomerBalance {
-        &self.customer_balance
+    /// Implement the [`ZkChannelState`] trait.
+    /// Links the state struct, [`State`] variant, [`StateName`] variant, and zkAbacus data.
+    macro_rules! impl_zkchannel_state {
+        ($state:ident, $zkabacus:ident) => {
+            pub struct $state;
+
+            impl ZkChannelState for $state {
+                type ZkAbacusState = zkabacus::$zkabacus;
+
+                fn to_zkabacus_state(
+                    channel_state: State,
+                ) -> Result<Self::ZkAbacusState, UnexpectedState> {
+                    match channel_state {
+                        State::$state(inner) => Ok(inner),
+                        wrong_state => Err(UnexpectedState {
+                            expected_state: StateName::$state,
+                            actual_state: wrong_state.state_name(),
+                        }),
+                    }
+                }
+            }
+        };
     }
 
-    /// Get the final [`MerchantBalance`] for this closed channel state.
-    pub fn merchant_balance(&self) -> &MerchantBalance {
-        &self.merchant_balance
-    }
-
-    /// Get the [`ChannelId`] for this closed channel state.
-    pub fn channel_id(&self) -> &ChannelId {
-        &self.channel_id
-    }
+    impl_zkchannel_state!(Inactive, Inactive);
+    impl_zkchannel_state!(Originated, Inactive);
+    impl_zkchannel_state!(CustomerFunded, Inactive);
+    impl_zkchannel_state!(MerchantFunded, Inactive);
+    impl_zkchannel_state!(Ready, Ready);
+    impl_zkchannel_state!(Started, Started);
+    impl_zkchannel_state!(Locked, Locked);
+    impl_zkchannel_state!(PendingClose, ClosingMessage);
+    impl_zkchannel_state!(Dispute, ClosingMessage);
+    impl_zkchannel_state!(Closed, ClosingMessage);
 }
 
 /// The names of the different states a channel can be in (does not contain actual state).
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StateName {
     Inactive,
+    Originated,
+    CustomerFunded,
+    MerchantFunded,
     Ready,
     Started,
     Locked,
     PendingClose,
+    Dispute,
     Closed,
 }
 
@@ -87,72 +118,33 @@ impl Display for StateName {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             StateName::Inactive => "inactive",
+            StateName::Originated => "originated",
+            StateName::CustomerFunded => "customer funded",
+            StateName::MerchantFunded => "merchant funded",
             StateName::Ready => "ready",
             StateName::Started => "started",
             StateName::Locked => "locked",
             StateName::PendingClose => "pending close",
+            StateName::Dispute => "disputed",
             StateName::Closed => "closed",
         }
         .fmt(f)
     }
 }
 
-/// The set of states which have a name.
-pub trait IsState: Into<State> + TryFrom<State, Error = (UnexpectedState, State)> {
-    /// Get the [`StateName`] for this state.
-    fn state_name() -> StateName;
-}
-
-macro_rules! impl_is_state {
-    ($name:ident($ty:ident)) => {
-        impl IsState for $ty {
-            fn state_name() -> StateName {
-                StateName::$name
-            }
-        }
-
-        impl Into<State> for $ty {
-            fn into(self) -> State {
-                State::$name(self)
-            }
-        }
-
-        impl TryFrom<State> for $ty {
-            type Error = (UnexpectedState, State);
-
-            fn try_from(state: State) -> Result<Self, (UnexpectedState, State)> {
-                if let State::$name(s) = state {
-                    Ok(s)
-                } else {
-                    Err((
-                        UnexpectedState {
-                            expected_state: <$ty as IsState>::state_name(),
-                            actual_state: state.state_name(),
-                        },
-                        state,
-                    ))
-                }
-            }
-        }
-    };
-}
-
-impl_is_state!(Inactive(Inactive));
-impl_is_state!(Ready(Ready));
-impl_is_state!(Started(Started));
-impl_is_state!(Locked(Locked));
-impl_is_state!(PendingClose(ClosingMessage));
-impl_is_state!(Closed(Closed));
-
 impl State {
     /// Get the name of this state.
     pub fn state_name(&self) -> StateName {
         match self {
             State::Inactive(_) => StateName::Inactive,
+            State::Originated(_) => StateName::Originated,
+            State::CustomerFunded(_) => StateName::CustomerFunded,
+            State::MerchantFunded(_) => StateName::MerchantFunded,
             State::Ready(_) => StateName::Ready,
             State::Started(_) => StateName::Started,
             State::Locked(_) => StateName::Locked,
             State::PendingClose(_) => StateName::PendingClose,
+            State::Dispute(_) => StateName::Dispute,
             State::Closed(_) => StateName::Closed,
         }
     }
@@ -161,10 +153,14 @@ impl State {
     pub fn customer_balance(&self) -> &CustomerBalance {
         match self {
             State::Inactive(inactive) => inactive.customer_balance(),
+            State::Originated(inactive) => inactive.customer_balance(),
+            State::CustomerFunded(inactive) => inactive.customer_balance(),
+            State::MerchantFunded(inactive) => inactive.customer_balance(),
             State::Ready(ready) => ready.customer_balance(),
             State::Started(started) => started.customer_balance(),
             State::Locked(locked) => locked.customer_balance(),
             State::PendingClose(closing_message) => closing_message.customer_balance(),
+            State::Dispute(closing_message) => closing_message.customer_balance(),
             State::Closed(closed) => closed.customer_balance(),
         }
     }
@@ -172,10 +168,14 @@ impl State {
     pub fn merchant_balance(&self) -> &MerchantBalance {
         match self {
             State::Inactive(inactive) => inactive.merchant_balance(),
+            State::Originated(inactive) => inactive.merchant_balance(),
+            State::CustomerFunded(inactive) => inactive.merchant_balance(),
+            State::MerchantFunded(inactive) => inactive.merchant_balance(),
             State::Ready(ready) => ready.merchant_balance(),
             State::Started(started) => started.merchant_balance(),
             State::Locked(locked) => locked.merchant_balance(),
             State::PendingClose(closing_message) => closing_message.merchant_balance(),
+            State::Dispute(closing_message) => closing_message.merchant_balance(),
             State::Closed(closed) => closed.merchant_balance(),
         }
     }
@@ -183,10 +183,14 @@ impl State {
     pub fn channel_id(&self) -> &ChannelId {
         match self {
             State::Inactive(inactive) => inactive.channel_id(),
+            State::Originated(inactive) => inactive.channel_id(),
+            State::MerchantFunded(inactive) => inactive.channel_id(),
+            State::CustomerFunded(inactive) => inactive.channel_id(),
             State::Ready(ready) => ready.channel_id(),
             State::Started(started) => started.channel_id(),
             State::Locked(locked) => locked.channel_id(),
             State::PendingClose(closing_message) => closing_message.channel_id(),
+            State::Dispute(closing_message) => closing_message.channel_id(),
             State::Closed(closed) => closed.channel_id(),
         }
     }

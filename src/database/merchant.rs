@@ -6,7 +6,7 @@ use crate::{escrow::types::ContractId, protocol::ChannelStatus};
 use zkabacus_crypto::{
     revlock::{RevocationLock, RevocationSecret},
     ChannelId, CommitmentParameters, CustomerBalance, KeyPair, MerchantBalance, Nonce,
-    RangeProofParameters,
+    RangeConstraintParameters,
 };
 
 type Result<T> = std::result::Result<T, Error>;
@@ -55,9 +55,11 @@ pub trait QueryMerchant: Send + Sync {
     /// Get information about every channel in the database.
     async fn get_channels(&self) -> Result<Vec<(ChannelId, ChannelStatus)>>;
 
+    /// Get details about a particular channel based on its [`ChannelId`].
+    async fn get_channel_status(&self, channel_id: &ChannelId) -> Result<ChannelStatus>;
+
     /// Get details about a particular channel based on a unique prefix of its [`ChannelId`].
-    // TODO: This currently does not implement prefix matching
-    async fn get_channel_details(&self, prefix: &str) -> Result<ChannelDetails>;
+    async fn get_channel_details_by_prefix(&self, prefix: &str) -> Result<ChannelDetails>;
 }
 
 /// An error when accessing the merchant database.
@@ -76,10 +78,10 @@ pub enum Error {
     #[error("Invalid channel id: {0}")]
     MalformedChannelId(String),
     /// The channel status was expected to be one thing, but it was another.
-    #[error("Unexpected status for channel {channel_id} (expected {expected}, found {found})")]
+    #[error("Unexpected status for channel {channel_id} (expected {expected:?}, found {found})")]
     UnexpectedChannelStatus {
         channel_id: ChannelId,
-        expected: ChannelStatus,
+        expected: Vec<ChannelStatus>,
         found: ChannelStatus,
     },
     /// An underlying database error occurred.
@@ -164,8 +166,8 @@ impl QueryMerchant for SqlitePool {
                     AS "signing_keypair: KeyPair",
                 revocation_commitment_parameters
                     AS "revocation_commitment_parameters: CommitmentParameters",
-                range_proof_parameters
-                    AS "range_proof_parameters: RangeProofParameters"
+                range_constraint_parameters
+                    AS "range_constraint_parameters: RangeConstraintParameters"
             FROM
                 merchant_config
             "#,
@@ -180,7 +182,7 @@ impl QueryMerchant for SqlitePool {
                 return Ok(zkabacus_crypto::merchant::Config::from_parts(
                     existing.signing_keypair,
                     existing.revocation_commitment_parameters,
-                    existing.range_proof_parameters,
+                    existing.range_constraint_parameters,
                 ));
             }
             Some(Err(err)) => return Err(err.into()),
@@ -191,19 +193,19 @@ impl QueryMerchant for SqlitePool {
 
         let signing_keypair = new_config.signing_keypair();
         let revocation_commitment_parameters = new_config.revocation_commitment_parameters();
-        let range_proof_parameters = new_config.range_proof_parameters();
+        let range_constraint_parameters = new_config.range_constraint_parameters();
 
         sqlx::query!(
             r#"
             INSERT INTO
                 merchant_config
-            (signing_keypair, revocation_commitment_parameters, range_proof_parameters)
+            (signing_keypair, revocation_commitment_parameters, range_constraint_parameters)
                 VALUES
             (?, ?, ?)
             "#,
             signing_keypair,
             revocation_commitment_parameters,
-            range_proof_parameters,
+            range_constraint_parameters,
         )
         .execute(&mut transaction)
         .await?;
@@ -279,7 +281,7 @@ impl QueryMerchant for SqlitePool {
             }
             Some(unexpected_status) => Err(Error::UnexpectedChannelStatus {
                 channel_id: *channel_id,
-                expected: *expected,
+                expected: vec![*expected],
                 found: unexpected_status,
             }),
         }
@@ -301,7 +303,32 @@ impl QueryMerchant for SqlitePool {
         Ok(channels)
     }
 
-    async fn get_channel_details(&self, prefix: &str) -> Result<ChannelDetails> {
+    async fn get_channel_status(&self, channel_id: &ChannelId) -> Result<ChannelStatus> {
+        let mut results = sqlx::query!(
+            r#"SELECT
+                status as "status: ChannelStatus"
+            FROM merchant_channels
+            WHERE channel_id = ?
+            LIMIT 2"#,
+            channel_id
+        )
+        .fetch_all(self)
+        .await?
+        .into_iter();
+
+        let status = match results.next() {
+            None => return Err(Error::ChannelNotFound(*channel_id)),
+            Some(record) => record.status,
+        };
+
+        if results.next().is_some() {
+            return Err(Error::ChannelIdCollision(channel_id.to_string()));
+        }
+
+        Ok(status)
+    }
+
+    async fn get_channel_details_by_prefix(&self, prefix: &str) -> Result<ChannelDetails> {
         let query = format!("{}%", &prefix);
         let mut results = sqlx::query!(
             r#"
@@ -435,8 +462,8 @@ mod tests {
             config2.revocation_commitment_parameters()
         );
         assert_eq!(
-            config1.range_proof_parameters(),
-            config1.range_proof_parameters()
+            config1.range_constraint_parameters(),
+            config1.range_constraint_parameters()
         );
 
         Ok(())

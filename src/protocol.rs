@@ -8,13 +8,6 @@ use {
     thiserror::Error,
 };
 
-pub type Ping = Session! {
-    loop {
-        send String;
-        recv String;
-    }
-};
-
 type OfferAbort<Next, Err> = Session! {
     offer {
         0 => recv Err,
@@ -62,7 +55,7 @@ macro_rules! abort {
             "Failed to send error after choosing to abort",
         )?;
         $chan.close();
-        return ::anyhow::Context::context(Err(err), "Pay protocol aborted");
+        return ::anyhow::Context::context(Err(err), "Protocol aborted");
     }};
 }
 
@@ -107,6 +100,7 @@ pub enum ChannelStatus {
     MerchantFunded,
     Active,
     PendingClose,
+    Dispute,
     Closed,
 }
 
@@ -121,6 +115,7 @@ impl Display for ChannelStatus {
                 Self::MerchantFunded => "merchant and customer funded",
                 Self::Active => "active",
                 Self::PendingClose => "pending close",
+                Self::Dispute => "dispute",
                 Self::Closed => "closed",
             }
         )
@@ -164,7 +159,7 @@ pub type ZkChannels = Session! {
 };
 
 pub mod parameters {
-    use zkabacus_crypto::{CommitmentParameters, PublicKey, RangeProofParameters};
+    use zkabacus_crypto::{CommitmentParameters, PublicKey, RangeConstraintParameters};
 
     use super::*;
 
@@ -172,7 +167,7 @@ pub mod parameters {
     pub type Parameters = Session! {
         recv PublicKey;
         recv CommitmentParameters; // TODO: this is a global default, does not need to be sent
-        recv RangeProofParameters;
+        recv RangeConstraintParameters;
         // TODO: tz1 address corresponding to merchant's public key
         // TODO: merchant's tezos eddsa public key
     };
@@ -259,10 +254,14 @@ pub mod close {
     use dialectic::types::Done;
     use zkabacus_crypto::{CloseState, CloseStateSignature};
 
+    use crate::database::customer::StateName;
+
     use super::*;
 
     #[derive(Debug, Clone, Serialize, Deserialize, Error)]
     pub enum Error {
+        #[error("Customer tried to close on an uncloseable state \"{0}\"")]
+        UncloseableState(StateName),
         #[error("Customer sent an invalid signature")]
         InvalidCloseStateSignature,
         #[error("Customer sent a close state that has already been seen")]
@@ -290,12 +289,14 @@ pub mod close {
 
 pub mod pay {
     use super::*;
-    use zkabacus_crypto::PaymentAmount;
+    use zkabacus_crypto::{self, PaymentAmount};
 
     #[derive(Debug, Clone, Serialize, Deserialize, Error)]
     pub enum Error {
         #[error("Payment rejected: {0}")]
         Rejected(String),
+        #[error("Customer failed to generate nonce and pay proof: {0}")]
+        StartFailed(#[from] zkabacus_crypto::Error),
         #[error("Customer submitted reused nonce")]
         ReusedNonce,
         #[error("Merchant returned invalid closing signature")]

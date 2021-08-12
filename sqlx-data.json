@@ -42,6 +42,24 @@
       ]
     }
   },
+  "076cdf23f2787d9df26bcbf900a6c8205379dabc0efdb0e5fd6d9a83e7e3745a": {
+    "query": "SELECT\n                status as \"status: ChannelStatus\"\n            FROM merchant_channels\n            WHERE channel_id = ?\n            LIMIT 2",
+    "describe": {
+      "columns": [
+        {
+          "name": "status: ChannelStatus",
+          "ordinal": 0,
+          "type_info": "Text"
+        }
+      ],
+      "parameters": {
+        "Right": 1
+      },
+      "nullable": [
+        false
+      ]
+    }
+  },
   "25601de5c6748724f92d8a8e18ff3e95321a32b0dc0bb0cac2e0b0eb479dc78a": {
     "query": "UPDATE customer_channels SET address = ? WHERE label = ?",
     "describe": {
@@ -60,36 +78,6 @@
         "Right": 2
       },
       "nullable": []
-    }
-  },
-  "2ee6f4e70a91ea95072d9ed09d610ff33ca320c65dccba12d9f1dafdc40196d7": {
-    "query": "\n            SELECT\n                signing_keypair\n                    AS \"signing_keypair: KeyPair\",\n                revocation_commitment_parameters\n                    AS \"revocation_commitment_parameters: CommitmentParameters\",\n                range_proof_parameters\n                    AS \"range_proof_parameters: RangeProofParameters\"\n            FROM\n                merchant_config\n            ",
-    "describe": {
-      "columns": [
-        {
-          "name": "signing_keypair: KeyPair",
-          "ordinal": 0,
-          "type_info": "Blob"
-        },
-        {
-          "name": "revocation_commitment_parameters: CommitmentParameters",
-          "ordinal": 1,
-          "type_info": "Blob"
-        },
-        {
-          "name": "range_proof_parameters: RangeProofParameters",
-          "ordinal": 2,
-          "type_info": "Blob"
-        }
-      ],
-      "parameters": {
-        "Right": 0
-      },
-      "nullable": [
-        false,
-        false,
-        false
-      ]
     }
   },
   "46ea459c9d2e371ace67299de61c55d6e17a6c8b3a8d10e6bfd0771ffc907b0e": {
@@ -138,6 +126,16 @@
       ]
     }
   },
+  "6c87c07a8a1841dbdf30a2a7b4e8e24f8346caa817dc3d8be4a9c48c119e6e7f": {
+    "query": "\n            INSERT INTO\n                merchant_config\n            (signing_keypair, revocation_commitment_parameters, range_constraint_parameters)\n                VALUES\n            (?, ?, ?)\n            ",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Right": 3
+      },
+      "nullable": []
+    }
+  },
   "701b1322abf4140c04bd2023c9503c8ca57f257ecbfb61326e775f7a8b7888e7": {
     "query": "SELECT\n                channel_id AS \"channel_id: ChannelId\",\n                status as \"status: ChannelStatus\"\n            FROM merchant_channels",
     "describe": {
@@ -178,16 +176,6 @@
       "columns": [],
       "parameters": {
         "Right": 1
-      },
-      "nullable": []
-    }
-  },
-  "aa91a624c3efb7bbda7d2501c6b93f13513b36b9ebbb3410275cb3bd9bb1965e": {
-    "query": "\n            INSERT INTO\n                merchant_config\n            (signing_keypair, revocation_commitment_parameters, range_proof_parameters)\n                VALUES\n            (?, ?, ?)\n            ",
-    "describe": {
-      "columns": [],
-      "parameters": {
-        "Right": 3
       },
       "nullable": []
     }
@@ -276,6 +264,36 @@
         "Right": 1
       },
       "nullable": [
+        false
+      ]
+    }
+  },
+  "ed7f70347262d552c95e48591379e94f35b8b0e419a05a6081916d71d9dc4ae9": {
+    "query": "\n            SELECT\n                signing_keypair\n                    AS \"signing_keypair: KeyPair\",\n                revocation_commitment_parameters\n                    AS \"revocation_commitment_parameters: CommitmentParameters\",\n                range_constraint_parameters\n                    AS \"range_constraint_parameters: RangeConstraintParameters\"\n            FROM\n                merchant_config\n            ",
+    "describe": {
+      "columns": [
+        {
+          "name": "signing_keypair: KeyPair",
+          "ordinal": 0,
+          "type_info": "Blob"
+        },
+        {
+          "name": "revocation_commitment_parameters: CommitmentParameters",
+          "ordinal": 1,
+          "type_info": "Blob"
+        },
+        {
+          "name": "range_constraint_parameters: RangeConstraintParameters",
+          "ordinal": 2,
+          "type_info": "Blob"
+        }
+      ],
+      "parameters": {
+        "Right": 0
+      },
+      "nullable": [
+        false,
+        false,
         false
       ]
     }

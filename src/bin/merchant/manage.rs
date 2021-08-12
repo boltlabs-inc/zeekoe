@@ -40,7 +40,7 @@ impl Command for Show {
         let database = database(&config)
             .await
             .context("Failed to connect to local database")?;
-        let details = database.get_channel_details(&self.prefix).await?;
+        let details = database.get_channel_details_by_prefix(&self.prefix).await?;
 
         // TODO: don't hard-code XTZ here, instead store currency in database
         let amount = |b: u64| Amount::from_minor_units_of_currency(b.try_into().unwrap(), XTZ);

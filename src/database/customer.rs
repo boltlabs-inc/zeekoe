@@ -1,18 +1,20 @@
 use {
-    async_trait::async_trait,
-    futures::stream::StreamExt,
-    sqlx::SqlitePool,
-    std::{any::Any, convert::TryInto},
+    async_trait::async_trait, futures::stream::StreamExt, sqlx::SqlitePool, std::any::Any,
     thiserror::Error,
 };
 
-use zkabacus_crypto::{customer::Inactive, CustomerBalance, MerchantBalance};
+use zkabacus_crypto::{
+    customer::{ClosingMessage, Inactive},
+    CustomerBalance, MerchantBalance,
+};
 
 use crate::customer::{client::ZkChannelAddress, ChannelName};
 
 mod state;
+use self::state::zkchannels_state::ZkChannelState;
+
 pub use super::connect_sqlite;
-pub use state::{Closed, IsState, State, StateName, UnexpectedState};
+pub use state::{zkchannels_state, State, StateName, UnexpectedState};
 
 type Result<T> = std::result::Result<T, Error>;
 
@@ -22,6 +24,9 @@ pub enum Error {
     /// The state of the channel was not what was expected.
     #[error(transparent)]
     UnexpectedState(#[from] UnexpectedState),
+    /// Channel could not be transitioned to pending close.
+    #[error("Channel closure could not be initiated - it is likely not in a closeable state.")]
+    CloseFailure,
     /// An underlying error occurred in the database.
     #[error(transparent)]
     Database(#[from] sqlx::Error),
@@ -49,56 +54,88 @@ pub struct ChannelDetails {
 /// Extension trait augmenting the customer database [`QueryCustomer`] with extra methods.
 ///
 /// These are implemented automatically for any database handle which implements
-/// [`ErasedQueryCustomer`]; when passing a trait object, use that trait instead, but prefer to call
-/// the methods of this trait.
+/// [`QueryCustomer`]; when passing a trait object, use the [`QueryCustomer`] trait instead of
+/// this one.
 #[async_trait]
 pub trait QueryCustomerExt {
-    /// Given a channel's unique label, mutate its state in the database using a provided closure,
-    /// that is given the current state and a flag indicating whether the state is dirty or clean.
-    /// Returns `Ok(None)` if the label did not exist in the database, otherwise the result of the
-    /// closure.
+    /// Given a channel's unique name, mutate its state in the database using a provided closure
+    /// if the stored state matches type `S`.
     ///
-    /// **Important:** The given closure should be idempotent on the state of the world aside from
-    /// the single side effect of modifying their given `&mut Option<State>`. In particular, the
-    /// closure **should not result in communication with the merchant**.
+    /// The return type for this function can be interpreted as follows:
+    /// - A successful run returns `Ok(Ok(T))`, where `T` is returned by the closure. It holds any
+    ///   values that need to be used in the course of the protocol, like a message derived from
+    ///   the state change.
+    /// - A run where the closure fails to execute returns `Ok(Err(E))`, where `E` is the error
+    ///   type returned by the closure.
+    /// - A run where something other than the closure fails to execute returns `Err(Error)`. This
+    ///   is either an [`UnexpectedState`] error, where the stored state does not match the
+    ///   expected value, or a database failure.
+    ///
+    /// **Important:** The given closure should be idempotent on the state of the world.
+    /// In particular, the closure **should not result in communication with the merchant**.
     async fn with_channel_state<
         'a,
-        Starting: IsState + Send + 'static,
-        Final: Into<State> + Send + 'static,
+        S: ZkChannelState + Send + 'static,
+        F: FnOnce(S::ZkAbacusState) -> std::result::Result<(State, T), E> + Send + 'a,
         T: Send + 'static,
         E: Send + 'static,
     >(
         &'a self,
-        label: &ChannelName,
-        with_state: impl for<'s> FnOnce(Starting) -> std::result::Result<(Final, T), E> + Send + 'a,
+        channel_name: &ChannelName,
+        expected_state: S,
+        with_zkabacus_state: F,
     ) -> Result<std::result::Result<T, E>>;
+
+    /// Given a channel's unique name, mutate its state in the database using a provided closure,
+    /// that is given the current state and must convert it to [`State::PendingClose`].
+    ///
+    /// The return type can be interpreted as follows:
+    /// - A successful run returns `Ok(Ok([`ClosingMessage`]))`. This indicates that the database
+    ///   is correctly updated.
+    /// - An `Ok(Err(e))` indicates an error raised by the closure
+    /// - An `Err(e)` indicates an error raised outside the closure. This could be a database
+    ///   failure or an incorrect state error (e.g. the closure returns a [`State`] variant other
+    ///   than [`State::PendingClose`]).
+    ///
+    /// **Important:** The given closure should be idempotent on the state of the world.
+    /// In particular, the closure **should not result in communication with the merchant**.
+    async fn with_closeable_channel<'a, E: Send + 'static>(
+        &self,
+        channel_name: &ChannelName,
+        close_zkabacus_state: impl FnOnce(State) -> std::result::Result<(State, ClosingMessage), E>
+            + Send
+            + 'a,
+    ) -> Result<std::result::Result<ClosingMessage, E>>;
 }
 
 /// Trait-object safe version of [`QueryCustomer`]: use this type in trait objects and implement it
-/// for database backends, but prefer to call the methods from [`QueryCustomer`], since all
-/// [`ErasedQueryCustomer`] are [`QueryCustomer`].
+/// for database backends.
 #[async_trait]
 pub trait QueryCustomer: Send + Sync {
     /// Perform all the DB migrations defined in src/database/migrations/customer/*.sql
     async fn migrate(&self) -> Result<()>;
 
     /// Insert a newly initialized [`Requested`] channel into the customer database, associated with
-    /// a unique label and [`ZkChannelAddress`].
+    /// a unique name and [`ZkChannelAddress`].
     ///
     /// If the [`Requested`] could not be inserted, it is returned along with the error that
     /// prevented its insertion.
     async fn new_channel(
         &self,
-        label: &ChannelName,
+        channel_name: &ChannelName,
         address: &ZkChannelAddress,
         inactive: Inactive,
     ) -> std::result::Result<(), (Inactive, Error)>;
 
     /// Get the address of a given channel.
-    async fn channel_address(&self, label: &ChannelName) -> Result<ZkChannelAddress>;
+    async fn channel_address(&self, channel_name: &ChannelName) -> Result<ZkChannelAddress>;
 
-    /// Relabel an existing channel from a given label to a new one.
-    async fn relabel_channel(&self, label: &ChannelName, new_label: &ChannelName) -> Result<()>;
+    /// Rename an existing channel from a given name to a new one.
+    async fn rename_channel(
+        &self,
+        channel_name: &ChannelName,
+        new_label: &ChannelName,
+    ) -> Result<()>;
 
     /// Assign a new [`ZkChannelAddress`] to an existing channel.
     async fn readdress_channel(
@@ -110,21 +147,23 @@ pub trait QueryCustomer: Send + Sync {
     /// Get all the information about all the channels.
     async fn get_channels(&self) -> Result<Vec<ChannelDetails>>;
 
-    /// **Don't call this function directly:** instead call [`QueryCustomer::with_channel_state`].
-    /// Note that this method uses `Box<dyn Any + Send>` to avoid the use of generic parameters,
+    /// **Don't call this function directly:** instead call [`QueryCustomer::with_channel_state`]
+    /// or [`QueryCustomer::mark_closing_channel`].
+    /// This method retrieves the current state from the database, retrieves an updated state by
+    /// executing `with_state` on the current state, and updates the database.
+    /// This method uses `Box<dyn Any + Send>` to avoid the use of generic parameters,
     /// which is what allows the trait to be object safe.
     ///
     /// # Panics
     ///
-    /// The corresponding method [`QueryCustomer::with_channel_state`] will panic if the boxed
-    /// [`Any`] type returned by `with_clean_state` does not match that of the `Ok` case of the
-    /// function's result, and similarly if the boxed [`Any`] type returned by `with_dirty_state`
-    /// does not match the `Err` case of the function's result. It is expected that any
-    /// implementation of this function merely forwards these values to the returned `Result<Box<dyn
-    /// Any>, Box<dyn Any>>`.
+    /// The corresponding method [`QueryCustomer::with_channel_state`] and
+    /// [`QueryCustomer::mark_closing_channel`] will panic if the boxed
+    /// [`Any`] types returned by this method do not match that function's type parameters.
+    /// It is expected that any implementation of this function merely forwards these values to
+    /// the returned `Result<Box<dyn Any>, Box<dyn Any>>`.
     async fn with_channel_state_erased<'a>(
         &'a self,
-        label: &ChannelName,
+        channel_name: &ChannelName,
         with_state: Box<
             dyn for<'s> FnOnce(
                     State,
@@ -148,7 +187,7 @@ impl QueryCustomer for SqlitePool {
 
     async fn new_channel(
         &self,
-        label: &ChannelName,
+        channel_name: &ChannelName,
         address: &ZkChannelAddress,
         inactive: Inactive,
     ) -> std::result::Result<(), (Inactive, Error)> {
@@ -159,20 +198,19 @@ impl QueryCustomer for SqlitePool {
             let mut transaction = self.begin().await?;
 
             // Determine if the channel already exists
-            let already_exists =
-                match sqlx::query!("SELECT label FROM customer_channels WHERE label = ?", label)
-                    .fetch(&mut transaction)
-                    .next()
-                    .await
-                    .transpose()?
-                {
-                    Some(_) => true,
-                    _ => false,
-                };
+            let already_exists = sqlx::query!(
+                "SELECT label FROM customer_channels WHERE label = ?",
+                channel_name
+            )
+            .fetch(&mut transaction)
+            .next()
+            .await
+            .transpose()?
+            .is_some();
 
             // Return an error if it does exist
             if already_exists {
-                return Err(Error::ChannelExists(label.clone()));
+                return Err(Error::ChannelExists(channel_name.clone()));
             }
 
             let result = sqlx::query!(
@@ -183,7 +221,7 @@ impl QueryCustomer for SqlitePool {
                     customer_deposit,
                     state
                 ) VALUES (?, ?, ?, ?, ?)",
-                label,
+                channel_name,
                 address,
                 merchant_deposit,
                 customer_deposit,
@@ -198,54 +236,68 @@ impl QueryCustomer for SqlitePool {
             Ok(result?)
         })()
         .await
-        .map_err(|e| (state.try_into().unwrap(), e))
+        .map_err(|e| {
+            (
+                zkchannels_state::Inactive::to_zkabacus_state(state).unwrap(),
+                e,
+            )
+        })
     }
 
-    async fn channel_address(&self, label: &ChannelName) -> Result<ZkChannelAddress> {
+    async fn channel_address(&self, channel_name: &ChannelName) -> Result<ZkChannelAddress> {
         Ok(sqlx::query!(
             r#"
             SELECT address AS "address: ZkChannelAddress"
             FROM customer_channels
             WHERE label = ?"#,
-            label,
+            channel_name,
         )
         .fetch(self)
         .next()
         .await
-        .ok_or_else(|| Error::NoSuchChannel(label.clone()))?
+        .ok_or_else(|| Error::NoSuchChannel(channel_name.clone()))?
         .map(|record| record.address)?)
     }
 
-    async fn relabel_channel(&self, label: &ChannelName, new_label: &ChannelName) -> Result<()> {
+    async fn rename_channel(
+        &self,
+        channel_name: &ChannelName,
+        new_channel_name: &ChannelName,
+    ) -> Result<()> {
         let mut transaction = self.begin().await?;
 
         // Ensure that the old channel name exists
-        let old_exists = sqlx::query!("SELECT label FROM customer_channels WHERE label = ?", label)
-            .fetch(&mut transaction)
-            .next()
-            .await
-            .is_some();
+        let old_exists = sqlx::query!(
+            "SELECT label FROM customer_channels WHERE label = ?",
+            channel_name
+        )
+        .fetch(&mut transaction)
+        .next()
+        .await
+        .is_some();
 
         if !old_exists {
-            return Err(Error::NoSuchChannel(label.clone()));
+            return Err(Error::NoSuchChannel(channel_name.clone()));
         }
 
         // Ensure that the new channel name *does not* exist
-        let new_does_not_exist =
-            sqlx::query!("SELECT label FROM customer_channels WHERE label = ?", label)
-                .fetch(&mut transaction)
-                .next()
-                .await
-                .is_none();
+        let new_does_not_exist = sqlx::query!(
+            "SELECT label FROM customer_channels WHERE label = ?",
+            new_channel_name
+        )
+        .fetch(&mut transaction)
+        .next()
+        .await
+        .is_none();
 
         if !new_does_not_exist {
-            return Err(Error::ChannelExists(new_label.clone()).into());
+            return Err(Error::ChannelExists(new_channel_name.clone()));
         }
 
         sqlx::query!(
             "UPDATE customer_channels SET label = ? WHERE label = ?",
-            new_label,
-            label,
+            new_channel_name,
+            channel_name,
         )
         .execute(self)
         .await?;
@@ -257,13 +309,13 @@ impl QueryCustomer for SqlitePool {
 
     async fn readdress_channel(
         &self,
-        label: &ChannelName,
+        channel_name: &ChannelName,
         new_address: &ZkChannelAddress,
     ) -> Result<()> {
         let rows_affected = sqlx::query!(
             "UPDATE customer_channels SET address = ? WHERE label = ?",
             new_address,
-            label,
+            channel_name,
         )
         .execute(self)
         .await?
@@ -273,7 +325,7 @@ impl QueryCustomer for SqlitePool {
         if rows_affected == 1 {
             Ok(())
         } else {
-            Err(Error::NoSuchChannel(label.clone()))
+            Err(Error::NoSuchChannel(channel_name.clone()))
         }
     }
 
@@ -304,7 +356,7 @@ impl QueryCustomer for SqlitePool {
 
     async fn with_channel_state_erased<'a>(
         &'a self,
-        label: &ChannelName,
+        channel_name: &ChannelName,
         with_state: Box<
             dyn for<'s> FnOnce(
                     State,
@@ -320,22 +372,22 @@ impl QueryCustomer for SqlitePool {
         // Retrieve the state so that we can modify it
         let state: State = sqlx::query!(
             r#"SELECT state AS "state: State" FROM customer_channels WHERE label = ?"#,
-            label,
+            channel_name,
         )
         .fetch(&mut transaction)
         .next()
         .await
-        .ok_or_else(|| Error::NoSuchChannel(label.clone()))??
+        .ok_or_else(|| Error::NoSuchChannel(channel_name.clone()))??
         .state;
 
         // Perform the operation with the state fetched from the database
         match with_state(state) {
             Ok((state, output)) => {
-                // Store the new state to the database and set it to clean again
+                // Store the new state to the database
                 sqlx::query!(
                     "UPDATE customer_channels SET state = ? WHERE label = ?",
                     state,
-                    label
+                    channel_name
                 )
                 .execute(&mut transaction)
                 .await?;
@@ -355,25 +407,31 @@ impl QueryCustomer for SqlitePool {
 impl<Q: QueryCustomer + ?Sized> QueryCustomerExt for Q {
     async fn with_channel_state<
         'a,
-        Starting: IsState + Send + 'static,
-        Final: Into<State> + Send + 'static,
+        S: ZkChannelState + Send + 'static,
+        F: FnOnce(S::ZkAbacusState) -> std::result::Result<(State, T), E> + Send + 'a,
         T: Send + 'static,
         E: Send + 'static,
     >(
         &'a self,
-        label: &ChannelName,
-        with_state: impl for<'s> FnOnce(Starting) -> std::result::Result<(Final, T), E> + Send + 'a,
+        channel_name: &ChannelName,
+        _expected_state: S,
+        with_zkabacus_state: F,
     ) -> Result<std::result::Result<T, E>> {
         let result = <Self as QueryCustomer>::with_channel_state_erased(
             self,
-            label,
-            Box::new(|state| match state.try_into().map_err(|(e, _)| e) {
-                Ok(state) => match with_state(state) {
-                    Ok((state, t)) => Ok((state.into(), Box::new(t))),
-                    Err(e) => Err(Box::new(Ok::<E, UnexpectedState>(e))),
+            channel_name,
+            Box::new(
+                // Extract the inner zkAbacus type from the state enum and make sure it matches
+                |state| match S::to_zkabacus_state(state) {
+                    Ok(zkabacus_state) => match with_zkabacus_state(zkabacus_state) {
+                        Ok((state, t)) => Ok((state, Box::new(t))),
+                        Err(e) => Err(Box::new(Ok::<E, UnexpectedState>(e))),
+                    },
+                    Err(unexpected_state) => {
+                        Err(Box::new(Err::<E, UnexpectedState>(unexpected_state)))
+                    }
                 },
-                Err(error) => Err(Box::new(Err::<E, UnexpectedState>(error))),
-            }),
+            ),
         )
         .await?;
 
@@ -391,8 +449,50 @@ impl<Q: QueryCustomer + ?Sized> QueryCustomerExt for Q {
                 match error_result {
                     // Error returned by the closure
                     Ok(e) => Ok(Err(e)),
-                    // Error returned because the state wasn't right
-                    Err(unexpected_state) => return Err(unexpected_state.into()),
+                    // Error returned because the state didn't match the one in the database.
+                    Err(e) => return Err(e.into()),
+                }
+            }
+        }
+    }
+
+    async fn with_closeable_channel<'a, E: Send + 'static>(
+        &self,
+        channel_name: &ChannelName,
+        with_closeable_state: impl FnOnce(State) -> std::result::Result<(State, ClosingMessage), E>
+            + Send
+            + 'a,
+    ) -> Result<std::result::Result<ClosingMessage, E>> {
+        let result = <Self as QueryCustomer>::with_channel_state_erased(
+            self,
+            channel_name,
+            Box::new(|state| match with_closeable_state(state) {
+                Ok((state, t)) => {
+                    // Only allow updates that result in the PendingClose status.
+                    if let State::PendingClose(_) = state {
+                        Ok((state, Box::new(t)))
+                    } else {
+                        Err(Box::new(Err::<E, Error>(Error::CloseFailure)))
+                    }
+                }
+                // Closure function failed somehow
+                Err(e) => Err(Box::new(Ok::<E, Error>(e))),
+            }),
+        )
+        .await?;
+
+        // Cast the result back to its true type
+        match result {
+            // Successful result: get the `ClosingMessage` out of the box.
+            Ok(t) => Ok(Ok(*t.downcast().unwrap())),
+            // Error, which could be one of...
+            Err(error_result) => {
+                let err: Result<E> = *error_result.downcast().unwrap();
+                match err {
+                    // Error returned by the closure
+                    Ok(e) => Ok(Err(e)),
+                    // Error returned because the closure didn't return a PendingClose status.
+                    Err(e) => Err(e),
                 }
             }
         }

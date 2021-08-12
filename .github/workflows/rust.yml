@@ -28,9 +28,8 @@ jobs:
       - name: Format check
         run: cargo fmt -- --check
 
-      # temporarily cmment this out to see if we can run everything else.
-      # - name: Clippy lint
-      #   run: cargo clippy --all-features --all-targets --verbose -- -Dwarnings
+      - name: Clippy lint
+        run: cargo clippy --all-features --all-targets --verbose -- -Dwarnings
 
       - name: Build
         run: cargo build --all-features --all-targets --verbose

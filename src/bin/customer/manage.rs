@@ -59,7 +59,7 @@ impl Command for Rename {
         database(&config)
             .await
             .context("Failed to connect to local database")?
-            .relabel_channel(&self.old_label, &self.new_label)
+            .rename_channel(&self.old_label, &self.new_label)
             .await
             .context("Failed to rename channel")
     }

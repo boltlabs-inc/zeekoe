@@ -12,6 +12,8 @@ dev/customer.db-wal
 dev/merchant.db
 dev/merchant.db-shm
 dev/merchant.db-wal
+*.close.json
+*.establish.json
 
 # will have compiled files and executables
 /target/

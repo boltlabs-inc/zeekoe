@@ -25,7 +25,7 @@ impl Method for Parameters {
         chan: Chan<Self::Protocol>,
     ) -> Result<(), anyhow::Error> {
         // Extract the components of the merchant's public zkAbacus parameters
-        let (public_key, commitment_parameters, range_proof_parameters) =
+        let (public_key, commitment_parameters, range_constraint_parameters) =
             merchant_config.extract_customer_config_parts();
 
         // Send those parameters to the customer
@@ -33,7 +33,7 @@ impl Method for Parameters {
             .await?
             .send(commitment_parameters)
             .await?
-            .send(range_proof_parameters)
+            .send(range_constraint_parameters)
             .await?
             // TODO: Send the merchant's tz1 address and tezos public key
             .close();
