@@ -297,19 +297,17 @@ impl Command for cli::Close {
             .await?;
 
         // Make sure exactly one correct command line option is satisfied.
-        if (self.all && self.channel.is_some()) || (!self.all && self.channel.is_none()) {
-            return Err(anyhow::anyhow!(
-                "Invalid command line option: should specify exactly one of --all or --channel."
-            ));
-        }
-        match self.channel {
-            Some(channel_id) => expiry(&merchant_config, database.as_ref(), &channel_id).await,
-            None => {
-                // TODO: iterate through database; call expiry for every channel.
-                Err(anyhow::anyhow!(
-                    "Closing all channels is not yet implemented."
-                ))
+        match (self.channel, self.all) {
+            (Some(channel_id), false) => {
+                expiry(&merchant_config, database.as_ref(), &channel_id).await
             }
+            // TODO: iterate through database; call expiry for every channel.
+            (None, true) => Err(anyhow::anyhow!(
+                "Closing all channels is not yet implemented."
+            )),
+            _ => Err(anyhow::anyhow!(
+                "Invalid command line option: should specify exactly one of --all or --channel."
+            )),
         }
     }
 }
