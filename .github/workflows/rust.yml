@@ -25,6 +25,9 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.BOLT_CI_SSH_PRIVATEKEY }}
 
+      - name: Install dependencies
+        run: sudo apt install libudev-dev
+
       - name: Format check
         run: cargo fmt -- --check
 
