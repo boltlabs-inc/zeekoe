@@ -31,4 +31,26 @@ pub mod types {
 
     pub type TezosPublicKey = tezedge::PublicKey;
     pub type TezosFundingAccount = tezedge::ImplicitAddress;
+    pub struct TezosKeyPair {
+        public_key: TezosPublicKey,
+        secret_key: tezedge::PrivateKey,
+    }
+
+    impl TezosKeyPair {
+        /// Form a new `TezosKeyPair` from its consituent parts.
+        pub fn new(public_key: TezosPublicKey, secret_key: tezedge::PrivateKey) -> Self {
+            // TODO: add some validation that these form a valid keypair?
+            Self {public_key, secret_key}
+        }
+
+        /// Get the public key.
+        pub fn public_key(&self) -> &TezosPublicKey {
+            &self.public_key
+        }
+
+        /// Get the secret key.
+        pub fn secret_key(&self) -> &tezedge::PrivateKey {
+            &self.secret_key
+        }
+    }
 }
