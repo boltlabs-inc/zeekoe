@@ -1,8 +1,5 @@
 mod establish {
-    use crate::escrow::{
-        notify::Level,
-        types::*,
-    };
+    use crate::escrow::{notify::Level, types::*};
     use zkabacus_crypto::{ChannelId, CustomerBalance, MerchantBalance, PublicKey};
     use {
         serde::{Deserialize, Serialize},
@@ -59,6 +56,10 @@ mod establish {
     /// originated contract.
     ///
     /// This is called by the customer.
+    ///
+    /// Special errors
+    /// - [`Error::ContractOriginationFailed`]: The operation did not get confirmed on
+    ///   chain at the correct depth.
     #[allow(unused)]
     pub async fn originate(
         merchant_funding_info: &MerchantFundingInformation,
@@ -72,7 +73,12 @@ mod establish {
 
     /// Call the `addFunding` entrypoint with the [`CustomerFundingInformation`].
     ///
-    /// This is called by the customer.
+    /// This will wait until the funding operation is confirmed at depth and is called by
+    /// the customer.
+    ///
+    /// Special errors
+    /// - [`Error::CustomerFundingFailed`]: The operation was invalid or did not get confirmed on
+    ///   chain at the correct depth.
     #[allow(unused)]
     pub async fn add_customer_funding(
         contract_id: &ContractId,
@@ -92,6 +98,12 @@ mod establish {
     ///
     /// This function will wait until the origination operation is confirmed at depth
     /// and is called by the merchant.
+    ///
+    /// Special errors
+    /// - [`Error::ContractOriginationInavalid`]: The contract is not a valid zkChannels contract
+    ///   or it does not have the expected storage.
+    /// - [`Error::ContractOriginationFailed`]: The operation did not get confirmed on
+    ///   chain at the correct depth.
     #[allow(unused)]
     pub async fn verify_origination(
         contract_id: &ContractId,
@@ -103,7 +115,6 @@ mod establish {
         todo!()
     }
 
-    
     /// Verify that the customer has sucessfully funded the contract via the `addFunding`
     /// entrypoint
     ///
@@ -121,7 +132,6 @@ mod establish {
         todo!()
     }
 
-
     /// Add merchant funding via the `addFunding` entrypoint to the given [`ContractId`],
     /// according to the [`MerchantFundingInformation`]
     ///
@@ -134,6 +144,10 @@ mod establish {
     ///
     /// This function will wait until the merchant funding operation is confirmed at depth
     /// and is called by the merchant.
+    ///
+    /// Special errors
+    /// - [`Error::MerchantFundingFailed`]: The operation was invalid or did not get confirmed on
+    ///   chain at the correct depth.
     #[allow(unused)]
     pub async fn add_merchant_funding(
         contract_id: &ContractId,
@@ -145,8 +159,14 @@ mod establish {
 
     /// Reclaim customer funding via the `reclaimFunding` entrypoint on the given [`ContractId`].
     ///
-    /// This function will wait until the customer reclaim operation is confirmed at deth and is 
+    /// This function will wait until the customer reclaim operation is confirmed at deth and is
     /// called by the customer.
+    ///
+    /// Special errors
+    /// - [`Error::CustomerReclaimInvalid`]: The operation was not valid and was not accepted by
+    ///   the chain (e.g. the channel status was not AWAITING_FUNDING)
+    /// - [`Error::CustomerReclaimFailed`]: The operation was valid but did get confirmed on chain
+    ///   at the expected depth.
     #[allow(unused)]
     pub async fn reclaim_customer_funding(
         contract_id: &ContractId,
@@ -157,8 +177,15 @@ mod establish {
 
     /// Reclaim merchant funding via the `reclaimFunding` entrypoint on the given [`ContractId`].
     ///
-    /// This function will wait until the merchant reclaim operation is confirmed at deth and is 
+    /// This function will wait until the merchant reclaim operation is confirmed at deth and is
     /// called by the merchant.
+    ///
+    /// Special errors
+    /// - [`Error::MerchantReclaimInvalid`]: The operation was not valid and was not accepted by
+    ///   the chain (e.g. the channel status was not AWAITING_FUNDING)
+    /// - [`Error::MerchantReclaimFailed`]: The operation was valid but did get confirmed on chain
+    ///   at the expected depth.
+    ///   
     #[allow(unused)]
     pub async fn reclaim_merchant_funding(
         contract_id: &ContractId,
@@ -166,5 +193,4 @@ mod establish {
     ) -> Result<(), Error> {
         todo!()
     }
-}
 }
