@@ -60,7 +60,7 @@ pub mod zkchannels_state {
 
         /// Retrieve the zkAbacus state from a [`State`] variant. Fails if the `State` variant
         /// does not match `Self`.
-        fn to_zkabacus_state(channel_state: State) -> Result<Self::ZkAbacusState, UnexpectedState>;
+        fn zkabacus_state(channel_state: State) -> Result<Self::ZkAbacusState, UnexpectedState>;
     }
 
     /// Implement the [`ZkChannelState`] trait.
@@ -72,7 +72,7 @@ pub mod zkchannels_state {
             impl ZkChannelState for $state {
                 type ZkAbacusState = zkabacus::$zkabacus;
 
-                fn to_zkabacus_state(
+                fn zkabacus_state(
                     channel_state: State,
                 ) -> Result<Self::ZkAbacusState, UnexpectedState> {
                     match channel_state {

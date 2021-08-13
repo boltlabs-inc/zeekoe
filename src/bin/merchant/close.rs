@@ -305,9 +305,7 @@ impl Command for cli::Close {
             (None, true) => Err(anyhow::anyhow!(
                 "Closing all channels is not yet implemented."
             )),
-            _ => Err(anyhow::anyhow!(
-                "Invalid command line option: should specify exactly one of --all or --channel."
-            )),
+            _ => unreachable!(),
         }
     }
 }

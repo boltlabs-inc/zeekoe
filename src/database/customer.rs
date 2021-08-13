@@ -238,7 +238,7 @@ impl QueryCustomer for SqlitePool {
         .await
         .map_err(|e| {
             (
-                zkchannels_state::Inactive::to_zkabacus_state(state).unwrap(),
+                zkchannels_state::Inactive::zkabacus_state(state).unwrap(),
                 e,
             )
         })
@@ -422,7 +422,7 @@ impl<Q: QueryCustomer + ?Sized> QueryCustomerExt for Q {
             channel_name,
             Box::new(
                 // Extract the inner zkAbacus type from the state enum and make sure it matches
-                |state| match S::to_zkabacus_state(state) {
+                |state| match S::zkabacus_state(state) {
                     Ok(zkabacus_state) => match with_zkabacus_state(zkabacus_state) {
                         Ok((state, t)) => Ok((state, Box::new(t))),
                         Err(e) => Err(Box::new(Ok::<E, UnexpectedState>(e))),
