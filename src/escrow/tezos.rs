@@ -1,29 +1,6 @@
 mod establish {
     use crate::escrow::{notify::Level, types::*};
     use zkabacus_crypto::{ChannelId, CustomerBalance, MerchantBalance, PublicKey};
-    use {
-        serde::{Deserialize, Serialize},
-        thiserror::Error,
-    };
-
-    /// Set of errors that may arise while establishing a zkChannel.
-    ///
-    /// Note: Errors noting that an operation has failed to be confirmed on chain only arise when
-    /// a specified timeout period has passed. In general, the functions in this module will wait
-    /// until operations are successfully confirmed.
-    ///
-    /// TODO: Add additional errors if they arise (e.g. a wrapper around tezedge-client errors).
-    #[derive(Clone, Debug, Error, Serialize, Deserialize)]
-    pub enum Error {
-        #[error("Encountered a network error while processing operation {0}")]
-        NetworkFailure(Entrypoint),
-        #[error("Operation {0} failed to confirm on chain for contract ID {1}")]
-        OperationFailure(Entrypoint, ContractId),
-        #[error("Unable to post operation {0} because it is invalid for contract ID {1}")]
-        OperationInvalid(Entrypoint, ContractId),
-        #[error("Originated contract with ID {0} is not a valid zkChannels contract or does not have expected storage")]
-        InvalidZkChannelsContract(ContractId),
-    }
 
     #[allow(unused)]
     pub struct CustomerFundingInformation {
@@ -181,39 +158,22 @@ mod close {
     use crate::escrow::types::*;
 
     use {
-        serde::{Deserialize, Serialize},
         tezedge::signer::OperationSignatureInfo,
-        thiserror::Error,
         zkabacus_crypto::{
             customer::ClosingMessage, revlock::RevocationSecret, CloseState, CustomerBalance,
             MerchantBalance,
         },
     };
 
-    #[derive(Clone, Debug, Error, Serialize, Deserialize)]
-    pub enum Error {
-        #[error("Encountered a network error")]
-        NetworkFailed,
-        #[error("The expiry operation could not be posted because it is invalid (id = {0})")]
-        ExpiryInvalid(ContractId),
-        #[error("The expiry operation failed to post on chain (id = {0})")]
-        ExpiryFailed(ContractId),
-        #[error("The merch claim operation could not be posted because it is invalid (id = {0})")]
-        MerchClaimInvalid(ContractId),
-        #[error("The merch claim operation failed to post on chain (id = {0})")]
-        MerchClaimFailed(ContractId),
-    }
-
     /// Initiate expiry close flow via the `expiry` entrypoint on the given [`ContractId`].
     ///
     /// This function will wait until the expiry operation is confirmed at depth and is called
     /// by the merchant.
     ///
-    /// Special errors:
-    /// - [`Error::ExpiryInvalid`]: Contract status is not OPEN or the
-    ///   [`TezosFundingAccount`] specified does not match the merchant address in [`ContractId`].
-    /// - [`Error::ExpiryFailed`]: The operation was not confirmed on chain within the expected
-    ///   timeout period.
+    /// This operation is invalid if:
+    /// - the contract status is not OPEN
+    /// - the [`TezosFundingAccount`] specified does not match the `merch_addr` field in the
+    ///   the specified contract
     #[allow(unused)]
     pub async fn expiry(
         contract_id: &ContractId,
@@ -229,11 +189,10 @@ mod close {
     /// After posting the `merchClaim` operation, it will wait until it has been confirmed at
     /// depth. It is called by the merchant.
     ///
-    /// Special errors:
-    /// - [`Error::MerchClaimInvalid`]: Contract status is not EXPIRY or the
-    ///   [`TezosFundingAccount`] specified does not match the merchant address in [`ContractId`].
-    /// - [`Error::MerchClaimFailed`]: The operation was not confirmed on chain within the expected
-    ///   timeout period.
+    /// This operation is invalid if:
+    /// - the contract status is not EXPIRY
+    /// - the [`TezosKeyPair`] does not match the `merch_addr` field in the specified
+    ///   contract
     #[allow(unused)]
     pub async fn merch_claim(
         contract_id: &ContractId,
@@ -248,6 +207,13 @@ mod close {
     /// This function will wait until it is confirmed at depth. It is called by the customer. If
     /// it is called in response to an `expiry` operation, it will be called by the customer's
     /// notification service.
+    ///
+    /// This operation is invalid if:
+    /// - the contract status is neither OPEN nor EXPIRY
+    /// - the [`TezosKeyPair`] does not match the `cust_addr` field in the specified contract
+    /// - the signature in the [`ClosingMessage`] is not a well-formed signature
+    /// - the signature in the [`ClosingMessage`] is not a valid signature under the merchant
+    ///   public key on the expected tuple
     #[allow(unused)]
     pub async fn cust_close(
         contract_id: &ContractId,
@@ -262,6 +228,11 @@ mod close {
     /// will transfer the posted customer balance to the merchant.
     ///
     /// This function will wait until it is confirmed at depth. It is called by the merchant.
+    ///
+    /// This operation is invalid if:
+    /// - the contract status is not CUST_CLOSE
+    /// - the [`TezosKeyPair`] does not match the `merch_addr` field in the specified contract
+    /// - the [`RevocationSecret`] does not hash to the `rev_lock` field in the specified contract
     #[allow(unused)]
     pub async fn merch_dispute(
         contract_id: &ContractId,
@@ -277,10 +248,14 @@ mod close {
     /// This function will wait until the timeout period from the `custClose` entrypoint call has
     /// elapsed, and until the `custClaim` operation is confirmed at depth. It is called by the
     /// customer.
+    ///
+    /// This operation is invalid if:
+    /// - the contract status is not CUST_CLOSE
+    /// - the [`TezosKeyPair`] does not match the `cust_addr` field in the specified contract
     #[allow(unused)]
     pub async fn cust_claim(
         contract_id: &ContractId,
-        merchant_key_pair: &TezosKeyPair,
+        customer_key_pair: &TezosKeyPair,
     ) -> Result<(), Error> {
         todo!()
     }
@@ -295,7 +270,6 @@ mod close {
         contract_id: &ContractId,
         close_state: &CloseState,
         merchant_key_pair: &TezosKeyPair,
-        // TODO: Figure out the right signature type here.
     ) -> Result<OperationSignatureInfo, Error> {
         todo!()
     }
@@ -305,6 +279,12 @@ mod close {
     ///
     /// This function will wait until the operation is confirmed at depth. It is called by the
     /// customer.
+    ///
+    /// This operation is invalid if:
+    /// - the contract status is not OPEN
+    /// - the [`TezosKeyPair`] does not match the `cust_addr` field in the specified contract
+    /// - the `authorization_signature` is not a valid signature under the merchant public key
+    ///   on the expected tuple
     #[allow(unused)]
     pub async fn mutual_close(
         contract_id: &ContractId,
