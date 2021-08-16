@@ -11,28 +11,18 @@ mod establish {
     /// Note: Errors noting that an operation has failed to be confirmed on chain only arise when
     /// a specified timeout period has passed. In general, the functions in this module will wait
     /// until operations are successfully confirmed.
+    ///
+    /// TODO: Add additional errors if they arise (e.g. a wrapper around tezedge-client errors).
     #[derive(Clone, Debug, Error, Serialize, Deserialize)]
     pub enum Error {
-        #[error("Encountered a network error")]
-        NetworkFailure,
-        #[error("The contract has not been confirmed on chain (id = {0})")]
-        ContractOriginationFailed(ContractId),
-        #[error(
-            "The contract is not a valid zkChannels contract with expected storage (id = {0})"
-        )]
-        ContractOriginationInvalid(ContractId),
-        #[error("The contract did not receive confirmed customer funding (id = {0})")]
-        CustomerFundingFailed(ContractId),
-        #[error("The contract did not receive confirmed merchant funding (id = {0})")]
-        MerchantFundingFailed(ContractId),
-        #[error("Unable to reclaim customer funding because the operation is invalid (id = {0})")]
-        CustomerReclaimInvalid(ContractId),
-        #[error("Unable to reclaim merchant funding because the operation is invalid (id = {0})")]
-        MerchantReclaimInvalid(ContractId),
-        #[error("Failed to reclaim customer funding (id = {0})")]
-        CustomerReclaimFailed(ContractId),
-        #[error("Failed to reclaim merchant funding (id = {0})")]
-        MerchantReclaimFailed(ContractId),
+        #[error("Encountered a network error while processing operation {0}")]
+        NetworkFailure(Entrypoint),
+        #[error("Operation {0} failed to confirm on chain for contract ID {1}")]
+        OperationFailure(Entrypoint, ContractId),
+        #[error("Unable to post operation {0} because it is invalid for contract ID {1}")]
+        OperationInvalid(Entrypoint, ContractId),
+        #[error("Originated contract with ID {0} is not a valid zkChannels contract or does not have expected storage")]
+        InvalidZkChannelsContract(ContractId),
     }
 
     #[allow(unused)]
@@ -56,10 +46,6 @@ mod establish {
     /// originated contract.
     ///
     /// This is called by the customer.
-    ///
-    /// Special errors
-    /// - [`Error::ContractOriginationFailed`]: The operation did not get confirmed on
-    ///   chain at the correct depth.
     #[allow(unused)]
     pub async fn originate(
         merchant_funding_info: &MerchantFundingInformation,
@@ -73,12 +59,14 @@ mod establish {
 
     /// Call the `addFunding` entrypoint with the [`CustomerFundingInformation`].
     ///
-    /// This will wait until the funding operation is confirmed at depth and is called by
+    /// This will wait until the funding operation is confirmed at depth. It is called by
     /// the customer.
     ///
-    /// Special errors
-    /// - [`Error::CustomerFundingFailed`]: The operation was invalid or did not get confirmed on
-    ///   chain at the correct depth.
+    /// The operation is invalid if:
+    /// - the channel status is not AWAITING_FUNDING
+    /// - the specified customer address does not match the `cust_addr` field in the contract
+    /// - the specified funding information does not match the `custFunding` amount in the contract
+    /// - the `addFunding` entrypoint has not been called by the customer address before.
     #[allow(unused)]
     pub async fn add_customer_funding(
         contract_id: &ContractId,
@@ -99,11 +87,8 @@ mod establish {
     /// This function will wait until the origination operation is confirmed at depth
     /// and is called by the merchant.
     ///
-    /// Special errors
-    /// - [`Error::ContractOriginationInavalid`]: The contract is not a valid zkChannels contract
-    ///   or it does not have the expected storage.
-    /// - [`Error::ContractOriginationFailed`]: The operation did not get confirmed on
-    ///   chain at the correct depth.
+    /// This function will return [`Error::InvalidZkChannelsContract`] if the contract is not a valid
+    /// zkChannels contract or it does not have the expected storage.
     #[allow(unused)]
     pub async fn verify_origination(
         contract_id: &ContractId,
@@ -138,16 +123,17 @@ mod establish {
     /// This should only be called if [`verify_origination()`] and [`verify_customer_funding()`]
     /// both returned successfully.
     ///
-    /// If the expected merchant funding is 0, this verifies that the contract status is OPEN.
-    /// If the merchant funding is non-zero, this verifies that the contract status is
-    /// AWAITING_FUNDING, then funds the contract.
+    /// This function will wait until the merchant funding operation is confirmed at depth. It
+    /// is called by the merchant.
     ///
-    /// This function will wait until the merchant funding operation is confirmed at depth
-    /// and is called by the merchant.
+    /// If the expected merchant funding is non-zero, this operation is invalid if:
+    /// - the contract status is not AWAITING_FUNDING
+    /// - the specified merchant address does not match the `merch_addr` field in the contract
+    /// - the specified funding information does not match the `merchFunding` amount in the contract
+    /// - the `addFunding` entrypoint has already been called by the merchant address
     ///
-    /// Special errors
-    /// - [`Error::MerchantFundingFailed`]: The operation was invalid or did not get confirmed on
-    ///   chain at the correct depth.
+    /// If the expected merchant funding is 0, this operation is invalid if:
+    /// - the contract status is not OPEN
     #[allow(unused)]
     pub async fn add_merchant_funding(
         contract_id: &ContractId,
@@ -159,14 +145,12 @@ mod establish {
 
     /// Reclaim customer funding via the `reclaimFunding` entrypoint on the given [`ContractId`].
     ///
-    /// This function will wait until the customer reclaim operation is confirmed at deth and is
+    /// This function will wait until the customer reclaim operation is confirmed at depth. It is
     /// called by the customer.
     ///
-    /// Special errors
-    /// - [`Error::CustomerReclaimInvalid`]: The operation was not valid and was not accepted by
-    ///   the chain (e.g. the channel status was not AWAITING_FUNDING)
-    /// - [`Error::CustomerReclaimFailed`]: The operation was valid but did get confirmed on chain
-    ///   at the expected depth.
+    /// The operation is invalid if:
+    /// - the contract status is not AWAITING_FUNDING.
+    /// - the `addFunding` entrypoint has not been called by the customer address
     #[allow(unused)]
     pub async fn reclaim_customer_funding(
         contract_id: &ContractId,
@@ -180,12 +164,9 @@ mod establish {
     /// This function will wait until the merchant reclaim operation is confirmed at deth and is
     /// called by the merchant.
     ///
-    /// Special errors
-    /// - [`Error::MerchantReclaimInvalid`]: The operation was not valid and was not accepted by
-    ///   the chain (e.g. the channel status was not AWAITING_FUNDING)
-    /// - [`Error::MerchantReclaimFailed`]: The operation was valid but did get confirmed on chain
-    ///   at the expected depth.
-    ///   
+    /// The operation is invalid if:
+    /// - the contract status is not AWAITING_FUNDING.
+    /// - the `addFunding` entrypoint has not been called by the merchant address
     #[allow(unused)]
     pub async fn reclaim_merchant_funding(
         contract_id: &ContractId,

@@ -56,4 +56,38 @@ pub mod types {
             &self.secret_key
         }
     }
+
+    /// The set of entrypoints on the zkChannels Tezos smart contract.
+    #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+    pub enum Entrypoint {
+        Originate,
+        AddMerchantFunding,
+        AddCustomerFunding,
+        ReclaimMerchantFunding,
+        ReclaimCustomerFunding,
+        Expiry,
+        CustomerClose,
+        MerchantDispute,
+        CustomerClaim,
+        MerchantClaim,
+        MutualClose,
+    }
+
+    impl Display for Entrypoint {
+        fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+            f.write_str(match self {
+                Entrypoint::Originate => "originate",
+                Entrypoint::AddMerchantFunding => "addFunding for merchant",
+                Entrypoint::AddCustomerFunding => "addFunding for customer",
+                Entrypoint::ReclaimMerchantFunding => "reclaimFunding for merchant",
+                Entrypoint::ReclaimCustomerFunding => "reclaimFunding for customer",
+                Entrypoint::Expiry => "expiry",
+                Entrypoint::CustomerClose => "custClose",
+                Entrypoint::MerchantDispute => "merchDispute",
+                Entrypoint::CustomerClaim => "custClaim",
+                Entrypoint::MerchantClaim => "merchClaim",
+                Entrypoint::MutualClose => "mutualClose",
+            })
+        }
+    }
 }
