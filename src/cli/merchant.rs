@@ -44,9 +44,9 @@ pub struct Run {}
 #[derive(Debug, StructOpt)]
 #[non_exhaustive]
 pub struct Close {
-    #[structopt(long)]
+    #[structopt(long, conflicts_with = "channel")]
     pub all: bool,
 
-    #[structopt(long)]
+    #[structopt(long, required_unless = "all")]
     pub channel: Option<ChannelId>,
 }
