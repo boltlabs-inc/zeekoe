@@ -45,13 +45,14 @@ mod establish {
     /// It returns the new [`ContractId`] and the [`Level`] of the block that contains the
     /// originated contract.
     ///
-    /// This is called by the customer.
+    /// The `originator_key_pair` should belong to whichever party originates the contract.
+    /// Currently, this must be called by the customer.
     #[allow(unused)]
     pub async fn originate(
         merchant_funding_info: &MerchantFundingInformation,
         customer_funding_info: &CustomerFundingInformation,
         merchant_public_key: &PublicKey,
-        customer_key_pair: &TezosKeyPair,
+        originator_key_pair: &TezosKeyPair,
         channel_id: &ChannelId,
     ) -> Result<(ContractId, Level), Error> {
         todo!()

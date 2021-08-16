@@ -37,7 +37,7 @@ pub mod types {
     }
 
     impl TezosKeyPair {
-        /// Form a new `TezosKeyPair` from its consituent parts.
+        /// Form a new `TezosKeyPair` from its constituent parts.
         pub fn new(public_key: TezosPublicKey, secret_key: tezedge::PrivateKey) -> Self {
             // TODO: add some validation that these form a valid keypair?
             Self {
