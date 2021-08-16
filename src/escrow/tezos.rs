@@ -177,13 +177,17 @@ mod establish {
     }
 }
 
-
 mod close {
-    use crate::escrow::{types::{ContractId, TezosFundingAccount}};
+    use crate::escrow::types::*;
 
     use {
         serde::{Deserialize, Serialize},
+        tezedge::signer::OperationSignatureInfo,
         thiserror::Error,
+        zkabacus_crypto::{
+            customer::ClosingMessage, revlock::RevocationSecret, CloseState, CustomerBalance,
+            MerchantBalance,
+        },
     };
 
     #[derive(Clone, Debug, Error, Serialize, Deserialize)]
@@ -205,39 +209,110 @@ mod close {
     /// This function will wait until the expiry operation is confirmed at depth and is called
     /// by the merchant.
     ///
-    /// Errors:
+    /// Special errors:
     /// - [`Error::ExpiryInvalid`]: Contract status is not OPEN or the
     ///   [`TezosFundingAccount`] specified does not match the merchant address in [`ContractId`].
-    /// - [`Error::ExpiryFailed`]: The operation was not confirmed on chain within the expected 
+    /// - [`Error::ExpiryFailed`]: The operation was not confirmed on chain within the expected
     ///   timeout period.
-    /// - [`Error::NetworkFailed`]: Something else happened.
     #[allow(unused)]
     pub async fn expiry(
         contract_id: &ContractId,
-        merchant_tezos_account: &TezosFundingAccount,
+        merchant_key_pair: &TezosKeyPair,
     ) -> Result<(), Error> {
         todo!()
     }
 
-    /// Complete expiry close flow by claiming the entire channel balance on the [`ContractId`] 
+    /// Complete expiry close flow by claiming the entire channel balance on the [`ContractId`]
     /// via the `merchClaim` entrypoint.
     ///
     /// This function will wait until the self-delay period on the `expiry` entrypoint has passed.
-    /// After posting the `merchClaim` operation, it will wait until it has been confirmed at 
+    /// After posting the `merchClaim` operation, it will wait until it has been confirmed at
     /// depth. It is called by the merchant.
     ///
-    /// Errors:
-    /// - [`Error::MerchClaimInvalid`]: Contract status is not EXPIRY or the 
+    /// Special errors:
+    /// - [`Error::MerchClaimInvalid`]: Contract status is not EXPIRY or the
     ///   [`TezosFundingAccount`] specified does not match the merchant address in [`ContractId`].
-    /// - [`Error::MerchClaimFailed`]: The operation was not confirmed on chain within the expected 
+    /// - [`Error::MerchClaimFailed`]: The operation was not confirmed on chain within the expected
     ///   timeout period.
-    /// - [`Error::NetworkFailed`]: Something else happened.
     #[allow(unused)]
     pub async fn merch_claim(
         contract_id: &ContractId,
-        merchant_tezos_account: &TezosFundingAccount,
+        merchant_key_pair: &TezosKeyPair,
     ) -> Result<(), Error> {
         todo!()
     }
 
+    /// Initiate unilateral customer close flow or correct balances from the expiry flow by
+    /// posting the correct channel balances for the [`ContractId`] via the `custClose` entrypoint.
+    ///
+    /// This function will wait until it is confirmed at depth. It is called by the customer. If
+    /// it is called in response to an `expiry` operation, it will be called by the customer's
+    /// notification service.
+    #[allow(unused)]
+    pub async fn cust_close(
+        contract_id: &ContractId,
+        close_message: &ClosingMessage,
+        customer_key_pair: &TezosKeyPair,
+    ) -> Result<(), Error> {
+        todo!()
+    }
+
+    /// Dispute balances posted by a customer (via [`cust_close()`]) by posting a revocation
+    /// secret that matches the posted revocation lock. On successful completion, this call
+    /// will transfer the posted customer balance to the merchant.
+    ///
+    /// This function will wait until it is confirmed at depth. It is called by the merchant.
+    #[allow(unused)]
+    pub async fn merch_dispute(
+        contract_id: &ContractId,
+        revocation_secret: &RevocationSecret,
+        merchant_key_pair: &TezosKeyPair,
+    ) -> Result<(), Error> {
+        todo!()
+    }
+
+    /// Claim customer funds (posted via [`cust_close()`]) after the timeout period has elapsed
+    /// via the `custClaim` entrypoint.
+    ///
+    /// This function will wait until the timeout period from the `custClose` entrypoint call has
+    /// elapsed, and until the `custClaim` operation is confirmed at depth. It is called by the
+    /// customer.
+    #[allow(unused)]
+    pub async fn cust_claim(
+        contract_id: &ContractId,
+        merchant_key_pair: &TezosKeyPair,
+    ) -> Result<(), Error> {
+        todo!()
+    }
+
+    /// Authorize the close state provided in the mutual close flow by producing a valid EdDSA
+    /// signature over the tuple
+    /// `(contract id, "zkChannels mutual close", channel id, customer balance, merchant balance)`
+    ///
+    /// This is called by the merchant.
+    #[allow(unused)]
+    pub async fn authorize_mutual_close(
+        contract_id: &ContractId,
+        close_state: &CloseState,
+        merchant_key_pair: &TezosKeyPair,
+        // TODO: Figure out the right signature type here.
+    ) -> Result<OperationSignatureInfo, Error> {
+        todo!()
+    }
+
+    /// Execute the mutual close flow via the `mutualClose` entrypoint by paying out the specified
+    /// channel balances to both parties.
+    ///
+    /// This function will wait until the operation is confirmed at depth. It is called by the
+    /// customer.
+    #[allow(unused)]
+    pub async fn mutual_close(
+        contract_id: &ContractId,
+        customer_balance: &CustomerBalance,
+        merchant_balance: &MerchantBalance,
+        authorization_signature: &OperationSignatureInfo,
+        merchant_key_pair: &TezosKeyPair,
+    ) -> Result<(), Error> {
+        todo!()
+    }
 }
