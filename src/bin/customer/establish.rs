@@ -282,7 +282,7 @@ async fn get_parameters(
         .await
         .context("Failed to receive merchant's Pointcheval-Sanders public key")?;
 
-    // Get the merchant's commitment parameters (TODO: these should be a global default)
+    // Get the merchant's commitment parameters
     let (revocation_commitment_parameters, chan) = chan
         .recv()
         .await
@@ -304,8 +304,7 @@ async fn get_parameters(
     // - merchant's public key (in the config) is a valid Pointcheval-Sanders public key
     // - merchant's range proof parameters consist of valid Pointcheval-Sanders public key and
     //   valid signatures on the correct range
-    // - merchant's commitment parameters are "the right ones" (this check can't currently be
-    //   done because the parameters are randomly generated at first merchant startup)
+    // - merchant's commitment parameters are valid Pedersen parameters
     // - merchant's tezos public key is valid
     // - merchant's tezos public key corresponds to the tezos account that they specified
     // - that address is actually a tz1 address
