@@ -31,7 +31,7 @@ pub mod types {
     }
 
     pub type TezosPublicKey = tezedge::PublicKey;
-    pub type TezosFundingAccount = tezedge::ImplicitAddress;
+    pub type TezosFundingAddress = tezedge::ImplicitAddress;
     pub struct TezosKeyPair {
         public_key: TezosPublicKey,
         secret_key: tezedge::PrivateKey,

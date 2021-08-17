@@ -5,14 +5,14 @@ mod establish {
     #[allow(unused)]
     pub struct CustomerFundingInformation {
         pub balance: CustomerBalance,
-        pub account: TezosFundingAccount,
+        pub address: TezosFundingAddress,
         pub public_key: TezosPublicKey,
     }
 
     #[allow(unused)]
     pub struct MerchantFundingInformation {
         pub balance: MerchantBalance,
-        pub account: TezosFundingAccount,
+        pub address: TezosFundingAddress,
         pub public_key: TezosPublicKey,
     }
 
@@ -136,22 +136,6 @@ mod establish {
     ) -> Result<(), Error> {
         todo!()
     }
-
-    /// Reclaim merchant funding via the `reclaimFunding` entrypoint on the given [`ContractId`].
-    ///
-    /// This function will wait until the merchant reclaim operation is confirmed at deth and is
-    /// called by the merchant.
-    ///
-    /// The operation is invalid if:
-    /// - the contract status is not AWAITING_FUNDING.
-    /// - the `addFunding` entrypoint has not been called by the merchant address
-    #[allow(unused)]
-    pub async fn reclaim_merchant_funding(
-        contract_id: &ContractId,
-        merchant_key_pair: &TezosKeyPair,
-    ) -> Result<(), Error> {
-        todo!()
-    }
 }
 
 mod close {
@@ -172,7 +156,7 @@ mod close {
     ///
     /// This operation is invalid if:
     /// - the contract status is not OPEN
-    /// - the [`TezosFundingAccount`] specified does not match the `merch_addr` field in the
+    /// - the [`TezosFundingAddress`] specified does not match the `merch_addr` field in the
     ///   the specified contract
     #[allow(unused)]
     pub async fn expiry(
