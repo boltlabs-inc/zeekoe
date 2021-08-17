@@ -62,7 +62,7 @@ impl Command for Run {
         let merchant_config = Arc::new(merchant_config);
         let client = reqwest::Client::new();
 
-        // Handle and receiver to indicate graceful shutdown should occur
+        // Sender and receiver to indicate graceful shutdown should occur
         let (terminate, _) = broadcast::channel(1);
 
         // Collect the futures for the result of running each specified server

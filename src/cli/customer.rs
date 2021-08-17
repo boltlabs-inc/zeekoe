@@ -29,6 +29,7 @@ pub enum Customer {
     Pay(Pay),
     Refund(Refund),
     Close(Close),
+    Run(Run),
 }
 
 #[derive(Debug, StructOpt)]
@@ -125,6 +126,10 @@ pub struct Close {
     #[structopt(long)]
     pub off_chain: bool,
 }
+
+#[derive(Debug, StructOpt)]
+#[non_exhaustive]
+pub struct Run {}
 
 /// An argument specified on the command line which may be a string literal, or the special string
 /// `-`, which indicates that the value should be read from standard input.

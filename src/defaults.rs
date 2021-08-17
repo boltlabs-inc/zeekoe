@@ -83,4 +83,16 @@ pub mod customer {
     pub const fn max_note_length() -> u64 {
         1024 * 8
     }
+
+    pub const fn daemon_port() -> u16 {
+        2611
+    }
+
+    pub const fn daemon_backoff_max_retries() -> usize {
+        3
+    }
+
+    pub const fn daemon_backoff_delay() -> Duration {
+        Duration::from_secs(1)
+    }
 }
