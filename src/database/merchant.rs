@@ -52,6 +52,15 @@ pub trait QueryMerchant: Send + Sync {
         new: &ChannelStatus,
     ) -> Result<()>;
 
+    /// Update the closing balances of the channel, only if it is currently in the expected state.
+    async fn update_closing_balances(
+        &self,
+        channel_id: &ChannelId,
+        expected_status: &ChannelStatus,
+        merchant_balance: MerchantBalance,
+        customer_balance: CustomerBalance,
+    ) -> Result<()>;
+
     /// Get information about every channel in the database.
     async fn get_channels(&self) -> Result<Vec<(ChannelId, ChannelStatus)>>;
 
@@ -99,6 +108,12 @@ pub struct ChannelDetails {
     pub contract_id: ContractId,
     pub merchant_deposit: MerchantBalance,
     pub customer_deposit: CustomerBalance,
+}
+
+/// The balances of a channel at closing. These may change during a close flow.
+pub struct ClosingBalances {
+    pub merchant_balance: MerchantBalance,
+    pub customer_balance: CustomerBalance,
 }
 
 #[async_trait]
@@ -285,6 +300,16 @@ impl QueryMerchant for SqlitePool {
                 found: unexpected_status,
             }),
         }
+    }
+
+    async fn update_closing_balances(
+        &self,
+        _channel_id: &ChannelId,
+        _expected_status: &ChannelStatus,
+        _merchant_balance: MerchantBalance,
+        _customer_balance: CustomerBalance,
+    ) -> Result<()> {
+        todo!()
     }
 
     async fn get_channels(&self) -> Result<Vec<(ChannelId, ChannelStatus)>> {
