@@ -3,6 +3,7 @@ use {async_trait::async_trait, futures::StreamExt, rand::rngs::StdRng, thiserror
 pub use super::connect_sqlite;
 use crate::database::SqlitePool;
 use crate::{escrow::types::ContractId, protocol::ChannelStatus};
+use serde::{Deserialize, Serialize};
 use zkabacus_crypto::{
     revlock::{RevocationLock, RevocationSecret},
     ChannelId, CommitmentParameters, CustomerBalance, KeyPair, MerchantBalance, Nonce,
@@ -58,14 +59,17 @@ pub trait QueryMerchant: Send + Sync {
         channel_id: &ChannelId,
         expected_status: &ChannelStatus,
         merchant_balance: MerchantBalance,
-        customer_balance: CustomerBalance,
+        customer_balance: Option<CustomerBalance>,
     ) -> Result<()>;
 
     /// Get information about every channel in the database.
     async fn get_channels(&self) -> Result<Vec<(ChannelId, ChannelStatus)>>;
 
-    /// Get details about a particular channel based on its [`ChannelId`].
+    /// Get channel status for a particular channel based on its [`ChannelId`].
     async fn get_channel_status(&self, channel_id: &ChannelId) -> Result<ChannelStatus>;
+
+    /// Get closing balances for a particular channel based on its [`ChannelId`].
+    async fn get_closing_balances(&self, channel_id: &ChannelId) -> Result<ClosingBalances>;
 
     /// Get details about a particular channel based on a unique prefix of its [`ChannelId`].
     async fn get_channel_details_by_prefix(&self, prefix: &str) -> Result<ChannelDetails>;
@@ -108,12 +112,25 @@ pub struct ChannelDetails {
     pub contract_id: ContractId,
     pub merchant_deposit: MerchantBalance,
     pub customer_deposit: CustomerBalance,
+    pub closing_balances: ClosingBalances,
 }
 
 /// The balances of a channel at closing. These may change during a close flow.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClosingBalances {
-    pub merchant_balance: MerchantBalance,
-    pub customer_balance: CustomerBalance,
+    pub merchant_balance: Option<MerchantBalance>,
+    pub customer_balance: Option<CustomerBalance>,
+}
+
+zkabacus_crypto::impl_sqlx_for_bincode_ty!(ClosingBalances);
+
+impl ClosingBalances {
+    fn new() -> Self {
+        Self {
+            merchant_balance: None,
+            customer_balance: None,
+        }
+    }
 }
 
 #[async_trait]
@@ -236,19 +253,22 @@ impl QueryMerchant for SqlitePool {
         merchant_deposit: &MerchantBalance,
         customer_deposit: &CustomerBalance,
     ) -> Result<()> {
+        let empty_balances = ClosingBalances::new();
         sqlx::query!(
             "INSERT INTO merchant_channels (
                 channel_id,
                 contract_id,
                 merchant_deposit,
                 customer_deposit,
-                status
-            ) VALUES (?, ?, ?, ?, ?)",
+                status,
+                closing_balances
+            ) VALUES (?, ?, ?, ?, ?, ?)",
             channel_id,
             contract_id,
             merchant_deposit,
             customer_deposit,
-            ChannelStatus::Originated
+            ChannelStatus::Originated,
+            empty_balances
         )
         .execute(self)
         .await?;
@@ -304,12 +324,52 @@ impl QueryMerchant for SqlitePool {
 
     async fn update_closing_balances(
         &self,
-        _channel_id: &ChannelId,
-        _expected_status: &ChannelStatus,
-        _merchant_balance: MerchantBalance,
-        _customer_balance: CustomerBalance,
+        channel_id: &ChannelId,
+        expected_status: &ChannelStatus,
+        merchant_balance: MerchantBalance,
+        customer_balance: Option<CustomerBalance>,
     ) -> Result<()> {
-        todo!()
+        let mut transaction = self.begin().await?;
+
+        // Find out the current status
+        let result: Option<ChannelStatus> = sqlx::query!(
+            r#"SELECT status AS "status: Option<ChannelStatus>"
+            FROM merchant_channels
+            WHERE
+                channel_id = ?"#,
+            channel_id,
+        )
+        .fetch_one(&mut transaction)
+        .await?
+        .status;
+
+        // Only if the current status is what was expected, update the channel balances.
+        match result {
+            None => Err(Error::ChannelNotFound(*channel_id)),
+            Some(ref current) if current == expected_status => {
+                let channel_balances = ClosingBalances {
+                    merchant_balance: Some(merchant_balance),
+                    customer_balance,
+                };
+                sqlx::query!(
+                    "UPDATE merchant_channels
+                    SET closing_balances = ?
+                    WHERE channel_id = ?",
+                    channel_balances,
+                    channel_id,
+                )
+                .execute(&mut transaction)
+                .await?;
+
+                transaction.commit().await?;
+                Ok(())
+            }
+            Some(unexpected_status) => Err(Error::UnexpectedChannelStatus {
+                channel_id: *channel_id,
+                expected: vec![*expected_status],
+                found: unexpected_status,
+            }),
+        }
     }
 
     async fn get_channels(&self) -> Result<Vec<(ChannelId, ChannelStatus)>> {
@@ -353,6 +413,30 @@ impl QueryMerchant for SqlitePool {
         Ok(status)
     }
 
+    async fn get_closing_balances(&self, channel_id: &ChannelId) -> Result<ClosingBalances> {
+        let mut results = sqlx::query!(
+            r#"SELECT closing_balances as "closing_balances: ClosingBalances"
+            FROM merchant_channels
+            WHERE channel_id = ?
+            LIMIT 2"#,
+            channel_id
+        )
+        .fetch_all(self)
+        .await?
+        .into_iter();
+
+        let closing_balances = match results.next() {
+            None => return Err(Error::ChannelNotFound(*channel_id)),
+            Some(record) => record.closing_balances,
+        };
+
+        if results.next().is_some() {
+            return Err(Error::ChannelIdCollision(channel_id.to_string()));
+        }
+
+        Ok(closing_balances)
+    }
+
     async fn get_channel_details_by_prefix(&self, prefix: &str) -> Result<ChannelDetails> {
         let query = format!("{}%", &prefix);
         let mut results = sqlx::query!(
@@ -362,7 +446,8 @@ impl QueryMerchant for SqlitePool {
                 status as "status: ChannelStatus",
                 contract_id AS "contract_id: ContractId",
                 merchant_deposit AS "merchant_deposit: MerchantBalance",
-                customer_deposit AS "customer_deposit: CustomerBalance"
+                customer_deposit AS "customer_deposit: CustomerBalance",
+                closing_balances AS "closing_balances: ClosingBalances"
             FROM merchant_channels
             WHERE channel_id LIKE ?
             LIMIT 2
@@ -381,6 +466,7 @@ impl QueryMerchant for SqlitePool {
                 contract_id: channel.contract_id,
                 merchant_deposit: channel.merchant_deposit,
                 customer_deposit: channel.customer_deposit,
+                closing_balances: channel.closing_balances,
             },
         };
 
@@ -522,6 +608,57 @@ mod tests {
             &ChannelStatus::CustomerFunded,
         )
         .await?;
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_closing_balance_update() -> Result<()> {
+        let conn = create_migrated_db().await?;
+        let mut rng = StdRng::from_entropy();
+
+        let cid_m = MerchantRandomness::new(&mut rng);
+        let cid_c = CustomerRandomness::new(&mut rng);
+        let pk = KeyPair::new(&mut rng).public_key().clone();
+        let channel_id = ChannelId::new(cid_m, cid_c, &pk, &[], &[]);
+        let contract_id = ContractId::new(
+            OriginatedAddress::from_base58check("KT1Mjjcb6tmSsLm7Cb3DSQszePjfchPM4Uxm").unwrap(),
+        );
+
+        let merchant_deposit = MerchantBalance::try_new(5).unwrap();
+        let customer_deposit = CustomerBalance::try_new(5).unwrap();
+        conn.new_channel(
+            &channel_id,
+            &contract_id,
+            &merchant_deposit,
+            &customer_deposit,
+        )
+        .await?;
+
+        let mut closing_balances = conn.get_closing_balances(&channel_id).await?;
+        assert!(matches!(closing_balances.merchant_balance, None));
+        assert!(matches!(closing_balances.customer_balance, None));
+
+        let new_merchant_balance = MerchantBalance::try_new(10).unwrap();
+        let new_customer_balance = Some(CustomerBalance::try_new(0).unwrap());
+        conn.update_closing_balances(
+            &channel_id,
+            &ChannelStatus::Originated,
+            new_merchant_balance,
+            new_customer_balance,
+        )
+        .await?;
+
+        closing_balances = conn.get_closing_balances(&channel_id).await?;
+        assert!(
+            matches!(closing_balances.merchant_balance, Some(_))
+                && closing_balances.merchant_balance.unwrap().into_inner()
+                    == new_merchant_balance.into_inner()
+        );
+        assert!(
+            matches!(closing_balances.customer_balance, Some(_))
+                && closing_balances.customer_balance.unwrap().into_inner() == 0
+        );
 
         Ok(())
     }

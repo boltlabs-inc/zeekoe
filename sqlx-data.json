@@ -70,12 +70,40 @@
       "nullable": []
     }
   },
+  "28e5177fa1f8ce664fef6b932f23ce23a31deef8560af35bc06b74e393a5504b": {
+    "query": "SELECT closing_balances as \"closing_balances: ClosingBalances\"\n            FROM merchant_channels\n            WHERE channel_id = ?\n            LIMIT 2",
+    "describe": {
+      "columns": [
+        {
+          "name": "closing_balances: ClosingBalances",
+          "ordinal": 0,
+          "type_info": "Blob"
+        }
+      ],
+      "parameters": {
+        "Right": 1
+      },
+      "nullable": [
+        false
+      ]
+    }
+  },
   "2aa9bc6bab24f57e733cc46ba040bf8f8cd5c5ff654c69b1bba13c923ef47d68": {
     "query": "UPDATE customer_channels SET state = ? WHERE label = ?",
     "describe": {
       "columns": [],
       "parameters": {
         "Right": 2
+      },
+      "nullable": []
+    }
+  },
+  "3f321c13248d22bde3791adf13e0c89bf3714fe4c2d0542e00a62de850470d20": {
+    "query": "INSERT INTO merchant_channels (\n                channel_id,\n                contract_id,\n                merchant_deposit,\n                customer_deposit,\n                status,\n                closing_balances\n            ) VALUES (?, ?, ?, ?, ?, ?)",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Right": 6
       },
       "nullable": []
     }
@@ -96,16 +124,6 @@
       "nullable": [
         true
       ]
-    }
-  },
-  "4ed55f3cbe97f7dcb73ef0c18ebe3baa6213eae42e8604eb6371142cc56fcb83": {
-    "query": "INSERT INTO merchant_channels (\n                channel_id,\n                contract_id,\n                merchant_deposit,\n                customer_deposit,\n                status\n            ) VALUES (?, ?, ?, ?, ?)",
-    "describe": {
-      "columns": [],
-      "parameters": {
-        "Right": 5
-      },
-      "nullable": []
     }
   },
   "69377cabe38e67da48503697a4f862521c02db27307026e082bfcc042a57f092": {
@@ -180,8 +198,8 @@
       "nullable": []
     }
   },
-  "b21151f897a0218c4410c7f31856db1fa9b604394a46e235a533fa73f0284ef5": {
-    "query": "\n            SELECT\n                channel_id AS \"channel_id: ChannelId\",\n                status as \"status: ChannelStatus\",\n                contract_id AS \"contract_id: ContractId\",\n                merchant_deposit AS \"merchant_deposit: MerchantBalance\",\n                customer_deposit AS \"customer_deposit: CustomerBalance\"\n            FROM merchant_channels\n            WHERE channel_id LIKE ?\n            LIMIT 2\n        ",
+  "9904dc5a059fc79241029d1efa5d09c4bfcefe55f0f69bccec5a8539334b7c95": {
+    "query": "\n            SELECT\n                channel_id AS \"channel_id: ChannelId\",\n                status as \"status: ChannelStatus\",\n                contract_id AS \"contract_id: ContractId\",\n                merchant_deposit AS \"merchant_deposit: MerchantBalance\",\n                customer_deposit AS \"customer_deposit: CustomerBalance\",\n                closing_balances AS \"closing_balances: ClosingBalances\"\n            FROM merchant_channels\n            WHERE channel_id LIKE ?\n            LIMIT 2\n        ",
     "describe": {
       "columns": [
         {
@@ -208,6 +226,11 @@
           "name": "customer_deposit: CustomerBalance",
           "ordinal": 4,
           "type_info": "Blob"
+        },
+        {
+          "name": "closing_balances: ClosingBalances",
+          "ordinal": 5,
+          "type_info": "Blob"
         }
       ],
       "parameters": {
@@ -218,8 +241,19 @@
         false,
         false,
         false,
+        false,
         false
       ]
+    }
+  },
+  "ad5232bb6322b1f26228c8b189f1a79837fec7bb53bf44f83c86410cc0d61db2": {
+    "query": "UPDATE merchant_channels\n                    SET closing_balances = ?\n                    WHERE channel_id = ?",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Right": 2
+      },
+      "nullable": []
     }
   },
   "b3e1ea79364c63e3ecc4b86a880212129785a03c9c47993ef9b7986c83a6cc82": {

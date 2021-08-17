@@ -158,7 +158,7 @@ async fn finalize_customer_close(
                     channel_id,
                     &ChannelStatus::Closed,
                     merchant_balance,
-                    customer_balance,
+                    Some(customer_balance),
                 )
                 .await
                 .with_context(|| {
@@ -170,17 +170,10 @@ async fn finalize_customer_close(
         }
         // If database status is Dispute, update merchant final balance to include the merchant
         // balance.
-        ChannelStatus::Dispute => {
-            database
-                .update_closing_balances(
-                    channel_id,
-                    &ChannelStatus::Dispute,
-                    merchant_balance,
-                    CustomerBalance::try_new(0)?, // this should always succeed.
-                )
-                .await
-                .context("Failed to update closing balances for Dispute")
-        }
+        ChannelStatus::Dispute => database
+            .update_closing_balances(channel_id, &ChannelStatus::Dispute, merchant_balance, None)
+            .await
+            .context("Failed to update closing balances for Dispute"),
         _ => Err(Error::UnexpectedChannelStatus {
             channel_id: *channel_id,
             expected: vec![ChannelStatus::PendingClose, ChannelStatus::Dispute],
@@ -238,7 +231,7 @@ async fn finalize_dispute(
             channel_id,
             &ChannelStatus::Dispute,
             updated_merchant_balance,
-            updated_customer_balance,
+            Some(updated_customer_balance),
         )
         .await
         .context("Failed to update closing balances for Dispute")
@@ -277,7 +270,7 @@ async fn finalize_mutual_close(
             channel_id,
             &ChannelStatus::Closed,
             merchant_balance,
-            customer_balance,
+            Some(customer_balance),
         )
         .await
         .context("Failed to update balances after successful mutual close")
@@ -471,7 +464,7 @@ async fn finalize_expiry_close(
             channel_id,
             &ChannelStatus::Closed,
             merchant_balance,
-            customer_balance,
+            Some(customer_balance),
         )
         .await
         .context("Failed to update channel balances after sucessful channel closure.")

@@ -32,6 +32,7 @@ CREATE TABLE merchant_channels (
       "active",
       "pending_close",
       "closed"
-    ))
+    )),
+  closing_balances BLOB NOT NULL
 );
 CREATE INDEX merchant_channels_channel_id ON merchant_channels (channel_id);
