@@ -2,7 +2,7 @@ use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng};
 
 use zkabacus_crypto::{
     merchant::Config as ZkAbacusConfig, ChannelId, Context as ProofContext, CustomerBalance,
-    CustomerRandomness, MerchantBalance, MerchantRandomness, StateCommitment,
+    CustomerRandomness, MerchantBalance, MerchantRandomness, VerifiedBlindedState,
 };
 
 use zeekoe::{
@@ -156,7 +156,7 @@ async fn approve_and_establish(
     let context = ProofContext::new(&session_key.to_bytes());
 
     // Receive the establish proof from the customer and validate it
-    let (state_commitment, chan) = zkabacus_initialize(
+    let (blinded_state, chan) = zkabacus_initialize(
         rng,
         zkabacus_merchant_config,
         context,
@@ -259,7 +259,7 @@ async fn approve_and_establish(
         database,
         zkabacus_merchant_config,
         &channel_id,
-        state_commitment,
+        blinded_state,
         chan,
     )
     .await
@@ -277,7 +277,13 @@ async fn zkabacus_initialize(
     merchant_balance: MerchantBalance,
     customer_balance: CustomerBalance,
     chan: Chan<establish::Initialize>,
-) -> Result<(StateCommitment, Chan<establish::CustomerSupplyContractInfo>), anyhow::Error> {
+) -> Result<
+    (
+        VerifiedBlindedState,
+        Chan<establish::CustomerSupplyContractInfo>,
+    ),
+    anyhow::Error,
+> {
     // Receive the establish proof from the customer
     let (proof, chan) = chan
         .recv()
@@ -285,7 +291,7 @@ async fn zkabacus_initialize(
         .context("Failed to receive establish proof")?;
 
     // Attempt to initialize the channel to produce a closing signature and state commitment
-    if let Some((closing_signature, state_commitment)) = config.initialize(
+    if let Some((closing_signature, blinded_state)) = config.initialize(
         rng,
         channel_id,
         customer_balance,
@@ -305,7 +311,7 @@ async fn zkabacus_initialize(
         // Allow customer to reject signature if it is invalid
         offer_abort!(in chan as Merchant);
 
-        Ok((state_commitment, chan))
+        Ok((blinded_state, chan))
     } else {
         abort!(in chan return establish::Error::InvalidEstablishProof);
     }
@@ -317,11 +323,11 @@ async fn zkabacus_activate(
     database: &dyn QueryMerchant,
     config: &ZkAbacusConfig,
     channel_id: &ChannelId,
-    state_commitment: StateCommitment,
+    blinded_state: VerifiedBlindedState,
     chan: Chan<establish::Activate>,
 ) -> Result<(), anyhow::Error> {
     // Generate the pay token to send to the customer
-    let pay_token = config.activate(rng, state_commitment);
+    let pay_token = config.activate(rng, blinded_state);
 
     // Send the pay token to the customer
     let chan = chan
