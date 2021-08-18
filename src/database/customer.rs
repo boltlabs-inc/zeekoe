@@ -1,5 +1,9 @@
 use {
-    async_trait::async_trait, futures::stream::StreamExt, sqlx::SqlitePool, std::any::Any,
+    async_trait::async_trait,
+    futures::stream::StreamExt,
+    serde::{Deserialize, Serialize},
+    sqlx::SqlitePool,
+    std::any::Any,
     thiserror::Error,
 };
 
@@ -49,6 +53,24 @@ pub struct ChannelDetails {
     pub merchant_deposit: MerchantBalance,
     pub customer_deposit: CustomerBalance,
     pub address: ZkChannelAddress,
+    pub closing_balances: ClosingBalances,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClosingBalances {
+    pub merchant_balance: Option<MerchantBalance>,
+    pub customer_balance: Option<CustomerBalance>,
+}
+
+zkabacus_crypto::impl_sqlx_for_bincode_ty!(ClosingBalances);
+
+impl ClosingBalances {
+    pub fn new() -> Self {
+        Self {
+            merchant_balance: None,
+            customer_balance: None,
+        }
+    }
 }
 
 /// Extension trait augmenting the customer database [`QueryCustomer`] with extra methods.
@@ -129,6 +151,18 @@ pub trait QueryCustomer: Send + Sync {
 
     /// Get the address of a given channel.
     async fn channel_address(&self, channel_name: &ChannelName) -> Result<ZkChannelAddress>;
+
+    /// Get the closing balances of a given channel.
+    async fn closing_balances(&self, channel_name: &ChannelName) -> Result<ClosingBalances>;
+
+    /// Update the closing balances for a given channel -- either only the merchant balance, or
+    /// both merchant and customer balance.
+    async fn update_closing_balances(
+        &self,
+        channel_name: &ChannelName,
+        merchant_balance: MerchantBalance,
+        customer_balance: Option<CustomerBalance>,
+    ) -> Result<()>;
 
     /// Rename an existing channel from a given name to a new one.
     async fn rename_channel(
@@ -213,19 +247,22 @@ impl QueryCustomer for SqlitePool {
                 return Err(Error::ChannelExists(channel_name.clone()));
             }
 
+            let empty_balances = ClosingBalances::new();
             let result = sqlx::query!(
                 "INSERT INTO customer_channels (
                     label,
                     address,
                     merchant_deposit,
                     customer_deposit,
-                    state
-                ) VALUES (?, ?, ?, ?, ?)",
+                    state,
+                    closing_balances
+                ) VALUES (?, ?, ?, ?, ?, ?)",
                 channel_name,
                 address,
                 merchant_deposit,
                 customer_deposit,
                 state,
+                empty_balances
             )
             .execute(&mut transaction)
             .await
@@ -257,6 +294,62 @@ impl QueryCustomer for SqlitePool {
         .await
         .ok_or_else(|| Error::NoSuchChannel(channel_name.clone()))?
         .map(|record| record.address)?)
+    }
+
+    async fn closing_balances(&self, channel_name: &ChannelName) -> Result<ClosingBalances> {
+        Ok(sqlx::query!(
+            r#"
+            SELECT closing_balances AS "closing_balances: ClosingBalances"
+            FROM customer_channels
+            WHERE label = ?"#,
+            channel_name,
+        )
+        .fetch(self)
+        .next()
+        .await
+        .ok_or_else(|| Error::NoSuchChannel(channel_name.clone()))?
+        .map(|record| record.closing_balances)?)
+    }
+
+    async fn update_closing_balances(
+        &self,
+        channel_name: &ChannelName,
+        merchant_balance: MerchantBalance,
+        customer_balance: Option<CustomerBalance>,
+    ) -> Result<()> {
+        let mut transaction = self.begin().await?;
+
+        // Ensure that the old channel name exists
+        let old_exists = sqlx::query!(
+            "SELECT label FROM customer_channels WHERE label = ?",
+            channel_name
+        )
+        .fetch(&mut transaction)
+        .next()
+        .await
+        .is_some();
+
+        if !old_exists {
+            return Err(Error::NoSuchChannel(channel_name.clone()));
+        }
+
+        // Initialize updated closing balances
+        let closing_balances = ClosingBalances {
+            merchant_balance: Some(merchant_balance),
+            customer_balance,
+        };
+
+        sqlx::query!(
+            "UPDATE customer_channels SET closing_balances = ? WHERE label = ?",
+            closing_balances,
+            channel_name,
+        )
+        .execute(self)
+        .await?;
+
+        transaction.commit().await?;
+
+        Ok(())
     }
 
     async fn rename_channel(
@@ -336,7 +429,8 @@ impl QueryCustomer for SqlitePool {
                 state AS "state: State",
                 address AS "address: ZkChannelAddress",
                 customer_deposit AS "customer_deposit: CustomerBalance",
-                merchant_deposit AS "merchant_deposit: MerchantBalance"
+                merchant_deposit AS "merchant_deposit: MerchantBalance",
+                closing_balances AS "closing_balances: ClosingBalances"
             FROM customer_channels"#
         )
         .fetch_all(self)
@@ -348,6 +442,7 @@ impl QueryCustomer for SqlitePool {
             address: r.address,
             customer_deposit: r.customer_deposit,
             merchant_deposit: r.merchant_deposit,
+            closing_balances: r.closing_balances,
         })
         .collect();
 

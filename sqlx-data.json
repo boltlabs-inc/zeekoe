@@ -1,47 +1,5 @@
 {
   "db": "SQLite",
-  "062682f177d7105bff6aabbfef6c89acd3dd78a518e3f9a8c0dd1a35771bdb49": {
-    "query": "SELECT\n                label AS \"label: ChannelName\",\n                state AS \"state: State\",\n                address AS \"address: ZkChannelAddress\",\n                customer_deposit AS \"customer_deposit: CustomerBalance\",\n                merchant_deposit AS \"merchant_deposit: MerchantBalance\"\n            FROM customer_channels",
-    "describe": {
-      "columns": [
-        {
-          "name": "label: ChannelName",
-          "ordinal": 0,
-          "type_info": "Text"
-        },
-        {
-          "name": "state: State",
-          "ordinal": 1,
-          "type_info": "Blob"
-        },
-        {
-          "name": "address: ZkChannelAddress",
-          "ordinal": 2,
-          "type_info": "Blob"
-        },
-        {
-          "name": "customer_deposit: CustomerBalance",
-          "ordinal": 3,
-          "type_info": "Blob"
-        },
-        {
-          "name": "merchant_deposit: MerchantBalance",
-          "ordinal": 4,
-          "type_info": "Blob"
-        }
-      ],
-      "parameters": {
-        "Right": 0
-      },
-      "nullable": [
-        false,
-        false,
-        false,
-        false,
-        false
-      ]
-    }
-  },
   "076cdf23f2787d9df26bcbf900a6c8205379dabc0efdb0e5fd6d9a83e7e3745a": {
     "query": "SELECT\n                status as \"status: ChannelStatus\"\n            FROM merchant_channels\n            WHERE channel_id = ?\n            LIMIT 2",
     "describe": {
@@ -188,6 +146,24 @@
       "nullable": []
     }
   },
+  "70c186d315a7bca8c78c981795ebafd46ff953c199048dc7e0cd2b4808cdc938": {
+    "query": "\n            SELECT closing_balances AS \"closing_balances: ClosingBalances\"\n            FROM customer_channels\n            WHERE label = ?",
+    "describe": {
+      "columns": [
+        {
+          "name": "closing_balances: ClosingBalances",
+          "ordinal": 0,
+          "type_info": "Blob"
+        }
+      ],
+      "parameters": {
+        "Right": 1
+      },
+      "nullable": [
+        false
+      ]
+    }
+  },
   "866f68c59d036e6c895aaaa65aad6b2805ece96bde8a6fc31e4abf4c3de0b0da": {
     "query": "INSERT INTO nonces (data) VALUES (?) ON CONFLICT (data) DO NOTHING",
     "describe": {
@@ -246,6 +222,16 @@
       ]
     }
   },
+  "ab4f3979ed10a15a80b7cc6ac4dc7f70b4112ba3f17a71d2d28e49585316e388": {
+    "query": "UPDATE customer_channels SET closing_balances = ? WHERE label = ?",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Right": 2
+      },
+      "nullable": []
+    }
+  },
   "ad5232bb6322b1f26228c8b189f1a79837fec7bb53bf44f83c86410cc0d61db2": {
     "query": "UPDATE merchant_channels\n                    SET closing_balances = ?\n                    WHERE channel_id = ?",
     "describe": {
@@ -274,14 +260,52 @@
       ]
     }
   },
-  "da49f0dabf981510d17157dafc884c64e2cded2242a8f1465a4b109ff0194599": {
-    "query": "INSERT INTO customer_channels (\n                    label,\n                    address,\n                    merchant_deposit,\n                    customer_deposit,\n                    state\n                ) VALUES (?, ?, ?, ?, ?)",
+  "ea28625cd1ccb56c07f1a1fb6fdb4a003cfb254923a8a0d5e4a0d29ef2440f61": {
+    "query": "SELECT\n                label AS \"label: ChannelName\",\n                state AS \"state: State\",\n                address AS \"address: ZkChannelAddress\",\n                customer_deposit AS \"customer_deposit: CustomerBalance\",\n                merchant_deposit AS \"merchant_deposit: MerchantBalance\",\n                closing_balances AS \"closing_balances: ClosingBalances\"\n            FROM customer_channels",
     "describe": {
-      "columns": [],
+      "columns": [
+        {
+          "name": "label: ChannelName",
+          "ordinal": 0,
+          "type_info": "Text"
+        },
+        {
+          "name": "state: State",
+          "ordinal": 1,
+          "type_info": "Blob"
+        },
+        {
+          "name": "address: ZkChannelAddress",
+          "ordinal": 2,
+          "type_info": "Blob"
+        },
+        {
+          "name": "customer_deposit: CustomerBalance",
+          "ordinal": 3,
+          "type_info": "Blob"
+        },
+        {
+          "name": "merchant_deposit: MerchantBalance",
+          "ordinal": 4,
+          "type_info": "Blob"
+        },
+        {
+          "name": "closing_balances: ClosingBalances",
+          "ordinal": 5,
+          "type_info": "Blob"
+        }
+      ],
       "parameters": {
-        "Right": 5
+        "Right": 0
       },
-      "nullable": []
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ]
     }
   },
   "ea687226f1c5d6a673bd477103aaacb4ab87504b12898632b203b32b569ccd35": {
@@ -300,6 +324,16 @@
       "nullable": [
         false
       ]
+    }
+  },
+  "ec909a104cc89142883c59a2b7a77746fa66f03d8e287ef81da0ebf99c558d78": {
+    "query": "INSERT INTO customer_channels (\n                    label,\n                    address,\n                    merchant_deposit,\n                    customer_deposit,\n                    state,\n                    closing_balances\n                ) VALUES (?, ?, ?, ?, ?, ?)",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Right": 6
+      },
+      "nullable": []
     }
   },
   "ed7f70347262d552c95e48591379e94f35b8b0e419a05a6081916d71d9dc4ae9": {

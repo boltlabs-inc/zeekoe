@@ -614,9 +614,11 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_closing_balance_update() -> Result<()> {
+        // set up new db
         let conn = create_migrated_db().await?;
         let mut rng = StdRng::from_entropy();
 
+        // set defaults for a new channel
         let cid_m = MerchantRandomness::new(&mut rng);
         let cid_c = CustomerRandomness::new(&mut rng);
         let pk = KeyPair::new(&mut rng).public_key().clone();
@@ -625,6 +627,7 @@ mod tests {
             OriginatedAddress::from_base58check("KT1Mjjcb6tmSsLm7Cb3DSQszePjfchPM4Uxm").unwrap(),
         );
 
+        // insert new channel
         let merchant_deposit = MerchantBalance::try_new(5).unwrap();
         let customer_deposit = CustomerBalance::try_new(5).unwrap();
         conn.new_channel(
@@ -635,10 +638,12 @@ mod tests {
         )
         .await?;
 
+        // make sure the initial closing balances are not set
         let mut closing_balances = conn.get_closing_balances(&channel_id).await?;
         assert!(matches!(closing_balances.merchant_balance, None));
         assert!(matches!(closing_balances.customer_balance, None));
 
+        // update closing balances
         let new_merchant_balance = MerchantBalance::try_new(10).unwrap();
         let new_customer_balance = Some(CustomerBalance::try_new(0).unwrap());
         conn.update_closing_balances(
@@ -649,6 +654,7 @@ mod tests {
         )
         .await?;
 
+        // make sure the updated closing balances are set correctly
         closing_balances = conn.get_closing_balances(&channel_id).await?;
         assert!(
             matches!(closing_balances.merchant_balance, Some(_))
