@@ -43,6 +43,11 @@ pub enum Error {
     /// A channel which was expected *not* to exist in the database *did* exist.
     #[error("There is already a channel by the name of \"{0}\"")]
     ChannelExists(ChannelName),
+    /// A channel balance update was invalid.
+    #[error(
+        "Failed to update channel balance for {0}. Invalid set was (merchant: {1:?}, customer: {2:?})"
+    )]
+    InvalidBalanceUpdate(ChannelName, MerchantBalance, Option<CustomerBalance>),
 }
 
 /// The contents of a row of the database for a particular channel.
@@ -317,37 +322,48 @@ impl QueryCustomer for SqlitePool {
         merchant_balance: MerchantBalance,
         customer_balance: Option<CustomerBalance>,
     ) -> Result<()> {
-        let mut transaction = self.begin().await?;
+        // Ensure that the channel name exists
+        let closing_balances = self.closing_balances(channel_name).await?;
 
-        // Ensure that the old channel name exists
-        let old_exists = sqlx::query!(
-            "SELECT label FROM customer_channels WHERE label = ?",
-            channel_name
-        )
-        .fetch(&mut transaction)
-        .next()
-        .await
-        .is_some();
-
-        if !old_exists {
-            return Err(Error::NoSuchChannel(channel_name.clone()));
+        // make sure we're not decreasing merchant balance.
+        match closing_balances.merchant_balance {
+            Some(original) => {
+                if original.into_inner() > merchant_balance.into_inner() {
+                    return Err(Error::InvalidBalanceUpdate(
+                        channel_name.clone(),
+                        merchant_balance,
+                        customer_balance,
+                    ));
+                }
+            }
+            None => (),
         }
 
-        // Initialize updated closing balances
-        let closing_balances = ClosingBalances {
+        // make sure we don't update customer balance more than once.
+        match (closing_balances.customer_balance, customer_balance) {
+            (Some(_), Some(_)) | (Some(_), None) => {
+                return Err(Error::InvalidBalanceUpdate(
+                    channel_name.clone(),
+                    merchant_balance,
+                    customer_balance,
+                ))
+            }
+            _ => (),
+        }
+
+        // if everything was ok, set the new balances
+        let updated_closing_balances = ClosingBalances {
             merchant_balance: Some(merchant_balance),
             customer_balance,
         };
 
         sqlx::query!(
             "UPDATE customer_channels SET closing_balances = ? WHERE label = ?",
-            closing_balances,
+            updated_closing_balances,
             channel_name,
         )
         .execute(self)
         .await?;
-
-        transaction.commit().await?;
 
         Ok(())
     }

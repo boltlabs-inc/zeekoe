@@ -84,12 +84,27 @@ async fn close(close: &Close, rng: StdRng, config: self::Config) -> Result<(), a
 /// **Usage**: this function is called when the
 /// custClose entrypoint call/operation is confirmed on chain at an appropriate depth.
 #[allow(unused)]
-async fn process_confirmed_customer_close() {
+async fn finalize_customer_close(
+    config: self::Config,
+    channel_name: &ChannelName,
+    merchant_balance: MerchantBalance,
+) -> anyhow::Result<()> {
+    let database = database(&config)
+        .await
+        .context("Failed to connect to local database")?;
+
     // TODO: assert that the db status is PendingClose,
+
     // Indicate that the merchant balance has been paid out to the merchant.
+    database
+        .update_closing_balances(channel_name, merchant_balance, None)
+        .await
+        .context("Failed to save channel balances after successful custClose operation")?;
+
+    Ok(())
 }
 
-/// Claim final balance of the channel.
+/// Claim final balance of the channel via the custClaim entrypoint.
 ///
 /// **Usage**: this function is called when
 /// the contract's customer claim delay has passed *and* the custClose entrypoint call/operation
@@ -119,7 +134,6 @@ async fn process_dispute(
         .context("Failed to connect to local database")?;
 
     // Update channel status to Dispute
-    // TODO: Update closing_message to reflect final channel balances from the dispute operation.
     database
         .with_channel_state(
             channel_name,
@@ -142,13 +156,14 @@ async fn process_dispute(
 async fn finalize_dispute(
     config: self::Config,
     channel_name: &ChannelName,
+    merchant_balance: MerchantBalance,
+    customer_balance: CustomerBalance,
 ) -> Result<(), anyhow::Error> {
     let database = database(&config)
         .await
         .context("Failed to connect to local database")?;
 
     // Update channel status from Dispute to Closed
-    // TODO: make sure balances match the ones in the dispute operation
     database
         .with_channel_state(
             channel_name,
@@ -157,37 +172,65 @@ async fn finalize_dispute(
         )
         .await
         .context("Failed to updated channel status to Closed")?;
+
     // Indicate that all balances are paid out to the merchant.
+    database
+        .update_closing_balances(channel_name, merchant_balance, Some(customer_balance))
+        .await
+        .context("Failed to save final channel balances after successful dispute.")?;
+
     Ok(())
 }
 
-/// Update channel state once close operations are finalized.
+/// Update channel state once the expiry close flow is complete (without the customer posting
+/// current channel balances).
 ///
-/// **Usage**: this function is called as response to an on-chain event, either:
-/// - a custClaim entrypoint call operation is confirmed on chain at the required confirmation depth
-/// - a merchClaim entrypoint call operation is confirmed on chain at the required confirmation depth
-///
-/// Note: these functions are separate in the merchant implementation. Maybe they should also be
-/// separate here.
+/// **Usage**: this function is called as response to an on-chain event:
+/// a merchClaim entrypoint call operation is confirmed on chain at the required confirmation depth
 #[allow(unused)]
-async fn finalize_close(
+async fn finalize_expiry_close(
     config: self::Config,
     channel_name: &ChannelName,
+    merchant_balance: MerchantBalance,
+    customer_balance: CustomerBalance,
 ) -> Result<(), anyhow::Error> {
     let database = database(&config)
         .await
         .context("Failed to connect to local database")?;
 
-    // Update status from PendingClose to Closed with the final balances.
-    // TODO: make sure balances are correct:
-    // - for custClaim, indicate that the customer balance is paid out to the customer
-    //   (the merchant balance was already paid out; final balances will match PendingClose)
-    //   This happens in any undisputed, unilateral close flow.
+    // Update status from PendingClose to Closed.
     //
-    // - for merchClaim, indicate that the customer and merchant balances are paid out
-    //   to the merchant.
-    //   This happens in a merchant unilateral close flow when the customer does not post current
-    //   channel balances with custClose.
+    // TODO: update channel state to indicate the channel is Closed. The channel will not be in the
+    // PendingClose state at this point, and the customer will not have produced a ClosingMessage
+    // yet. We could use existing infra to update to PendingClose and then to Closed (2 changes).
+
+    // Update balances to indicate that both the customer and merchant balances are paid out
+    // to the merchant.
+    database
+        .update_closing_balances(channel_name, merchant_balance, Some(customer_balance))
+        .await
+        .context("Failed to save final channel balances after successful expiry")?;
+
+    todo!()
+}
+
+/// Update channel state once the customer unilateral close flow is complete.
+/// This happens in any undisputed, unilateral close flow with funds going to the customer.
+///
+/// **Usage**: this function is called as response to an on-chain event:
+/// a custClaim entrypoint call operation is confirmed on chain at the required confirmation depth
+#[allow(unused)]
+async fn finalize_close(
+    config: self::Config,
+    channel_name: &ChannelName,
+    merchant_balance: MerchantBalance,
+    customer_balance: CustomerBalance,
+) -> Result<(), anyhow::Error> {
+    let database = database(&config)
+        .await
+        .context("Failed to connect to local database")?;
+
+    // Update status from PendingClose to Closed.
     database
         .with_channel_state(
             channel_name,
@@ -195,7 +238,13 @@ async fn finalize_close(
             |closing_message| -> Result<_, Infallible> { Ok((State::Closed(closing_message), ())) },
         )
         .await
-        .context("Failed to updated channel status to PendingClose")?;
+        .context("Failed to updated channel status to Closed")?;
+
+    // Update final balances to indicate that the customer balance is paid out to the customer.
+    database
+        .update_closing_balances(channel_name, merchant_balance, Some(customer_balance))
+        .await
+        .context("Failed to save final channel balances after succesful customer close")?;
 
     Ok(())
 }
@@ -332,7 +381,9 @@ async fn mutual_close(
 async fn finalize_mutual_close(
     rng: &mut StdRng,
     config: self::Config,
-    label: ChannelName,
+    label: &ChannelName,
+    merchant_balance: MerchantBalance,
+    customer_balance: CustomerBalance,
 ) -> Result<(), anyhow::Error> {
     let database = database(&config)
         .await
@@ -346,7 +397,15 @@ async fn finalize_mutual_close(
             |pending: ClosingMessage| Ok((State::Closed(pending), ())),
         )
         .await
-        .with_context(|| format!("Failed to update channel {} to Closed status", &label))?
+        .with_context(|| format!("Failed to update channel {} to Closed status", &label))?;
+
+    // Save final balances (should match those in the ClosingMessage)
+    database
+        .update_closing_balances(label, merchant_balance, Some(customer_balance))
+        .await
+        .context("Failed to save final channel balances after successful mutual close.")?;
+
+    Ok(())
 }
 
 async fn zkabacus_close(
@@ -401,8 +460,7 @@ async fn get_close_message(
             Ok((State::PendingClose(close_message.clone()), close_message))
         })
         .await
-        .context("Failed to set state to pending close in database.")?
-        .map_err(|e| e.into())
+        .context("Failed to set state to PendingClose in database.")??
 }
 
 fn write_close_json(closing: &Closing) -> Result<(), anyhow::Error> {
