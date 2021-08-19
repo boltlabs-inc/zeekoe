@@ -289,15 +289,14 @@ async fn unilateral_close(
     }
 
     // Update database to closed state
-    database
+    Ok(database
         .with_channel_state(
             &close.label,
             zkchannels_state::PendingClose,
             |pending: ClosingMessage| -> Result<_, Infallible> { Ok((State::Closed(pending), ())) },
         )
         .await
-        .with_context(|| format!("Failed to update channel {} to Closed status", &close.label))?
-        .map_err(|e| e.into())
+        .with_context(|| format!("Failed to update channel {} to Closed status", &close.label))??)
 }
 
 async fn mutual_close(
@@ -381,7 +380,7 @@ async fn mutual_close(
 async fn finalize_mutual_close(
     rng: &mut StdRng,
     config: self::Config,
-    label: &ChannelName,
+    channel_name: &ChannelName,
     merchant_balance: MerchantBalance,
     customer_balance: CustomerBalance,
 ) -> Result<(), anyhow::Error> {
@@ -392,16 +391,23 @@ async fn finalize_mutual_close(
     // Update database channel status from PendingClose to Closed.
     database
         .with_channel_state(
-            &label,
+            channel_name,
             zkchannels_state::PendingClose,
-            |pending: ClosingMessage| Ok((State::Closed(pending), ())),
+            |closing_message: ClosingMessage| -> Result<_, Infallible> {
+                Ok((State::Closed(closing_message), ()))
+            },
         )
         .await
-        .with_context(|| format!("Failed to update channel {} to Closed status", &label))?;
+        .with_context(|| {
+            format!(
+                "Failed to update channel {} to Closed status",
+                &channel_name
+            )
+        })?;
 
     // Save final balances (should match those in the ClosingMessage)
     database
-        .update_closing_balances(label, merchant_balance, Some(customer_balance))
+        .update_closing_balances(channel_name, merchant_balance, Some(customer_balance))
         .await
         .context("Failed to save final channel balances after successful mutual close.")?;
 
@@ -411,11 +417,11 @@ async fn finalize_mutual_close(
 async fn zkabacus_close(
     rng: StdRng,
     database: &dyn QueryCustomer,
-    label: &ChannelName,
+    channel_name: &ChannelName,
     chan: Chan<close::Close>,
 ) -> Result<Chan<close::MerchantSendAuthorization>, anyhow::Error> {
     // Generate the closing message and update state to PendingClose
-    let closing_message = get_close_message(rng, database, label)
+    let closing_message = get_close_message(rng, database, channel_name)
         .await
         .context("Failed to generate mutual close data.")?;
 
@@ -441,10 +447,10 @@ async fn zkabacus_close(
 async fn get_close_message(
     mut rng: StdRng,
     database: &dyn QueryCustomer,
-    label: &ChannelName,
+    channel_name: &ChannelName,
 ) -> Result<ClosingMessage, anyhow::Error> {
-    database
-        .with_closeable_channel(label, |state| {
+    Ok(database
+        .with_closeable_channel(channel_name, |state| {
             let close_message = match state {
                 State::Inactive(inactive) => inactive.close(&mut rng),
                 State::Originated(inactive) => inactive.close(&mut rng),
@@ -460,7 +466,7 @@ async fn get_close_message(
             Ok((State::PendingClose(close_message.clone()), close_message))
         })
         .await
-        .context("Failed to set state to PendingClose in database.")??
+        .context("Failed to set state to PendingClose in database.")??)
 }
 
 fn write_close_json(closing: &Closing) -> Result<(), anyhow::Error> {

@@ -69,8 +69,8 @@ pub struct ClosingBalances {
 
 zkabacus_crypto::impl_sqlx_for_bincode_ty!(ClosingBalances);
 
-impl ClosingBalances {
-    pub fn new() -> Self {
+impl Default for ClosingBalances {
+    fn default() -> Self {
         Self {
             merchant_balance: None,
             customer_balance: None,
@@ -162,6 +162,7 @@ pub trait QueryCustomer: Send + Sync {
 
     /// Update the closing balances for a given channel -- either only the merchant balance, or
     /// both merchant and customer balance.
+    /// This should only be called once the balances are finalized on chain.
     async fn update_closing_balances(
         &self,
         channel_name: &ChannelName,
@@ -252,7 +253,7 @@ impl QueryCustomer for SqlitePool {
                 return Err(Error::ChannelExists(channel_name.clone()));
             }
 
-            let empty_balances = ClosingBalances::new();
+            let default_balances = ClosingBalances::default();
             let result = sqlx::query!(
                 "INSERT INTO customer_channels (
                     label,
@@ -267,7 +268,7 @@ impl QueryCustomer for SqlitePool {
                 merchant_deposit,
                 customer_deposit,
                 state,
-                empty_balances
+                default_balances
             )
             .execute(&mut transaction)
             .await
@@ -326,17 +327,14 @@ impl QueryCustomer for SqlitePool {
         let closing_balances = self.closing_balances(channel_name).await?;
 
         // make sure we're not decreasing merchant balance.
-        match closing_balances.merchant_balance {
-            Some(original) => {
-                if original.into_inner() > merchant_balance.into_inner() {
-                    return Err(Error::InvalidBalanceUpdate(
-                        channel_name.clone(),
-                        merchant_balance,
-                        customer_balance,
-                    ));
-                }
+        if let Some(original) = closing_balances.merchant_balance {
+            if original.into_inner() > merchant_balance.into_inner() {
+                return Err(Error::InvalidBalanceUpdate(
+                    channel_name.clone(),
+                    merchant_balance,
+                    customer_balance,
+                ));
             }
-            None => (),
         }
 
         // make sure we don't update customer balance more than once.

@@ -54,6 +54,7 @@ pub trait QueryMerchant: Send + Sync {
     ) -> Result<()>;
 
     /// Update the closing balances of the channel, only if it is currently in the expected state.
+    /// This should only be called once the updated balances are finalized on chain.
     async fn update_closing_balances(
         &self,
         channel_id: &ChannelId,
@@ -124,8 +125,8 @@ pub struct ClosingBalances {
 
 zkabacus_crypto::impl_sqlx_for_bincode_ty!(ClosingBalances);
 
-impl ClosingBalances {
-    fn new() -> Self {
+impl Default for ClosingBalances {
+    fn default() -> Self {
         Self {
             merchant_balance: None,
             customer_balance: None,
@@ -253,7 +254,7 @@ impl QueryMerchant for SqlitePool {
         merchant_deposit: &MerchantBalance,
         customer_deposit: &CustomerBalance,
     ) -> Result<()> {
-        let empty_balances = ClosingBalances::new();
+        let default_balances = ClosingBalances::default();
         sqlx::query!(
             "INSERT INTO merchant_channels (
                 channel_id,
@@ -268,7 +269,7 @@ impl QueryMerchant for SqlitePool {
             merchant_deposit,
             customer_deposit,
             ChannelStatus::Originated,
-            empty_balances
+            default_balances
         )
         .execute(self)
         .await?;
