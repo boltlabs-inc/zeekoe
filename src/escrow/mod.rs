@@ -10,11 +10,10 @@ pub mod types {
         thiserror::Error,
     };
 
-    /// Rename this type to match zkChannels written notation.
-    /// Also, so we can easily change the tezedge type in case it is wrong.
+    /// ID for a zkChannels contract originated on Tezos.
+    /// Equivalent to the Tezos OriginatedAddress type.
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     pub struct ContractId(OriginatedAddress);
-    //pub type ContractId = OriginatedAddress;
     zkabacus_crypto::impl_sqlx_for_bincode_ty!(ContractId);
 
     impl Display for ContractId {
@@ -30,8 +29,14 @@ pub mod types {
         }
     }
 
+    /// Tezos public key.
     pub type TezosPublicKey = tezedge::PublicKey;
+
+    /// Tezos implicit address; the address of a Tezos account that can fund a zkChannels contract.
+    /// An address is the hash of a [`TezosPublicKey`].
     pub type TezosFundingAddress = tezedge::ImplicitAddress;
+
+    /// Tezos key pair.
     pub struct TezosKeyPair {
         public_key: TezosPublicKey,
         secret_key: tezedge::PrivateKey,
