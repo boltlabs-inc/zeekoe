@@ -5,6 +5,7 @@ use {
         path::{Path, PathBuf},
         time::Duration,
     },
+    tezedge::PrivateKey,
 };
 
 pub use super::DatabaseLocation;
@@ -28,6 +29,7 @@ pub struct Config {
     pub max_note_length: u64,
     #[serde(default)]
     pub trust_certificate: Option<PathBuf>,
+    pub private_key: PathBuf,
 }
 
 impl Config {
@@ -49,5 +51,10 @@ impl Config {
             .map(|ref cert_path| config_dir.join(cert_path));
 
         Ok(config)
+    }
+
+    pub async fn load_private_key(&self) -> anyhow::Result<PrivateKey> {
+        let contents = tokio::fs::read_to_string(&self.private_key).await?;
+        Ok(PrivateKey::from_base58check(&contents)?)
     }
 }
