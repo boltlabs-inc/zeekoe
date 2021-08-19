@@ -353,6 +353,7 @@ pub mod daemon {
 
     pub type Daemon = Session! {
         choose {
+            // Refresh
             0 => Done,
         }
     };

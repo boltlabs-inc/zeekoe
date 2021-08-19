@@ -4,7 +4,7 @@ use {
     futures::FutureExt,
     rand::{rngs::StdRng, SeedableRng},
     sqlx::SqlitePool,
-    std::{convert::identity, sync::Arc},
+    std::{convert::identity, sync::Arc, time::Duration},
     structopt::StructOpt,
     webpki::DNSNameRef,
 };
@@ -110,11 +110,13 @@ pub async fn connect(
 pub async fn connect_daemon(
     config: &Config,
 ) -> anyhow::Result<(SessionKey, Chan<protocol::daemon::Daemon>)> {
+    // Always error immediately. We don't need retry/reconnect for the daemon.
+    let mut backoff = Backoff::with_delay(Duration::ZERO);
+    backoff.max_retries(0);
+
     let address = DNSNameRef::try_from_ascii_str("localhost").unwrap();
-    let port = config.daemon.port;
-    let backoff = Backoff::with_delay(config.daemon.retry_delay);
     let client: Client<protocol::daemon::Daemon> = Client::new(backoff);
-    Ok(client.connect(&address.into(), port).await?)
+    Ok(client.connect(&address.into(), config.daemon_port).await?)
 }
 
 /// Connect to the database specified by the configuration.

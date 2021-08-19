@@ -432,7 +432,7 @@ async fn refresh_daemon(config: &Config) -> anyhow::Result<()> {
 
     chan.choose::<0>()
         .await
-        .context("Failed to select channel establishment session")?
+        .context("Failed to select daemon Refresh")?
         .close();
 
     Ok(())

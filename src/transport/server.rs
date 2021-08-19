@@ -178,7 +178,7 @@ where
 
         // Error handling task awaits the result of each spawned server task and logs any errors
         // that occur, as they occur
-        let (result_tx, result_rx) = mpsc::channel(1024);
+        let (result_tx, result_rx) = mpsc::unbounded_channel();
         let error_join_handle = tokio::spawn(error_handler(result_rx));
 
         // Listen for the termination event and forward it to stop the server
@@ -205,7 +205,7 @@ where
             };
 
             match accept_result {
-                Err(err) => result_tx.send(Err(err.into())).await.unwrap_or(()),
+                Err(err) => result_tx.send(Err(err.into())).unwrap_or(()),
                 Ok((tcp_stream, addr)) => {
                     tcp_stream.set_nodelay(true)?;
 
@@ -236,7 +236,7 @@ where
                     });
 
                     // Keep track of pending server task
-                    result_tx.send(Ok(join_handle)).await.unwrap_or(());
+                    result_tx.send(Ok(join_handle)).unwrap_or(());
                 }
             }
         }
@@ -274,7 +274,7 @@ where
 
 /// Handle errors on the provided `Receiver`.
 async fn error_handler<Error: Debug>(
-    mut result_rx: mpsc::Receiver<Result<JoinHandle<Error>, ServerError<Error>>>,
+    mut result_rx: mpsc::UnboundedReceiver<Result<JoinHandle<Error>, ServerError<Error>>>,
 ) {
     let mut results = FuturesUnordered::new();
     loop {

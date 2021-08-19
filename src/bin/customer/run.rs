@@ -34,7 +34,7 @@ impl Command for Run {
 
         // Serve on this address
         let localhost_v4 = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
-        let address = (localhost_v4, config.daemon.port);
+        let address = (localhost_v4, config.daemon_port);
 
         // There is no meaningful initialization necessary per request
         let initialize = || async { Some(()) };
