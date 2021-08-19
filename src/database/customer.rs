@@ -8,7 +8,10 @@ use zkabacus_crypto::{
     CustomerBalance, MerchantBalance,
 };
 
-use crate::customer::{client::ZkChannelAddress, ChannelName};
+use crate::{
+    customer::{client::ZkChannelAddress, ChannelName},
+    escrow::{notify::Level, types::ContractId},
+};
 
 mod state;
 use self::state::zkchannels_state::ZkChannelState;
@@ -39,6 +42,12 @@ pub enum Error {
     /// A channel which was expected *not* to exist in the database *did* exist.
     #[error("There is already a channel by the name of \"{0}\"")]
     ChannelExists(ChannelName),
+    /// A channel contained incomplete contract details.
+    #[error("Error retrieving contract details for \"{0}\": incomplete details.")]
+    InvalidContractDetails(ChannelName),
+    /// A channel already holds contract details.
+    #[error("The channel \"{0}\" already has contract details set.")]
+    ContractDetailsExist(ChannelName),
 }
 
 /// The contents of a row of the database for a particular channel.
@@ -49,6 +58,10 @@ pub struct ChannelDetails {
     pub merchant_deposit: MerchantBalance,
     pub customer_deposit: CustomerBalance,
     pub address: ZkChannelAddress,
+    /// ID of Tezos contract originated on chain.
+    pub contract_id: Option<ContractId>,
+    /// Level at which Tezos contract is originated.
+    pub contract_level: Option<Level>,
 }
 
 /// Extension trait augmenting the customer database [`QueryCustomer`] with extra methods.
@@ -129,6 +142,21 @@ pub trait QueryCustomer: Send + Sync {
 
     /// Get the address of a given channel.
     async fn channel_address(&self, channel_name: &ChannelName) -> Result<ZkChannelAddress>;
+
+    /// Get contract information for a given channel.
+    async fn contract_details(
+        &self,
+        channel_name: &ChannelName,
+    ) -> Result<Option<(ContractId, Level)>>;
+
+    /// Set contract information for a given channel. Will fail if the contract information has
+    /// previously been set.
+    async fn set_contract_details(
+        &self,
+        channel_name: &ChannelName,
+        contract_id: &ContractId,
+        level: Level,
+    ) -> Result<()>;
 
     /// Rename an existing channel from a given name to a new one.
     async fn rename_channel(
@@ -213,19 +241,25 @@ impl QueryCustomer for SqlitePool {
                 return Err(Error::ChannelExists(channel_name.clone()));
             }
 
+            let default_contract_id: Option<ContractId> = None;
+            let default_contract_level: Option<Level> = None;
             let result = sqlx::query!(
                 "INSERT INTO customer_channels (
                     label,
                     address,
                     merchant_deposit,
                     customer_deposit,
-                    state
-                ) VALUES (?, ?, ?, ?, ?)",
+                    state,
+                    contract_id,
+                    level
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 channel_name,
                 address,
                 merchant_deposit,
                 customer_deposit,
                 state,
+                default_contract_id,
+                default_contract_level,
             )
             .execute(&mut transaction)
             .await
@@ -257,6 +291,56 @@ impl QueryCustomer for SqlitePool {
         .await
         .ok_or_else(|| Error::NoSuchChannel(channel_name.clone()))?
         .map(|record| record.address)?)
+    }
+
+    async fn contract_details(
+        &self,
+        channel_name: &ChannelName,
+    ) -> Result<Option<(ContractId, Level)>> {
+        let record = sqlx::query!(
+            r#"
+            SELECT contract_id AS "contract_id: Option<ContractId>",
+                level AS "contract_level: Option<Level>"
+            FROM customer_channels
+            WHERE label = ?"#,
+            channel_name,
+        )
+        .fetch(self)
+        .next()
+        .await
+        .ok_or_else(|| Error::NoSuchChannel(channel_name.clone()))??;
+
+        Ok(match (record.contract_id, record.contract_level) {
+            (Some(contract_id), Some(contract_level)) => Some((contract_id, contract_level)),
+            (None, None) => None,
+            _ => return Err(Error::InvalidContractDetails(channel_name.clone())),
+        })
+    }
+
+    async fn set_contract_details(
+        &self,
+        channel_name: &ChannelName,
+        contract_id: &ContractId,
+        level: Level,
+    ) -> Result<()> {
+        // Ensure that channel exists and does not already have contract details.
+        if self.contract_details(channel_name).await?.is_some() {
+            return Err(Error::ContractDetailsExist(channel_name.clone()));
+        }
+
+        // Update channel with new details.
+        let some_id = Some(contract_id);
+        let some_level = Some(level);
+        sqlx::query!(
+            "UPDATE customer_channels SET contract_id = ?, level = ? WHERE label = ?",
+            some_id,
+            some_level,
+            channel_name,
+        )
+        .execute(self)
+        .await?;
+
+        Ok(())
     }
 
     async fn rename_channel(
@@ -336,7 +420,9 @@ impl QueryCustomer for SqlitePool {
                 state AS "state: State",
                 address AS "address: ZkChannelAddress",
                 customer_deposit AS "customer_deposit: CustomerBalance",
-                merchant_deposit AS "merchant_deposit: MerchantBalance"
+                merchant_deposit AS "merchant_deposit: MerchantBalance",
+                contract_id AS "contract_id: Option<ContractId>",
+                level AS "level: Option<Level>"
             FROM customer_channels"#
         )
         .fetch_all(self)
@@ -348,6 +434,8 @@ impl QueryCustomer for SqlitePool {
             address: r.address,
             customer_deposit: r.customer_deposit,
             merchant_deposit: r.merchant_deposit,
+            contract_id: r.contract_id,
+            contract_level: r.level,
         })
         .collect();
 

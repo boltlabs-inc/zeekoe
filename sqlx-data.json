@@ -1,7 +1,25 @@
 {
   "db": "SQLite",
-  "062682f177d7105bff6aabbfef6c89acd3dd78a518e3f9a8c0dd1a35771bdb49": {
-    "query": "SELECT\n                label AS \"label: ChannelName\",\n                state AS \"state: State\",\n                address AS \"address: ZkChannelAddress\",\n                customer_deposit AS \"customer_deposit: CustomerBalance\",\n                merchant_deposit AS \"merchant_deposit: MerchantBalance\"\n            FROM customer_channels",
+  "076cdf23f2787d9df26bcbf900a6c8205379dabc0efdb0e5fd6d9a83e7e3745a": {
+    "query": "SELECT\n                status as \"status: ChannelStatus\"\n            FROM merchant_channels\n            WHERE channel_id = ?\n            LIMIT 2",
+    "describe": {
+      "columns": [
+        {
+          "name": "status: ChannelStatus",
+          "ordinal": 0,
+          "type_info": "Text"
+        }
+      ],
+      "parameters": {
+        "Right": 1
+      },
+      "nullable": [
+        false
+      ]
+    }
+  },
+  "0e277429db56d9fc2ff9c45467886b5ba9cae73f3d438bbd1648a53d59c4b821": {
+    "query": "SELECT\n                label AS \"label: ChannelName\",\n                state AS \"state: State\",\n                address AS \"address: ZkChannelAddress\",\n                customer_deposit AS \"customer_deposit: CustomerBalance\",\n                merchant_deposit AS \"merchant_deposit: MerchantBalance\",\n                contract_id AS \"contract_id: Option<ContractId>\",\n                level AS \"level: Option<Level>\"\n            FROM customer_channels",
     "describe": {
       "columns": [
         {
@@ -28,6 +46,16 @@
           "name": "merchant_deposit: MerchantBalance",
           "ordinal": 4,
           "type_info": "Blob"
+        },
+        {
+          "name": "contract_id: Option<ContractId>",
+          "ordinal": 5,
+          "type_info": "Blob"
+        },
+        {
+          "name": "level: Option<Level>",
+          "ordinal": 6,
+          "type_info": "Blob"
         }
       ],
       "parameters": {
@@ -38,24 +66,8 @@
         false,
         false,
         false,
-        false
-      ]
-    }
-  },
-  "076cdf23f2787d9df26bcbf900a6c8205379dabc0efdb0e5fd6d9a83e7e3745a": {
-    "query": "SELECT\n                status as \"status: ChannelStatus\"\n            FROM merchant_channels\n            WHERE channel_id = ?\n            LIMIT 2",
-    "describe": {
-      "columns": [
-        {
-          "name": "status: ChannelStatus",
-          "ordinal": 0,
-          "type_info": "Text"
-        }
-      ],
-      "parameters": {
-        "Right": 1
-      },
-      "nullable": [
+        false,
+        false,
         false
       ]
     }
@@ -106,6 +118,30 @@
         "Right": 5
       },
       "nullable": []
+    }
+  },
+  "5a44340b3f9d88b4a5cd5c819773f10041700513d518cf756176d2cc02aeb45e": {
+    "query": "\n            SELECT contract_id AS \"contract_id: Option<ContractId>\",\n                level AS \"contract_level: Option<Level>\"\n            FROM customer_channels\n            WHERE label = ?",
+    "describe": {
+      "columns": [
+        {
+          "name": "contract_id: Option<ContractId>",
+          "ordinal": 0,
+          "type_info": "Blob"
+        },
+        {
+          "name": "contract_level: Option<Level>",
+          "ordinal": 1,
+          "type_info": "Blob"
+        }
+      ],
+      "parameters": {
+        "Right": 1
+      },
+      "nullable": [
+        false,
+        false
+      ]
     }
   },
   "69377cabe38e67da48503697a4f862521c02db27307026e082bfcc042a57f092": {
@@ -240,12 +276,22 @@
       ]
     }
   },
-  "da49f0dabf981510d17157dafc884c64e2cded2242a8f1465a4b109ff0194599": {
-    "query": "INSERT INTO customer_channels (\n                    label,\n                    address,\n                    merchant_deposit,\n                    customer_deposit,\n                    state\n                ) VALUES (?, ?, ?, ?, ?)",
+  "bb01a2c33058690d5102347acd2e34492fb16f0a7e1a562031314931b516eb72": {
+    "query": "INSERT INTO customer_channels (\n                    label,\n                    address,\n                    merchant_deposit,\n                    customer_deposit,\n                    state,\n                    contract_id,\n                    level\n                ) VALUES (?, ?, ?, ?, ?, ?, ?)",
     "describe": {
       "columns": [],
       "parameters": {
-        "Right": 5
+        "Right": 7
+      },
+      "nullable": []
+    }
+  },
+  "c59e81c4e494a154802e2de6114c8c14f725927ddfdf729c897deba11944896c": {
+    "query": "UPDATE customer_channels SET contract_id = ?, level = ? WHERE label = ?",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Right": 3
       },
       "nullable": []
     }
