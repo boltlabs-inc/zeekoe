@@ -83,4 +83,9 @@ pub mod customer {
     pub const fn max_note_length() -> u64 {
         1024 * 8
     }
+
+    pub const fn daemon_port() -> u16 {
+        // ZKD :3
+        26114
+    }
 }

@@ -4,25 +4,27 @@ use {
     futures::FutureExt,
     rand::{rngs::StdRng, SeedableRng},
     sqlx::SqlitePool,
-    std::{convert::identity, sync::Arc},
+    std::{convert::identity, sync::Arc, time::Duration},
     structopt::StructOpt,
+    webpki::DNSNameRef,
 };
 
 use zeekoe::{
     customer::{
         cli::{self, Customer::*},
-        client::{SessionKey, ZkChannelAddress},
+        client::{Backoff, SessionKey, ZkChannelAddress},
         database::{connect_sqlite, QueryCustomer},
         defaults::config_path,
         Chan, Cli, Client, Config,
     },
-    protocol::{self, ZkChannels},
+    protocol,
 };
 
 mod close;
 mod establish;
 mod manage;
 mod pay;
+mod run;
 
 /// A single customer-side command, parameterized by the currently loaded configuration.
 ///
@@ -61,6 +63,7 @@ pub async fn main_with_cli(cli: Cli) -> Result<(), anyhow::Error> {
         Pay(pay) => pay.run(rng, config.await?).await,
         Refund(refund) => refund.run(rng, config.await?).await,
         Close(close) => close.run(rng, config.await?).await,
+        Run(run) => run.run(rng, config.await?).await,
     }
 }
 
@@ -78,7 +81,7 @@ pub async fn connect(
         ..
     } = config;
 
-    let mut client: Client<ZkChannels> = Client::new(*backoff);
+    let mut client: Client<protocol::ZkChannels> = Client::new(*backoff);
     client
         .max_length(*max_message_length)
         .timeout(*connection_timeout)
@@ -101,7 +104,19 @@ pub async fn connect(
         );
     }
 
-    Ok(client.connect(address).await?)
+    Ok(client.connect_zkchannel(address).await?)
+}
+
+pub async fn connect_daemon(
+    config: &Config,
+) -> anyhow::Result<(SessionKey, Chan<protocol::daemon::Daemon>)> {
+    // Always error immediately. We don't need retry/reconnect for the daemon.
+    let mut backoff = Backoff::with_delay(Duration::ZERO);
+    backoff.max_retries(0);
+
+    let address = DNSNameRef::try_from_ascii_str("localhost").unwrap();
+    let client: Client<protocol::daemon::Daemon> = Client::new(backoff);
+    Ok(client.connect(&address.into(), config.daemon_port).await?)
 }
 
 /// Connect to the database specified by the configuration.

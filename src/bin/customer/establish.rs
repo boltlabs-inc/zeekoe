@@ -29,7 +29,7 @@ use zeekoe::{
     },
 };
 
-use super::{connect, database, Command};
+use super::{connect, connect_daemon, database, Command};
 
 #[derive(Debug, Clone, Serialize)]
 struct Establishment {
@@ -251,7 +251,7 @@ impl Command for Establish {
         }
 
         // Run zkAbacus.Activate
-        zkabacus_activate(database.as_ref(), &actual_label, chan)
+        zkabacus_activate(&config, database.as_ref(), &actual_label, chan)
             .await
             .context("Failed to activate channel")?;
 
@@ -412,6 +412,7 @@ async fn store_inactive_local(
 
 /// The core zkAbacus.Activate protocol.
 async fn zkabacus_activate(
+    config: &Config,
     database: &dyn QueryCustomer,
     label: &ChannelName,
     chan: Chan<establish::Activate>,
@@ -438,8 +439,10 @@ async fn zkabacus_activate(
             },
         )
         .await
-        .with_context(|| format!("Failed to update channel {} to Ready status", &label))?
-        .map_err(|e| e.into())
+        .with_context(|| format!("Failed to update channel {} to Ready status", &label))??;
+
+    // Notify the on-chain monitoring daemon that there's a new channel.
+    refresh_daemon(config).await
 }
 
 /// Write the establish_json if performing operations off-chain.
@@ -463,5 +466,19 @@ fn write_establish_json(establishment: &Establishment) -> Result<(), anyhow::Err
     })?;
 
     eprintln!("Establishment data written to {:?}", &establish_json_path);
+    Ok(())
+}
+
+/// Invoke `Refresh` on the customer daemon.
+async fn refresh_daemon(config: &Config) -> anyhow::Result<()> {
+    let (_session_key, chan) = connect_daemon(config)
+        .await
+        .context("Failed to connect to daemon")?;
+
+    chan.choose::<0>()
+        .await
+        .context("Failed to select daemon Refresh")?
+        .close();
+
     Ok(())
 }
