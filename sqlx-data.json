@@ -66,6 +66,30 @@
       "nullable": []
     }
   },
+  "434a3cae12f2c9206c110127ea5e21f39dd41c2e8f56c07f4dff41791e068286": {
+    "query": "SELECT status AS \"status: Option<ChannelStatus>\",\n                closing_balances AS \"closing_balances: ClosingBalances\"\n            FROM merchant_channels\n            WHERE\n                channel_id = ?",
+    "describe": {
+      "columns": [
+        {
+          "name": "status: Option<ChannelStatus>",
+          "ordinal": 0,
+          "type_info": "Text"
+        },
+        {
+          "name": "closing_balances: ClosingBalances",
+          "ordinal": 1,
+          "type_info": "Blob"
+        }
+      ],
+      "parameters": {
+        "Right": 1
+      },
+      "nullable": [
+        false,
+        false
+      ]
+    }
+  },
   "46ea459c9d2e371ace67299de61c55d6e17a6c8b3a8d10e6bfd0771ffc907b0e": {
     "query": "\n            SELECT secret AS \"secret: RevocationSecret\"\n            FROM revocations\n            WHERE lock = ?\n            ",
     "describe": {

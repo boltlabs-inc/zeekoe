@@ -54,7 +54,12 @@ pub trait QueryMerchant: Send + Sync {
     ) -> Result<()>;
 
     /// Update the closing balances of the channel, only if it is currently in the expected state.
-    /// This should only be called once the updated balances are finalized on chain.
+    ///
+    /// This should only be called once the balances are finalized on chain and maintains the
+    /// following invariants:
+    /// - The customer balance can be set at most once.
+    /// - The merchant balance can only be increased.
+    /// If either of these invariants are violated, will raise [`Error::InvalidBalanceUpdate`].
     async fn update_closing_balances(
         &self,
         channel_id: &ChannelId,
@@ -98,6 +103,9 @@ pub enum Error {
         expected: Vec<ChannelStatus>,
         found: ChannelStatus,
     },
+    /// A channel balance update was invalid.
+    #[error("Failed to update channel balance to invalid set (merchant: {0:?}, customer: {1:?})")]
+    InvalidBalanceUpdate(MerchantBalance, Option<CustomerBalance>),
     /// An underlying database error occurred.
     #[error(transparent)]
     Database(#[from] sqlx::Error),
@@ -333,30 +341,56 @@ impl QueryMerchant for SqlitePool {
         let mut transaction = self.begin().await?;
 
         // Find out the current status
-        let result: Option<ChannelStatus> = sqlx::query!(
-            r#"SELECT status AS "status: Option<ChannelStatus>"
+        let result = sqlx::query!(
+            r#"SELECT status AS "status: Option<ChannelStatus>",
+                closing_balances AS "closing_balances: ClosingBalances"
             FROM merchant_channels
             WHERE
                 channel_id = ?"#,
             channel_id,
         )
         .fetch_one(&mut transaction)
-        .await?
-        .status;
+        .await?;
 
         // Only if the current status is what was expected, update the channel balances.
-        match result {
+        match result.status {
             None => Err(Error::ChannelNotFound(*channel_id)),
             Some(ref current) if current == expected_status => {
-                let channel_balances = ClosingBalances {
+                let closing_balances = result.closing_balances;
+
+                // Make sure we're not decreasing merchant balance.
+                if let Some(original) = closing_balances.merchant_balance {
+                    if original.into_inner() > merchant_balance.into_inner() {
+                        return Err(Error::InvalidBalanceUpdate(
+                            merchant_balance,
+                            customer_balance,
+                        ));
+                    }
+                }
+
+                // Make sure we don't update customer balance more than once.
+                match (closing_balances.customer_balance, customer_balance) {
+                    (Some(_), Some(_)) | (Some(_), None) => {
+                        return Err(Error::InvalidBalanceUpdate(
+                            merchant_balance,
+                            customer_balance,
+                        ))
+                    }
+                    _ => (),
+                }
+
+                // If everything was ok, set the new balances.
+                let updated_closing_balances = ClosingBalances {
                     merchant_balance: Some(merchant_balance),
                     customer_balance,
                 };
+
+                // Update the db with the new balances.
                 sqlx::query!(
                     "UPDATE merchant_channels
                     SET closing_balances = ?
                     WHERE channel_id = ?",
-                    channel_balances,
+                    updated_closing_balances,
                     channel_id,
                 )
                 .execute(&mut transaction)

@@ -42,7 +42,6 @@ pub enum State {
     ///
     /// Note: this [`ClosingMessage`](zkabcus::ClosingMessage) indicates the channel state as
     /// proposed by the customer, which may be different from the final balances.
-    /// FIXME: make this Option so that the customer doesn't have to respond to expiry.
     Closed(zkabacus::ClosingMessage),
 }
 
