@@ -61,6 +61,9 @@ serde_with = "1.9"
 skiplist = "0.4"
 serde_json = "1"
 hex = "0.4"
+inline-python = "0.7"
+pyo3 = "0.14"
+lazy_static = "1.4"
 url = { version = "2.2", features = ["serde"] }
 rusty-money = { version = "0.4", features = ["crypto"] }
 uuid = { version = "0.8", features = ["serde", "v4"] }
