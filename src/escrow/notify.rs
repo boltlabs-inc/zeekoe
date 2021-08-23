@@ -10,6 +10,7 @@ use {
         hash::Hash,
         ops::{Add, Sub},
         pin::Pin,
+        sync::{Arc, Mutex},
         task::{Context, Poll},
     },
     tezedge::{api::BlockHead, BlockHash, OperationHash},
@@ -18,13 +19,53 @@ use {
 };
 
 pub struct Notifications<F: Fetch> {
-    // Inputs:
-    new_blocks: mpsc::Receiver<<F as Fetch>::Block>,
-    subscriber_actions: mpsc::Receiver<(SubscriberId, SubscriberAction)>,
     // Outputs:
+    pending_operations: Arc<Mutex<PendingOperations<F>>>,
+    subscribers: Arc<DashMap<SubscriberId, SubscriberSink>>,
+}
+
+struct PendingOperations<F: Fetch> {
     confirmation: SkipMap<Level, Vec<oneshot::Sender<()>>>,
-    cancellation: HashMap<<<F as Fetch>::Block as Block>::Id, oneshot::Sender<()>>,
-    subscribers: HashMap<SubscriberId, SubscriberSink>,
+    cancellation: HashMap<<F::Block as Block>::Id, oneshot::Sender<()>>,
+}
+
+impl<F: Fetch + Send + 'static> Notifications<F>
+where
+    F::Block: Send + Sync,
+    F::Error: Send,
+    <F::Block as Block>::Id: Send + Hash + Eq,
+{
+    pub async fn listen(fetcher: F, confirmation_depth: usize) -> Result<Self, F::Error> {
+        let (tx_confirm_operation, mut rx_confirm_operation) = mpsc::channel(1);
+
+        tokio::spawn(async move {
+            let mut cache = Cache::with_fetcher_and_capacity(fetcher, confirmation_depth).await?;
+            let waiting_operations: Vec<Confirm> = Vec::new();
+            let confirmation: SkipMap<Level, Vec<oneshot::Sender<()>>> = SkipMap::new();
+            let cancellation: HashMap<<F::Block as Block>::Id, oneshot::Sender<()>> =
+                HashMap::new();
+
+            loop {
+                tokio::select! {
+                    confirm_operation = rx_confirm_operation.recv() => {
+                        match confirm_operation {
+                            Some(Confirm { operation, confirm_at_depth, confirm, cancel }) => {
+
+                            },
+                            None => return Ok(()),
+                        }
+                    },
+                    next_block = cache.next_block() => match next_block {
+                        Ok(NextBlock::Clean { latest, confirmed }) => todo!(),
+                        Ok(NextBlock::Reorg { latest, evicted }) => todo!(),
+                        Err(err) => return Err(err),
+                    }
+                }
+            }
+        });
+
+        todo!()
+    }
 }
 
 struct SubscriberId(Uuid);
@@ -35,13 +76,20 @@ enum SubscriberAction {
     Set(Vec<ContractId>),
 }
 
+struct Confirm {
+    operation: OperationHash,
+    confirm_at_depth: Depth,
+    confirm: oneshot::Sender<()>,
+    cancel: oneshot::Sender<()>,
+}
+
 struct SubscriberSink {
     sink: mpsc::Sender<ContractEvent>,
     contracts: HashSet<ContractId>,
 }
 
 pub struct ContractEventStream<F: Fetch> {
-    contracts: DashSet<<<F as Fetch>::Block as Block>::Id>,
+    contracts: DashSet<<F::Block as Block>::Id>,
     cache: Cache<F>,
 }
 
@@ -189,7 +237,7 @@ pub struct Cache<F: Fetch> {
 
 impl<F: Fetch> Cache<F>
 where
-    <<F as Fetch>::Block as Block>::Id: Hash + Eq + Clone,
+    <F::Block as Block>::Id: Hash + Eq,
 {
     /// Instantiate a new `Cache` with the given capacity. The capacity *must* be larger than the
     /// maximum depth of any possible reorganization of the chain, or a panic will occur when a
@@ -200,24 +248,33 @@ where
     ) -> Result<Self, F::Error> {
         let mut blocks = VecDeque::with_capacity(capacity);
 
-        // Fetch the current head block
-        let mut block = fetcher.fetch_head().await?;
+        'start: loop {
+            // Fetch the current head block
+            let mut block = fetcher.fetch_head().await?;
 
-        // Fill up the cache with the predecessors of the head block
-        for _ in 0..capacity {
-            let predecessor = fetcher.fetch_id(block.predecessor()).await?;
+            // Fill up the cache with the predecessors of the head block
+            for _ in 0..capacity {
+                // Fetch the previous block by level
+                let predecessor = fetcher.fetch_level(block.level() - 1).await?;
+                if predecessor.id() != block.predecessor() {
+                    // A reorg happened during initialization; restart from beginning
+                    blocks.clear();
+                    continue 'start;
+                }
+                blocks.push_back(block);
+                block = predecessor;
+            }
+
+            // Put the last predecessor into the cache
             blocks.push_back(block);
-            block = predecessor;
+
+            // Exit the loop because no reorgs have happened during initialization
+            return Ok(Cache {
+                blocks,
+                fetcher,
+                capacity,
+            });
         }
-
-        // Put the last predecessor into the cache
-        blocks.push_back(block);
-
-        Ok(Cache {
-            blocks,
-            fetcher,
-            capacity,
-        })
     }
 
     /// Fetch the next head block into the cache, evicting the oldest block. If a reorg has
@@ -230,7 +287,7 @@ where
         let current_head = self
             .blocks
             .front()
-            .expect("Invariant violation in `tick`: empty block cache");
+            .expect("Invariant violation in `next_block`: empty block cache");
 
         // The next head block
         let next = self.fetcher.fetch_level(current_head.level() + 1).await?;
@@ -316,9 +373,7 @@ impl Block for BlockHead {
 pub trait Fetch {
     type Block: Block;
     type Error;
-    type Future: Future<Output = Result<Self::Block, Self::Error>>;
-
-    fn fetch_id(&mut self, id: &<Self::Block as Block>::Id) -> Self::Future;
+    type Future: Future<Output = Result<Self::Block, Self::Error>> + Send;
 
     fn fetch_level(&mut self, level: Level) -> Self::Future;
 
