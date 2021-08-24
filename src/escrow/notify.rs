@@ -1,9 +1,6 @@
-use {
-    serde::{Deserialize, Serialize},
-    std::{
-        pin::Pin,
-        task::{Context, Poll},
-    },
+use std::{
+    pin::Pin,
+    task::{Context, Poll},
 };
 
 use tezedge::OperationHash;
@@ -105,9 +102,8 @@ impl Notifications {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Level(usize);
-zkabacus_crypto::impl_sqlx_for_bincode_ty!(Level);
 
 impl From<usize> for Level {
     fn from(n: usize) -> Self {
