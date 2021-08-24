@@ -1,41 +1,35 @@
 mod establish {
-    use crate::escrow::{notify::Level, types::*};
-    use zkabacus_crypto::{ChannelId, CustomerBalance, MerchantBalance, PublicKey};
-    use {
-        serde::{Deserialize, Serialize},
-        thiserror::Error,
+    use crate::escrow::{
+        notify::{Level, Notifications},
+        types::*,
     };
-
-    /// Set of errors that may arise while establishing a zkChannel.
-    ///
-    /// Note: Errors noting that an operation has failed to be confirmed on chain only arise when
-    /// a specified timeout period has passed. In general, the functions in this module will wait
-    /// until operations are successfully confirmed.
-    ///
-    /// TODO: Add additional errors if they arise (e.g. a wrapper around tezedge-client errors).
-    #[derive(Clone, Debug, Error, Serialize, Deserialize)]
-    pub enum Error {
-        #[error("Encountered a network error while processing operation {0}")]
-        NetworkFailure(Entrypoint),
-        #[error("Operation {0} failed to confirm on chain for contract ID {1}")]
-        OperationFailure(Entrypoint, ContractId),
-        #[error("Unable to post operation {0} because it is invalid for contract ID {1}")]
-        OperationInvalid(Entrypoint, ContractId),
-        #[error("Originated contract with ID {0} is not a valid zkChannels contract or does not have expected storage")]
-        InvalidZkChannelsContract(ContractId),
-    }
+    use zkabacus_crypto::{ChannelId, CustomerBalance, MerchantBalance, PublicKey};
 
     #[allow(unused)]
     pub struct CustomerFundingInformation {
+        /// Initial balance for the customer in the channel.
         pub balance: CustomerBalance,
-        pub account: TezosFundingAccount,
+
+        /// Funding source which will support the balance. This address is the hash of
+        /// the `public_key`.
+        pub address: TezosFundingAddress,
+
+        /// Public key associated with the funding address. The customer must have access to the
+        /// corresponding [`tezedge::PrivateKey`].
         pub public_key: TezosPublicKey,
     }
 
     #[allow(unused)]
     pub struct MerchantFundingInformation {
+        /// Initial balance for the merchant in the channel.
         pub balance: MerchantBalance,
-        pub account: TezosFundingAccount,
+
+        /// Funding source which will support the balance. This address is the hash of
+        /// the `public_key`.
+        pub address: TezosFundingAddress,
+
+        /// Public key associated with the funding address. The merchant must have access to the
+        /// corresponding [`tezedge::PrivateKey`].
         pub public_key: TezosPublicKey,
     }
 
@@ -46,9 +40,11 @@ mod establish {
     /// originated contract.
     ///
     /// The `originator_key_pair` should belong to whichever party originates the contract.
-    /// Currently, this must be called by the customer.
+    /// Currently, this must be called by the customer. Its public key must be the same as
+    /// the one in the provided [`CustomerFundingInformation`].
     #[allow(unused)]
     pub async fn originate(
+        notifications: &Notifications,
         merchant_funding_info: &MerchantFundingInformation,
         customer_funding_info: &CustomerFundingInformation,
         merchant_public_key: &PublicKey,
@@ -70,6 +66,7 @@ mod establish {
     /// - the `addFunding` entrypoint has not been called by the customer address before.
     #[allow(unused)]
     pub async fn add_customer_funding(
+        notifications: &Notifications,
         contract_id: &ContractId,
         customer_funding_info: &CustomerFundingInformation,
         customer_key_pair: &TezosKeyPair,
@@ -92,6 +89,7 @@ mod establish {
     /// zkChannels contract or it does not have the expected storage.
     #[allow(unused)]
     pub async fn verify_origination(
+        notifications: &Notifications,
         contract_id: &ContractId,
         merchant_funding_info: &MerchantFundingInformation,
         customer_funding_info: &CustomerFundingInformation,
@@ -112,6 +110,7 @@ mod establish {
     /// and is called by the merchant.
     #[allow(unused)]
     pub async fn verify_customer_funding(
+        notifications: &Notifications,
         contract_id: &ContractId,
         customer_funding_info: &CustomerFundingInformation,
     ) -> Result<(), Error> {
@@ -137,6 +136,7 @@ mod establish {
     /// - the contract status is not OPEN
     #[allow(unused)]
     pub async fn add_merchant_funding(
+        notifications: &Notifications,
         contract_id: &ContractId,
         merchant_funding_info: &MerchantFundingInformation,
         merchant_key_pair: &TezosKeyPair,
@@ -154,23 +154,158 @@ mod establish {
     /// - the `addFunding` entrypoint has not been called by the customer address
     #[allow(unused)]
     pub async fn reclaim_customer_funding(
+        notifications: &Notifications,
+        contract_id: &ContractId,
+        customer_key_pair: &TezosKeyPair,
+    ) -> Result<(), Error> {
+        todo!()
+    }
+}
+
+mod close {
+    use crate::escrow::{notify::Notifications, types::*};
+
+    use {
+        tezedge::signer::OperationSignatureInfo,
+        zkabacus_crypto::{
+            customer::ClosingMessage, revlock::RevocationSecret, CloseState, CustomerBalance,
+            MerchantBalance,
+        },
+    };
+
+    /// Initiate expiry close flow via the `expiry` entrypoint on the given [`ContractId`].
+    ///
+    /// This function will wait until the expiry operation is confirmed at depth and is called
+    /// by the merchant.
+    ///
+    /// This operation is invalid if:
+    /// - the contract status is not OPEN
+    /// - the [`TezosFundingAddress`] specified does not match the `merch_addr` field in the
+    ///   the specified contract
+    #[allow(unused)]
+    pub async fn expiry(
+        notifications: &Notifications,
+        contract_id: &ContractId,
+        merchant_key_pair: &TezosKeyPair,
+    ) -> Result<(), Error> {
+        todo!()
+    }
+
+    /// Complete expiry close flow by claiming the entire channel balance on the [`ContractId`]
+    /// via the `merchClaim` entrypoint.
+    ///
+    /// This function will wait until the self-delay period on the `expiry` entrypoint has passed.
+    /// After posting the `merchClaim` operation, it will wait until it has been confirmed at
+    /// depth. It is called by the merchant.
+    ///
+    /// This operation is invalid if:
+    /// - the contract status is not EXPIRY
+    /// - the [`TezosKeyPair`] does not match the `merch_addr` field in the specified
+    ///   contract
+    #[allow(unused)]
+    pub async fn merch_claim(
+        notifications: &Notifications,
+        contract_id: &ContractId,
+        merchant_key_pair: &TezosKeyPair,
+    ) -> Result<(), Error> {
+        todo!()
+    }
+
+    /// Initiate unilateral customer close flow or correct balances from the expiry flow by
+    /// posting the correct channel balances for the [`ContractId`] via the `custClose` entrypoint.
+    ///
+    /// This function will wait until it is confirmed at depth. It is called by the customer. If
+    /// it is called in response to an `expiry` operation, it will be called by the customer's
+    /// notification service.
+    ///
+    /// This operation is invalid if:
+    /// - the contract status is neither OPEN nor EXPIRY
+    /// - the [`TezosKeyPair`] does not match the `cust_addr` field in the specified contract
+    /// - the signature in the [`ClosingMessage`] is not a well-formed signature
+    /// - the signature in the [`ClosingMessage`] is not a valid signature under the merchant
+    ///   public key on the expected tuple
+    #[allow(unused)]
+    pub async fn cust_close(
+        notifications: &Notifications,
+        contract_id: &ContractId,
+        close_message: &ClosingMessage,
+        customer_key_pair: &TezosKeyPair,
+    ) -> Result<(), Error> {
+        todo!()
+    }
+
+    /// Dispute balances posted by a customer (via [`cust_close()`]) by posting a revocation
+    /// secret that matches the posted revocation lock. On successful completion, this call
+    /// will transfer the posted customer balance to the merchant.
+    ///
+    /// This function will wait until it is confirmed at depth. It is called by the merchant.
+    ///
+    /// This operation is invalid if:
+    /// - the contract status is not CUST_CLOSE
+    /// - the [`TezosKeyPair`] does not match the `merch_addr` field in the specified contract
+    /// - the [`RevocationSecret`] does not hash to the `rev_lock` field in the specified contract
+    #[allow(unused)]
+    pub async fn merch_dispute(
+        notifications: &Notifications,
+        contract_id: &ContractId,
+        revocation_secret: &RevocationSecret,
+        merchant_key_pair: &TezosKeyPair,
+    ) -> Result<(), Error> {
+        todo!()
+    }
+
+    /// Claim customer funds (posted via [`cust_close()`]) after the timeout period has elapsed
+    /// via the `custClaim` entrypoint.
+    ///
+    /// This function will wait until the timeout period from the `custClose` entrypoint call has
+    /// elapsed, and until the `custClaim` operation is confirmed at depth. It is called by the
+    /// customer.
+    ///
+    /// This operation is invalid if:
+    /// - the contract status is not CUST_CLOSE
+    /// - the [`TezosKeyPair`] does not match the `cust_addr` field in the specified contract
+    #[allow(unused)]
+    pub async fn cust_claim(
+        notifications: &Notifications,
         contract_id: &ContractId,
         customer_key_pair: &TezosKeyPair,
     ) -> Result<(), Error> {
         todo!()
     }
 
-    /// Reclaim merchant funding via the `reclaimFunding` entrypoint on the given [`ContractId`].
+    /// Authorize the close state provided in the mutual close flow by producing a valid EdDSA
+    /// signature over the tuple
+    /// `(contract id, "zkChannels mutual close", channel id, customer balance, merchant balance)`
     ///
-    /// This function will wait until the merchant reclaim operation is confirmed at deth and is
-    /// called by the merchant.
-    ///
-    /// The operation is invalid if:
-    /// - the contract status is not AWAITING_FUNDING.
-    /// - the `addFunding` entrypoint has not been called by the merchant address
+    /// This is called by the merchant.
     #[allow(unused)]
-    pub async fn reclaim_merchant_funding(
+    pub async fn authorize_mutual_close(
+        notifications: &Notifications,
         contract_id: &ContractId,
+        close_state: &CloseState,
+        merchant_key_pair: &TezosKeyPair,
+    ) -> Result<OperationSignatureInfo, Error> {
+        todo!()
+    }
+
+    /// Execute the mutual close flow via the `mutualClose` entrypoint by paying out the specified
+    /// channel balances to both parties.
+    ///
+    /// This function will wait until the operation is confirmed at depth. It is called by the
+    /// customer.
+    ///
+    /// This operation is invalid if:
+    /// - the contract status is not OPEN
+    /// - the [`TezosKeyPair`] does not match the `cust_addr` field in the specified contract
+    /// - the `authorization_signature` is not a valid signature under the merchant public key
+    ///   on the expected tuple
+    #[allow(unused)]
+    pub async fn mutual_close(
+        notifications: &Notifications,
+        contract_id: &ContractId,
+        customer_balance: &CustomerBalance,
+        merchant_balance: &MerchantBalance,
+        authorization_signature: &OperationSignatureInfo,
         merchant_key_pair: &TezosKeyPair,
     ) -> Result<(), Error> {
         todo!()

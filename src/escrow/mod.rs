@@ -3,17 +3,17 @@ pub mod tezos;
 
 pub mod types {
 
-    use core::fmt;
-    use serde::{Deserialize, Serialize};
-    use std::fmt::{Display, Formatter};
-
     use tezedge::OriginatedAddress;
+    use {
+        serde::{Deserialize, Serialize},
+        std::fmt::{self, Display, Formatter},
+        thiserror::Error,
+    };
 
-    /// Rename this type to match zkChannels written notation.
-    /// Also, so we can easily change the tezedge type in case it is wrong.
+    /// ID for a zkChannels contract originated on Tezos.
+    /// Equivalent to the Tezos OriginatedAddress type.
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     pub struct ContractId(OriginatedAddress);
-    //pub type ContractId = OriginatedAddress;
     zkabacus_crypto::impl_sqlx_for_bincode_ty!(ContractId);
 
     impl Display for ContractId {
@@ -29,8 +29,14 @@ pub mod types {
         }
     }
 
+    /// Tezos public key.
     pub type TezosPublicKey = tezedge::PublicKey;
-    pub type TezosFundingAccount = tezedge::ImplicitAddress;
+
+    /// Tezos implicit address; the address of a Tezos account that can fund a zkChannels contract.
+    /// An address is the hash of a [`TezosPublicKey`].
+    pub type TezosFundingAddress = tezedge::ImplicitAddress;
+
+    /// Tezos key pair.
     pub struct TezosKeyPair {
         public_key: TezosPublicKey,
         secret_key: tezedge::PrivateKey,
@@ -89,5 +95,26 @@ pub mod types {
                 Entrypoint::MutualClose => "mutualClose",
             })
         }
+    }
+
+    /// Set of errors that may arise while establishing a zkChannel.
+    ///
+    /// Note: Errors noting that an operation has failed to be confirmed on chain only arise when
+    /// a specified timeout period has passed. In general, the functions in this module will wait
+    /// until operations are successfully confirmed.
+    ///
+    /// TODO: Add additional errors if they arise (e.g. a wrapper around tezedge-client errors).
+    #[derive(Clone, Debug, Error, Serialize, Deserialize)]
+    pub enum Error {
+        #[error("Encountered a network error while processing operation {0}")]
+        NetworkFailure(Entrypoint),
+        #[error("Operation {0} failed to confirm on chain for contract ID {1}")]
+        OperationFailure(Entrypoint, ContractId),
+        #[error("Unable to post operation {0} because it is invalid for contract ID {1}")]
+        OperationInvalid(Entrypoint, ContractId),
+        #[error("Originated contract with ID {0} is not a valid zkChannels contract or does not have expected storage")]
+        InvalidZkChannelsContract(ContractId),
+        #[error("Failed to produce an authorization signature for mutual close operation for contract ID {0}")]
+        SigningFailed(ContractId),
     }
 }

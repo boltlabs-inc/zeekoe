@@ -3,26 +3,21 @@
 use {
     dialectic::prelude::*,
     dialectic_reconnect::resume,
-    dialectic_tokio_serde_bincode::length_delimited,
+    dialectic_tokio_serde::codec::LengthDelimitedCodec,
+    dialectic_tokio_serde_bincode::{length_delimited, Bincode},
     futures::{stream::FuturesUnordered, Future, StreamExt},
     std::{
-        fmt::Display, io, marker::PhantomData, net::SocketAddr, path::Path, sync::Arc,
-        time::Duration,
+        fmt::Debug, io, marker::PhantomData, net::SocketAddr, path::Path, sync::Arc, time::Duration,
     },
+    thiserror::Error,
     tokio::{net::TcpListener, select, sync::mpsc},
-    tokio_rustls::{
-        rustls::{self, Certificate, PrivateKey},
-        TlsAcceptor,
-    },
+    tokio_rustls::{rustls, TlsAcceptor},
 };
 
-use super::{channel::TransportError, handshake, pem};
+use super::{channel::TransportError, handshake, io_stream::IoStream, pem};
 
 pub use super::channel::ServerChan as Chan;
 pub use handshake::SessionKey;
-
-/// The type of errors returned during sessions on a server-side channel.
-pub type Error = resume::ResumeError<TransportError>;
 
 /// A server for some `Protocol` which accepts resumable connections over TLS.
 ///
@@ -34,10 +29,6 @@ pub struct Server<Protocol: Session> {
     max_length: usize,
     /// The number of bytes used to represent the length in length-delimited encoding.
     length_field_bytes: usize,
-    /// The server's TLS certificate.
-    certificate_chain: Vec<Certificate>,
-    /// The server's TLS private key.
-    private_key: PrivateKey,
     /// The maximum permissible number of pending retries.
     max_pending_retries: Option<usize>,
     /// The timeout after which broken connections will be garbage-collected.
@@ -46,25 +37,47 @@ pub struct Server<Protocol: Session> {
     client_session: PhantomData<fn() -> Protocol>,
 }
 
+type AcceptError = dialectic_reconnect::resume::AcceptError<
+    SessionKey,
+    dialectic_tokio_serde::Error<Bincode, Bincode, LengthDelimitedCodec, LengthDelimitedCodec>,
+>;
+
+#[derive(Debug, Error)]
+pub enum ServerError<TaskError: 'static + Debug> {
+    #[error(transparent)]
+    Tcp(#[from] io::Error),
+    #[error("{0:?}")]
+    Task(TaskError),
+    #[error(transparent)]
+    Join(#[from] tokio::task::JoinError),
+    #[error("{0:?}")]
+    Accept(AcceptError),
+}
+
+impl<Protocol> Default for Server<Protocol>
+where
+    Protocol: Session,
+    <Protocol as Session>::Dual: Session,
+{
+    fn default() -> Self {
+        Self {
+            max_length: usize::MAX,
+            length_field_bytes: 4,
+            max_pending_retries: None,
+            timeout: None,
+            client_session: PhantomData,
+        }
+    }
+}
+
 impl<Protocol> Server<Protocol>
 where
     Protocol: Session,
     <Protocol as Session>::Dual: Session,
 {
     /// Create a new server using the given certificate chain and private key.
-    pub fn new(
-        certificate_chain: impl AsRef<Path>,
-        private_key: impl AsRef<Path>,
-    ) -> Result<Self, io::Error> {
-        Ok(Server {
-            max_length: usize::MAX,
-            length_field_bytes: 4,
-            certificate_chain: pem::read_certificates(certificate_chain)?,
-            private_key: pem::read_private_key(private_key)?,
-            max_pending_retries: None,
-            timeout: None,
-            client_session: PhantomData,
-        })
+    pub fn new() -> Self {
+        Self::default()
     }
 
     /// Set the number of bytes used to represent the length field in the length-delimited encoding.
@@ -117,13 +130,14 @@ where
     >(
         &self,
         address: impl Into<SocketAddr>,
+        tls_config: Option<(&Path, &Path)>,
         mut initialize: Init,
         interact: Interaction,
         terminate: TerminateFut,
     ) -> Result<(), io::Error>
     where
         Input: Send + 'static,
-        Error: Send + Display + 'static,
+        Error: Send + Debug + 'static,
         Init: FnMut() -> InitFut,
         InitFut: Future<Output = Option<Input>>,
         Interaction:
@@ -131,17 +145,26 @@ where
         InteractionFut: Future<Output = Result<(), Error>> + Send + 'static,
         TerminateFut: Future<Output = ()> + Send + 'static,
     {
-        // Configure server-side TLS
-        let mut tls_config = rustls::ServerConfig::new(rustls::NoClientAuth::new());
-        tls_config
-            .set_single_cert(self.certificate_chain.clone(), self.private_key.clone())
-            .map_err(|_error| {
-                io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "invalid server certificate chain or private key",
-                )
-            })?;
-        let tls_acceptor = TlsAcceptor::from(Arc::new(tls_config));
+        let mut server_config = rustls::ServerConfig::new(rustls::NoClientAuth::new());
+
+        // Optionally configure server-side TLS
+        let tls_acceptor = match tls_config {
+            None => None,
+            Some((certificate_chain_path, private_key_path)) => {
+                let certificate_chain = pem::read_certificates(certificate_chain_path)?;
+                let private_key = pem::read_private_key(private_key_path)?;
+
+                server_config
+                    .set_single_cert(certificate_chain, private_key)
+                    .map_err(|_error| {
+                        io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            "invalid server certificate chain or private key",
+                        )
+                    })?;
+                Some(TlsAcceptor::from(Arc::new(server_config)))
+            }
+        };
 
         // Resume-handling acceptor to be shared between all connections
         let mut acceptor = resume::Acceptor::new(
@@ -155,29 +178,8 @@ where
 
         // Error handling task awaits the result of each spawned server task and logs any errors
         // that occur, as they occur
-        let (result_tx, mut result_rx) = mpsc::channel(1024);
-        let error_handler = tokio::spawn(async move {
-            let mut results = FuturesUnordered::new();
-            loop {
-                select! {
-                    Some(incoming) = result_rx.recv() => {
-                        match incoming {
-                            Ok((address, join_handle)) => results.push(async move { (address, join_handle.await) }),
-                            Err((None, error)) => eprintln!("Server TCP initialization error: {}", error),
-                            Err((Some(address), error)) => eprintln!("Server TLS initialization error [{}]: {}", address, error),
-                        }
-                    },
-                    Some((address, result)) = results.next() => {
-                        match result {
-                            Ok(Ok(())) => {},
-                            Ok(Err(error)) => eprintln!("Server task error [{}]: {}", address, error),
-                            Err(join_error) => eprintln!("Server task panic [{}]: {}", address, join_error),
-                        }
-                    },
-                    else => break,
-                }
-            }
-        });
+        let (result_tx, result_rx) = mpsc::unbounded_channel();
+        let error_join_handle = tokio::spawn(error_handler(result_rx));
 
         // Listen for the termination event and forward it to stop the server
         let (stop_server, mut recv_stop_server) = mpsc::channel(1);
@@ -203,63 +205,96 @@ where
             };
 
             match accept_result {
-                Err(error) => result_tx.send(Err((None, error))).await.unwrap_or(()),
-                Ok((tcp_stream, address)) => {
-                    // Session typed messages may be small; send them immediately
+                Err(err) => result_tx.send(Err(err.into())).unwrap_or(()),
+                Ok((tcp_stream, addr)) => {
                     tcp_stream.set_nodelay(true)?;
 
-                    match tls_acceptor.accept(tcp_stream).await {
-                        Err(error) => result_tx
-                            .send(Err((Some(address), error)))
-                            .await
-                            .unwrap_or(()),
-                        Ok(tls_stream) => {
-                            // Layer a length-delimmited bincode `Chan` over the TLS stream
-                            let (rx, tx) = tokio::io::split(tls_stream);
-                            let (tx, rx) =
-                                length_delimited(tx, rx, self.length_field_bytes, self.max_length);
+                    let io_stream = match tls_acceptor {
+                        None => IoStream::from(tcp_stream),
+                        Some(ref acceptor) => match acceptor.accept(tcp_stream).await {
+                            Ok(tls_stream) => IoStream::from(tls_stream),
+                            Err(e) => {
+                                eprintln!("Server TLS initialization error [{}]: {}", addr, e);
+                                continue;
+                            }
+                        },
+                    };
 
-                            let acceptor = acceptor.clone();
-                            let interact = interact.clone();
+                    // Layer a length-delimmited bincode `Chan` over the TLS stream
+                    let (rx, tx) = tokio::io::split(io_stream);
+                    let (tx, rx) =
+                        length_delimited(tx, rx, self.length_field_bytes, self.max_length);
 
-                            // Run the interaction concurrently, or resume it if it's resuming an
-                            // existing one
-                            let join_handle = tokio::spawn(async move {
-                                match acceptor.accept(tx, rx).await {
-                                    Ok((session_key, Some(chan))) => {
-                                        let interaction = interact(session_key, input, chan);
-                                        interaction.await?;
-                                    }
-                                    Ok((_session_key, None)) => {
-                                        // reconnected existing channel, nothing more to do
-                                    }
-                                    Err(err) => {
-                                        use resume::AcceptError::*;
-                                        // TODO: log these errors?
-                                        match err {
-                                            HandshakeError(_err) => {}
-                                            HandshakeIncomplete => {}
-                                            NoSuchSessionKey(_key) => {}
-                                            SessionKeyAlreadyExists(_key) => {}
-                                            NoCapacity => {}
-                                        }
-                                    }
-                                }
-                                Ok::<_, Error>(())
-                            });
+                    let acceptor = acceptor.clone();
+                    let interact = interact.clone();
 
-                            // Keep track of pending server task
-                            result_tx
-                                .send(Ok((address, join_handle)))
-                                .await
-                                .unwrap_or(());
-                        }
-                    }
+                    // Run the interaction concurrently, or resume it if it's resuming an
+                    // existing one
+                    let join_handle = tokio::spawn(async move {
+                        let result = acceptor.accept(tx, rx).await;
+                        run_interaction::<Protocol, _, _, _, _>(result, input, interact).await
+                    });
+
+                    // Keep track of pending server task
+                    result_tx.send(Ok(join_handle)).unwrap_or(());
                 }
             }
         }
 
-        error_handler.await?;
+        error_join_handle.await?;
         Ok(())
+    }
+}
+
+type JoinHandle<T> = tokio::task::JoinHandle<Result<(), ServerError<T>>>;
+
+/// Run the interaction on a single connection.
+async fn run_interaction<Protocol, Interaction, InteractionFut, Error, Input>(
+    result: Result<(SessionKey, Option<Chan<Protocol>>), AcceptError>,
+    input: Input,
+    interact: Arc<Interaction>,
+) -> Result<(), ServerError<Error>>
+where
+    Protocol: Session,
+    <Protocol as Session>::Dual: Session,
+    InteractionFut: Future<Output = Result<(), Error>> + Send + 'static,
+    Interaction: Fn(SessionKey, Input, Chan<Protocol>) -> InteractionFut + Send + Sync + 'static,
+    Error: Debug + 'static,
+{
+    match result.map_err(ServerError::Accept)? {
+        (session_key, Some(chan)) => interact(session_key, input, chan)
+            .await
+            .map_err(ServerError::Task)?,
+        (_session_key, None) => {
+            // reconnected existing channel, nothing more to do
+        }
+    }
+    Ok::<_, ServerError<Error>>(())
+}
+
+/// Handle errors on the provided `Receiver`.
+async fn error_handler<Error: Debug>(
+    mut result_rx: mpsc::UnboundedReceiver<Result<JoinHandle<Error>, ServerError<Error>>>,
+) {
+    let mut results = FuturesUnordered::new();
+    loop {
+        select! {
+            Some(incoming) = result_rx.recv() => {
+                match incoming {
+                    Ok(join_handle) => results.push(async move {
+                        let join_handle: JoinHandle<Error> = join_handle;
+                        join_handle.await.map_err(ServerError::Join).and_then(|r| r)
+                    }),
+                    Err(err) => eprintln!("{}", err),
+                }
+            },
+            Some(result) = results.next() => {
+                match result {
+                    Ok(()) => {},
+                    Err(err) => eprintln!("{}", err),
+                }
+            },
+            else => break,
+        }
     }
 }

@@ -346,3 +346,15 @@ pub mod pay {
         recv Option<String>;
     };
 }
+
+pub mod daemon {
+    use super::*;
+    use dialectic::types::Done;
+
+    pub type Daemon = Session! {
+        choose {
+            // Refresh
+            0 => Done,
+        }
+    };
+}

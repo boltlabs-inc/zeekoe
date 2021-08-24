@@ -26,7 +26,7 @@ use zkabacus_crypto::{
     RevocationLock,
 };
 
-use super::{connect, database, Command};
+use super::{connect, connect_daemon, database, Command};
 use anyhow::Context;
 
 #[async_trait]
@@ -285,7 +285,8 @@ async fn unilateral_close(
 
     // TODO: Assert channel is Closed.
 
-    Ok(())
+    // Notify the on-chain monitoring daemon this channel is closed.
+    refresh_daemon(&config).await
 }
 
 async fn mutual_close(
@@ -368,6 +369,7 @@ async fn mutual_close(
 #[allow(unused)]
 async fn finalize_mutual_close(
     database: &dyn QueryCustomer,
+    config: &self::Config,
     channel_name: &ChannelName,
     merchant_balance: MerchantBalance,
     customer_balance: CustomerBalance,
@@ -376,7 +378,10 @@ async fn finalize_mutual_close(
     // and save final balances (should match those in the ClosingMessage)
     finalize_close(database, channel_name, merchant_balance, customer_balance)
         .await
-        .context("Failed to finalize mutual close")
+        .context("Failed to finalize mutual close");
+
+    // Notify the on-chain monitoring daemon this channel is closed.
+    refresh_daemon(config).await
 }
 
 async fn zkabacus_close(
@@ -414,7 +419,7 @@ async fn get_close_message(
     database: &dyn QueryCustomer,
     channel_name: &ChannelName,
 ) -> Result<ClosingMessage, anyhow::Error> {
-    Ok(database
+    let closing_message = database
         .with_closeable_channel(channel_name, |state| {
             let close_message = match state {
                 State::Inactive(inactive) => inactive.close(&mut rng),
@@ -434,7 +439,9 @@ async fn get_close_message(
         .context(format!(
             "Failed to update channel status to PendingClose for {}",
             channel_name
-        ))??)
+        ))??;
+
+    Ok(closing_message)
 }
 
 fn write_close_json(closing: &Closing) -> Result<(), anyhow::Error> {
@@ -448,5 +455,18 @@ fn write_close_json(closing: &Closing) -> Result<(), anyhow::Error> {
         .with_context(|| format!("Could not write close data to file: {:?}", &close_json_path))?;
 
     eprintln!("Closing data written to {:?}", &close_json_path);
+    Ok(())
+}
+
+async fn refresh_daemon(config: &Config) -> anyhow::Result<()> {
+    let (_session_key, chan) = connect_daemon(config)
+        .await
+        .context("Failed to connect to daemon")?;
+
+    chan.choose::<0>()
+        .await
+        .context("Failed to select daemon Refresh")?
+        .close();
+
     Ok(())
 }

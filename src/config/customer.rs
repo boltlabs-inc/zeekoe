@@ -5,6 +5,7 @@ use {
         path::{Path, PathBuf},
         time::Duration,
     },
+    tezedge::PrivateKey,
 };
 
 pub use super::DatabaseLocation;
@@ -20,12 +21,15 @@ pub struct Config {
     pub backoff: Backoff,
     #[serde(with = "humantime_serde", default = "defaults::connection_timeout")]
     pub connection_timeout: Option<Duration>,
+    #[serde(default = "defaults::daemon_port")]
+    pub daemon_port: u16,
     #[serde(default = "defaults::max_pending_connection_retries")]
     pub max_pending_connection_retries: usize,
     #[serde(default = "defaults::max_message_length")]
     pub max_message_length: usize,
     #[serde(default = "defaults::max_note_length")]
     pub max_note_length: u64,
+    pub private_key: PathBuf,
     #[serde(default)]
     pub trust_certificate: Option<PathBuf>,
 }
@@ -49,5 +53,10 @@ impl Config {
             .map(|ref cert_path| config_dir.join(cert_path));
 
         Ok(config)
+    }
+
+    pub async fn load_private_key(&self) -> anyhow::Result<PrivateKey> {
+        let contents = tokio::fs::read_to_string(&self.private_key).await?;
+        Ok(PrivateKey::from_base58check(&contents)?)
     }
 }

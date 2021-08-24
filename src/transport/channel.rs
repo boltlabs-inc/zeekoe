@@ -12,18 +12,14 @@ use {
 };
 
 use super::handshake::{Handshake, SessionKey};
+use super::io_stream::IoStream;
 
 /// A *server-side* session-typed channel over TCP using length-delimited bincode encoding for
 /// serialization.
 ///
 /// The session type parameter for this channel is the session from **the client's perspective.**
-pub type ServerChan<S> = ResumeSplitChan<
-    <S as Session>::Dual,
-    SessionKey,
-    Bincode,
-    LengthDelimitedCodec,
-    tokio_rustls::server::TlsStream<TcpStream>,
->;
+pub type ServerChan<S> =
+    ResumeSplitChan<<S as Session>::Dual, SessionKey, Bincode, LengthDelimitedCodec, IoStream>;
 
 /// A *client-side* session-typed channel over TCP using length-delimited bincode encoding for
 /// serialization.

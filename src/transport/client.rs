@@ -139,11 +139,20 @@ where
         Ok(self)
     }
 
+    pub async fn connect_zkchannel(
+        &self,
+        ZkChannelAddress { host, port }: &ZkChannelAddress,
+    ) -> Result<(SessionKey, Chan<Protocol>), Error> {
+        let port = port.unwrap_or_else(customer::defaults::port);
+        self.connect(host, port).await
+    }
+
     /// Connect to the given [`DNSName`] and port, returning either a connected [`Chan`] or an
     /// error if connection and all re-connection attempts failed.
     pub async fn connect(
         &self,
-        ZkChannelAddress { host, port }: &ZkChannelAddress,
+        host: &DNSName,
+        port: u16,
     ) -> Result<(SessionKey, Chan<Protocol>), Error> {
         // Share the TLS config between all times we connect
         let tls_config = Arc::new(self.tls_config.clone());
@@ -203,10 +212,7 @@ where
         .recover_handshake(reconnect_unless(&self.backoff, permanent_handshake_error))
         .timeout(self.timeout)
         .max_pending_retries(self.max_pending_retries)
-        .connect((
-            host.to_owned(),
-            port.unwrap_or_else(customer::defaults::port),
-        ))
+        .connect((host.to_owned(), port))
         .await
         .map_err(|e| {
             // Convert error into general error type
