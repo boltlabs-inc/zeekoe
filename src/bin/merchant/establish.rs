@@ -9,12 +9,14 @@ use zeekoe::{
     abort,
     escrow::{
         notify::Level,
-        types::{ContractId, TezosKeyMaterial},
+        types::{ContractId, TezosKeyMaterial, KeyHash},
     },
     merchant::{config::Service, database::QueryMerchant, server::SessionKey, Chan},
     offer_abort, proceed,
     protocol::{self, establish, ChannelStatus, Party::Merchant},
 };
+
+use tezedge::crypto::Prefix;
 
 use super::{approve, Method};
 
@@ -59,20 +61,38 @@ impl Method for Establish {
             .await
             .context("Failed to receive establish note")?;
 
-        // TODO: customer sends merchant:
-        // - customer's tezos public key (eddsa public key)
-        // - customer's tezos account tz1 address corresponding to that public key
-        // - SHA3-256 of:
-        //   * merchant's pointcheval-sanders public key (`zkabacus_crypto::PublicKey`)
-        //   * tz1 address corresponding to merchant's public key
-        //   * merchant's tezos public key
+        // Receive the customer's Tezos public key (eddsa public key)
+        let (customer_tezos_public_key, chan) = chan
+            .recv()
+            .await
+            .context("Failed to receive customer Tezos public key")?;
+
+        // Receive the customer's Tezos account (tz1) address corresponding to that public key
+        let (customer_funding_address, chan) = chan
+            .recv()
+            .await
+            .context("Failed to receive customer Tezos funding address")?;
+
+        // Recieve the key hash, computed over the merchant's public keys
+        let (key_hash, chan) = chan.recv().await.context("Failed to receive key hash")?;
 
         // TODO: ensure that:
         // - customer's tezos public key is valid
-        // - customer's tezos public key corresponds to the tezos account that they specified
-        // - that address is actually a tz1 address
-        // - submitted hash verifies against the **merchant's** pointcheval-sanders public key, tz1
-        //   address, and tezos public key
+
+        // Check that the customer's Tezos public key corresponds to their Tezos account
+        let customer_keys_match = customer_tezos_public_key.hash() == customer_funding_address;
+
+        // Check that the customer's account is actually a tz1 address
+        let funding_address_is_tz1 = matches!(customer_funding_address.get_prefix(), Prefix::tz1);
+
+        // Check that the key hash matches the merchant's expected key hash
+        // TODO: where does merchant store its key material?
+        //let merchant_keys_match = key_hash == KeyHash::new(todo!());
+
+        // TODO: Add other checks to this
+        if !(customer_keys_match && funding_address_is_tz1) {
+            abort!(in chan return establish::Error::Rejected("invalid inputs".into()))
+        }
 
         // Request approval from the approval service
         let response_url = match approve::establish(

@@ -1,8 +1,5 @@
 mod establish {
-    use crate::escrow::{
-        notify::{Level, Notifications},
-        types::*,
-    };
+    use crate::escrow::{notify::Level, types::*};
     use zkabacus_crypto::{ChannelId, CustomerBalance, MerchantBalance, PublicKey};
 
     #[allow(unused)]
@@ -44,7 +41,6 @@ mod establish {
     /// the one in the provided [`CustomerFundingInformation`].
     #[allow(unused)]
     pub async fn originate(
-        notifications: &Notifications,
         merchant_funding_info: &MerchantFundingInformation,
         customer_funding_info: &CustomerFundingInformation,
         merchant_public_key: &PublicKey,
@@ -66,7 +62,6 @@ mod establish {
     /// - the `addFunding` entrypoint has not been called by the customer address before.
     #[allow(unused)]
     pub async fn add_customer_funding(
-        notifications: &Notifications,
         contract_id: &ContractId,
         customer_funding_info: &CustomerFundingInformation,
         customer_key_pair: &TezosKeyMaterial,
@@ -89,7 +84,6 @@ mod establish {
     /// zkChannels contract or it does not have the expected storage.
     #[allow(unused)]
     pub async fn verify_origination(
-        notifications: &Notifications,
         contract_id: &ContractId,
         merchant_funding_info: &MerchantFundingInformation,
         customer_funding_info: &CustomerFundingInformation,
@@ -110,7 +104,6 @@ mod establish {
     /// and is called by the merchant.
     #[allow(unused)]
     pub async fn verify_customer_funding(
-        notifications: &Notifications,
         contract_id: &ContractId,
         customer_funding_info: &CustomerFundingInformation,
     ) -> Result<(), Error> {
@@ -136,7 +129,6 @@ mod establish {
     /// - the contract status is not OPEN
     #[allow(unused)]
     pub async fn add_merchant_funding(
-        notifications: &Notifications,
         contract_id: &ContractId,
         merchant_funding_info: &MerchantFundingInformation,
         merchant_key_pair: &TezosKeyMaterial,
@@ -154,7 +146,6 @@ mod establish {
     /// - the `addFunding` entrypoint has not been called by the customer address
     #[allow(unused)]
     pub async fn reclaim_customer_funding(
-        notifications: &Notifications,
         contract_id: &ContractId,
         customer_key_pair: &TezosKeyMaterial,
     ) -> Result<(), Error> {
@@ -163,7 +154,7 @@ mod establish {
 }
 
 mod close {
-    use crate::escrow::{notify::Notifications, types::*};
+    use crate::escrow::types::*;
 
     use {
         tezedge::signer::OperationSignatureInfo,
@@ -184,7 +175,6 @@ mod close {
     ///   the specified contract
     #[allow(unused)]
     pub async fn expiry(
-        notifications: &Notifications,
         contract_id: &ContractId,
         merchant_key_pair: &TezosKeyMaterial,
     ) -> Result<(), Error> {
@@ -204,7 +194,6 @@ mod close {
     ///   contract
     #[allow(unused)]
     pub async fn merch_claim(
-        notifications: &Notifications,
         contract_id: &ContractId,
         merchant_key_pair: &TezosKeyMaterial,
     ) -> Result<(), Error> {
@@ -226,7 +215,6 @@ mod close {
     ///   public key on the expected tuple
     #[allow(unused)]
     pub async fn cust_close(
-        notifications: &Notifications,
         contract_id: &ContractId,
         close_message: &ClosingMessage,
         customer_key_pair: &TezosKeyMaterial,
@@ -246,7 +234,6 @@ mod close {
     /// - the [`RevocationSecret`] does not hash to the `rev_lock` field in the specified contract
     #[allow(unused)]
     pub async fn merch_dispute(
-        notifications: &Notifications,
         contract_id: &ContractId,
         revocation_secret: &RevocationSecret,
         merchant_key_pair: &TezosKeyMaterial,
@@ -266,7 +253,6 @@ mod close {
     /// - the [`TezosKeyPair`] does not match the `cust_addr` field in the specified contract
     #[allow(unused)]
     pub async fn cust_claim(
-        notifications: &Notifications,
         contract_id: &ContractId,
         customer_key_pair: &TezosKeyMaterial,
     ) -> Result<(), Error> {
@@ -280,7 +266,6 @@ mod close {
     /// This is called by the merchant.
     #[allow(unused)]
     pub async fn authorize_mutual_close(
-        notifications: &Notifications,
         contract_id: &ContractId,
         close_state: &CloseState,
         merchant_key_pair: &TezosKeyMaterial,
@@ -301,7 +286,6 @@ mod close {
     ///   on the expected tuple
     #[allow(unused)]
     pub async fn mutual_close(
-        notifications: &Notifications,
         contract_id: &ContractId,
         customer_balance: &CustomerBalance,
         merchant_balance: &MerchantBalance,
