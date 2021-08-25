@@ -18,16 +18,16 @@ lazy_static::lazy_static! {
 
         close_scalar_bytes = 'CLOSE_SCALAR
 
-        def originate(cust_acc, channel_id,
+        def originate(
+            cust_acc,
+            cust_pubkey, merch_pubkey,
+            channel_id,
             merch_g2, merch_y2s, merch_x2,
-            cust_funding, merch_funding):
+            cust_funding, merch_funding,
+            min_confirmations
+        ):
             // Customer pytezos interface
             cust_py = pytezos.using(key=cust_acc)
-
-            // Merchant's PS pubkey, used for verifying the merchant's signature in custClose.
-            g2 = merch_ps_pk.get("g2")
-            y2s = merch_ps_pk.get("y2s")
-            x2 = merch_ps_pk.get("x2")
 
             initial_storage = {
                 "cid": channel_id,
@@ -38,24 +38,24 @@ lazy_static::lazy_static! {
                 "custFunding": cust_funding,
                 "custPk": cust_pubkey,
                 "delayExpiry": "1970-01-01T00:00:00Z",
-                "g2":g2,
+                "g2": merch_g2,
                 "merchAddr": merch_addr,
                 "merchBal": 0,
                 "merchFunding": merch_funding,
                 "merchPk": merch_pubkey,
-                "merchPk0": y2s[0],
-                "merchPk1": y2s[1],
-                "merchPk2": y2s[2],
-                "merchPk3": y2s[3],
-                "merchPk4": y2s[4],
-                "merchPk5": x2,
+                "merchPk0": merch_y2s[0],
+                "merchPk1": merch_y2s[1],
+                "merchPk2": merch_y2s[2],
+                "merchPk3": merch_y2s[3],
+                "merchPk4": merch_y2s[4],
+                "merchPk5": merch_x2,
                 "revLock": "0x00",
                 "selfDelay": 3,
                 "status": 0
             }
 
             // Originate main zkchannel contract
-            out = cust_py.origination(script=main_code.script(initial_storage=initial_storage)).autofill().sign().send(min_confirmations=1)
+            out = cust_py.origination(script=main_code.script(initial_storage=initial_storage)).autofill().sign().send(min_confirmations=min_confirmations)
 
             // Get address of main zkchannel contract
             opg = pytezos.shell.blocks[-20:].find_operation(out.hash())
@@ -65,7 +65,7 @@ lazy_static::lazy_static! {
     };
 }
 
-fn merch_public_key_to_python_input(
+fn merchant_public_key_to_python_input(
     public_key: &zkabacus_crypto::PublicKey,
 ) -> (Vec<u8>, Vec<Vec<u8>>, Vec<u8>) {
     let zkabacus_crypto::PublicKey { g2, y2s, x2, .. } = public_key;
@@ -131,31 +131,43 @@ mod establish {
         merchant_public_key: &PublicKey,
         originator_key_pair: &TezosKeyPair,
         channel_id: &ChannelId,
-    ) -> Result<(ContractId, Level), Error> {
-        let (g2, y2s, x2) = super::merch_public_key_to_python_input(merchant_public_key);
+        confirmation_depth: u64,
+    ) -> Result<(ContractId, Level), String> {
+        let (g2, y2s, x2) = super::merchant_public_key_to_python_input(merchant_public_key);
         let merchant_funding = merchant_funding_info.balance.into_inner();
+        let merchant_pubkey = merchant_funding_info.public_key.to_base58check();
+
         let customer_funding = customer_funding_info.balance.into_inner();
         let customer_account = customer_funding_info.address.to_base58check();
+        let customer_pubkey = customer_funding_info.public_key.to_base58check();
         let channel_id = channel_id.to_bytes().to_vec();
 
         PYTHON_CONTEXT.run(python! {
-            out = originate(
-                'customer_account, 'channel_id,
-                'g2, 'y2s, 'x2,
-                'customer_funding, 'merchant_funding
-            )
+            success = true
+            try:
+                out = originate(
+                    'customer_account, 'channel_id,
+                    'customer_pubkey, 'merchant_pubkey,
+                    'g2, 'y2s, 'x2,
+                    'customer_funding, 'merchant_funding,
+                    'confirmation_depth
+                )
+            except Exception as e:
+                success = false
+                error = str(e)
         });
-        let out = PYTHON_CONTEXT.get::<String>("out");
-        PYTHON_CONTEXT.set("out", ());
 
-        let contract_id = ContractId::new(
-            OriginatedAddress::from_base58check(&out)
-                .expect("Contract id returned from pytezos must be valid base58"),
-        );
-
-        // TODO: handle errors submitting contract to chain (return error from call to python)
-
-        todo!()
+        if PYTHON_CONTEXT.get("success") {
+            let out = PYTHON_CONTEXT.get::<String>("out");
+            let contract_id = ContractId::new(
+                OriginatedAddress::from_base58check(&out)
+                    .expect("Contract id returned from pytezos must be valid base58"),
+            );
+            Ok((contract_id, todo!()))
+        } else {
+            let error = PYTHON_CONTEXT.get::<String>("error");
+            Err(error)
+        }
     }
 
     /// Call the `addFunding` entrypoint with the [`CustomerFundingInformation`].
@@ -255,7 +267,7 @@ mod establish {
     #[allow(unused)]
     pub async fn reclaim_customer_funding(
         contract_id: &ContractId,
-        customer_key_pair: &TezosKeyPair,
+        customer_key_pair: &TezosKeyPair,https://static.stillinbeta.com/cold-iron/cold_iron/
     ) -> Result<(), Error> {
         todo!()
     }
