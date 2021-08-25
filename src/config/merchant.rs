@@ -35,6 +35,7 @@ pub struct Service {
     pub approve: Approver,
     pub private_key: PathBuf,
     pub certificate: PathBuf,
+    pub tezos_account: PathBuf,
 }
 
 impl Config {
@@ -52,6 +53,7 @@ impl Config {
         for service in config.services.as_mut_slice() {
             service.private_key = config_dir.join(&service.private_key);
             service.certificate = config_dir.join(&service.certificate);
+            service.tezos_account = config_dir.join(&service.tezos_account);
         }
 
         Ok(config)
