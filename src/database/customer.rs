@@ -32,7 +32,7 @@ pub enum Error {
     #[error(transparent)]
     UnexpectedState(#[from] UnexpectedState),
     /// Channel could not be transitioned to pending close.
-    #[error("Channel closure could not be initiated - it is likely not in a closeable state.")]
+    #[error("Channel closure could not be initiated - it is likely not in a closeable state")]
     CloseFailure,
     /// An underlying error occurred in the database.
     #[error(transparent)]
@@ -50,10 +50,10 @@ pub enum Error {
     #[error("Failed to update channel balance to invalid set (merchant: {0:?}, customer: {1:?})")]
     InvalidBalanceUpdate(MerchantBalance, Option<CustomerBalance>),
     /// A channel contained incomplete contract details.
-    #[error("Error retrieving contract details for \"{0}\": incomplete details.")]
+    #[error("Error retrieving contract details for \"{0}\": incomplete details")]
     InvalidContractDetails(ChannelName),
     /// A channel already holds contract details.
-    #[error("The channel \"{0}\" already has contract details set.")]
+    #[error("The channel \"{0}\" already has contract details set")]
     ContractDetailsExist(ChannelName),
 }
 
@@ -194,7 +194,7 @@ pub trait QueryCustomer: Send + Sync {
 
     /// Set contract information for a given channel. Will fail if the contract information has
     /// previously been set.
-    async fn set_contract_details(
+    async fn initialize_contract_details(
         &self,
         channel_name: &ChannelName,
         contract_id: &ContractId,
@@ -285,8 +285,8 @@ impl QueryCustomer for SqlitePool {
             }
 
             let default_balances = ClosingBalances::default();
-            let default_contract_id: Option<ContractId> = None;
-            let default_contract_level: Option<Level> = None;
+            //let default_contract_id: Option<ContractId> = None;
+            //let default_contract_level: Option<Level> = None;
             let result = sqlx::query!(
                 "INSERT INTO customer_channels (
                     label,
@@ -297,15 +297,13 @@ impl QueryCustomer for SqlitePool {
                     closing_balances,
                     contract_id,
                     level
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                ) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL)",
                 channel_name,
                 address,
                 merchant_deposit,
                 customer_deposit,
                 state,
                 default_balances,
-                default_contract_id,
-                default_contract_level,
             )
             .execute(&mut transaction)
             .await
@@ -424,8 +422,8 @@ impl QueryCustomer for SqlitePool {
     ) -> Result<Option<(ContractId, Level)>> {
         let record = sqlx::query!(
             r#"
-            SELECT contract_id AS "contract_id: Option<ContractId>",
-                level AS "contract_level: Option<Level>"
+            SELECT contract_id AS "contract_id: ContractId",
+                level AS "contract_level: Level"
             FROM customer_channels
             WHERE label = ?"#,
             channel_name,
@@ -442,7 +440,7 @@ impl QueryCustomer for SqlitePool {
         })
     }
 
-    async fn set_contract_details(
+    async fn initialize_contract_details(
         &self,
         channel_name: &ChannelName,
         contract_id: &ContractId,
@@ -472,12 +470,12 @@ impl QueryCustomer for SqlitePool {
         };
 
         // Update channel with new details.
-        let some_id = Some(contract_id);
-        let some_level = Some(level);
+        //let some_id = Some(contract_id);
+        //let some_level = Some(level);
         sqlx::query!(
             "UPDATE customer_channels SET contract_id = ?, level = ? WHERE label = ?",
-            some_id,
-            some_level,
+            contract_id,
+            level,
             channel_name,
         )
         .execute(&mut transaction)
@@ -567,8 +565,8 @@ impl QueryCustomer for SqlitePool {
                 customer_deposit AS "customer_deposit: CustomerBalance",
                 merchant_deposit AS "merchant_deposit: MerchantBalance",
                 closing_balances AS "closing_balances: ClosingBalances",
-                contract_id AS "contract_id: Option<ContractId>",
-                level AS "level: Option<Level>"
+                contract_id AS "contract_id: ContractId",
+                level AS "level: Level"
             FROM customer_channels"#
         )
         .fetch_all(self)
@@ -730,6 +728,134 @@ impl<Q: QueryCustomer + ?Sized> QueryCustomerExt for Q {
                     Err(e) => Err(e),
                 }
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::database::SqlitePoolOptions;
+    use {
+        rand::{rngs::StdRng, SeedableRng},
+        std::str::FromStr,
+    };
+
+    use tezedge::OriginatedAddress;
+    use zkabacus_crypto::{customer::*, merchant, *};
+
+    async fn create_migrated_db() -> Result<SqlitePool> {
+        let conn = SqlitePoolOptions::new().connect("sqlite::memory:").await?;
+        conn.migrate().await?;
+        Ok(conn)
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_migrate() -> Result<()> {
+        create_migrated_db().await?;
+        Ok(())
+    }
+
+    async fn insert_channel(channel_name: &ChannelName, conn: &SqlitePool) -> Result<()> {
+        // set up zkchannel details
+        let mut rng = StdRng::from_entropy();
+        let address = ZkChannelAddress::from_str("zkchannel://localhost").unwrap();
+
+        // set up keys
+        let merchant_config = merchant::Config::new(&mut rng);
+        let (pk, rev_param, range_param) = merchant_config.extract_customer_config_parts();
+        let customer_config = Config::from_parts(pk, rev_param, range_param);
+
+        // build a channel id
+        let cid_m = MerchantRandomness::new(&mut rng);
+        let cid_c = CustomerRandomness::new(&mut rng);
+        let channel_id = ChannelId::new(
+            cid_m,
+            cid_c,
+            customer_config.merchant_public_key(),
+            &[],
+            &[],
+        );
+
+        // set up deposit info
+        let merchant_balance = MerchantBalance::try_new(5).unwrap();
+        let customer_balance = CustomerBalance::try_new(5).unwrap();
+        let context = Context::new(b"here is some fake context");
+
+        // simulate establish to get zkabacus objects
+        let (requested, proof) = Requested::new(
+            &mut rng,
+            customer_config,
+            channel_id,
+            merchant_balance,
+            customer_balance,
+            &context,
+        );
+
+        let (closing_signature, _blinded_state) = merchant_config
+            .initialize(
+                &mut rng,
+                &channel_id,
+                customer_balance,
+                merchant_balance,
+                proof,
+                &context,
+            )
+            .unwrap();
+
+        let inactive = requested.complete(closing_signature).unwrap();
+
+        conn.new_channel(channel_name, &address, inactive)
+            .await
+            .map_err(|(_, e)| e)?;
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn insert_customer_channel() -> Result<()> {
+        let conn = create_migrated_db().await?;
+        let channel_name = ChannelName::new("test channel".to_string());
+        insert_channel(&channel_name, &conn).await?;
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn insert_contract_details() -> Result<()> {
+        let conn = create_migrated_db().await?;
+        let channel_name = ChannelName::new("test contract details channel".to_string());
+        insert_channel(&channel_name, &conn).await?;
+
+        // make sure contract details are not set initially
+        if conn.contract_details(&channel_name).await?.is_some() {
+            panic!("Contract details should not be set yet.")
+        }
+
+        // pick contract details
+        let contract_id = ContractId::new(
+            OriginatedAddress::from_base58check("KT1Mjjcb6tmSsLm7Cb3DSQszePjfchPM4Uxm").unwrap(),
+        );
+        let level = 10.into();
+
+        // set contract details
+        conn.initialize_contract_details(&channel_name, &contract_id, level)
+            .await?;
+
+        // make sure saved details match expected values
+        if let Some((saved_id, saved_level)) = conn.contract_details(&channel_name).await? {
+            assert!(saved_id == contract_id && saved_level == level)
+        } else {
+            panic!("Contract details did not get set when they should.")
+        }
+
+        // make sure we cannot overwrite saved contact details
+        match conn
+            .initialize_contract_details(&channel_name, &contract_id, level)
+            .await
+        {
+            Ok(()) => panic!("Allowed overwrite of contract details"),
+            Err(super::Error::ContractDetailsExist(_)) => Ok(()),
+            Err(e) => Err(e),
         }
     }
 }

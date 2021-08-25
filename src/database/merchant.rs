@@ -288,7 +288,7 @@ impl QueryMerchant for SqlitePool {
             merchant_deposit,
             customer_deposit,
             ChannelStatus::Originated,
-            default_balances
+            default_balances,
         )
         .execute(self)
         .await?;

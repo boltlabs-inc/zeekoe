@@ -105,34 +105,36 @@ impl Notifications {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct Level(usize);
-zkabacus_crypto::impl_sqlx_for_bincode_ty!(Level);
+#[derive(
+    Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, sqlx::Type,
+)]
+#[sqlx(transparent)]
+pub struct Level(u32);
 
-impl From<usize> for Level {
-    fn from(n: usize) -> Self {
+impl From<u32> for Level {
+    fn from(n: u32) -> Self {
         Self(n)
     }
 }
 
-impl From<Level> for usize {
+impl From<Level> for u32 {
     fn from(h: Level) -> Self {
         h.0
     }
 }
 
-impl Add<usize> for Level {
+impl Add<u32> for Level {
     type Output = Level;
 
-    fn add(self, rhs: usize) -> Self::Output {
+    fn add(self, rhs: u32) -> Self::Output {
         Level(self.0 + rhs)
     }
 }
 
-impl Sub<usize> for Level {
+impl Sub<u32> for Level {
     type Output = Level;
 
-    fn sub(self, rhs: usize) -> Self::Output {
+    fn sub(self, rhs: u32) -> Self::Output {
         Level(self.0 - rhs)
     }
 }
