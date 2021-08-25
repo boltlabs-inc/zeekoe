@@ -1,67 +1,67 @@
-use pyo3::types::PyDict;
-
 /// The Michelson contract code for the ZkChannels contract.
-static CONTRACT_CODE: &str = todo!(); //include_str!("tezos_contract.tz");
-
-/// The ZkChannels close scalar as bytes
-static CLOSE_SCALAR: &'static [u8] = &zkabacus_crypto::CLOSE_SCALAR.to_bytes();
+static CONTRACT_CODE: &str = include_str!("tezos_contract.tz");
 
 lazy_static::lazy_static! {
-    /// Close scalar bytes as a byte string
+    /// The ZkChannels close scalar as bytes
+    static ref CLOSE_SCALAR_BYTES: [u8; 32] = zkabacus_crypto::CLOSE_SCALAR.to_bytes();
 
     /// The python execution context used for all pytezos operations.
-    static ref PYTHON_CONTEXT: inline_python::Context = inline_python::python! {
-        from pytezos import pytezos, Contract, ContractInterface
-        import json
+    static ref PYTHON_CONTEXT: inline_python::Context = {
+        let close_scalar = CLOSE_SCALAR_BYTES.to_vec();
 
-        main_code = ContractInterface.from_michelson('CONTRACT_CODE)
+        inline_python::python! {
+            from pytezos import pytezos, Contract, ContractInterface
+            import json
 
-        close_scalar_bytes = 'CLOSE_SCALAR
+            main_code = ContractInterface.from_michelson('CONTRACT_CODE)
 
-        def originate(
-            cust_acc,
-            cust_pubkey, merch_pubkey,
-            channel_id,
-            merch_g2, merch_y2s, merch_x2,
-            cust_funding, merch_funding,
-            min_confirmations
-        ):
-            // Customer pytezos interface
-            cust_py = pytezos.using(key=cust_acc)
+            close_scalar_bytes = 'close_scalar
 
-            initial_storage = {
-                "cid": channel_id,
-                "close_flag": close_scalar_bytes,
-                "context_string": "zkChannels mutual close",
-                "custAddr": cust_addr,
-                "custBal":0,
-                "custFunding": cust_funding,
-                "custPk": cust_pubkey,
-                "delayExpiry": "1970-01-01T00:00:00Z",
-                "g2": merch_g2,
-                "merchAddr": merch_addr,
-                "merchBal": 0,
-                "merchFunding": merch_funding,
-                "merchPk": merch_pubkey,
-                "merchPk0": merch_y2s[0],
-                "merchPk1": merch_y2s[1],
-                "merchPk2": merch_y2s[2],
-                "merchPk3": merch_y2s[3],
-                "merchPk4": merch_y2s[4],
-                "merchPk5": merch_x2,
-                "revLock": "0x00",
-                "selfDelay": 3,
-                "status": 0
-            }
+            def originate(
+                cust_acc,
+                cust_pubkey, merch_pubkey,
+                channel_id,
+                merch_g2, merch_y2s, merch_x2,
+                cust_funding, merch_funding,
+                min_confirmations
+            ):
+                // Customer pytezos interface
+                cust_py = pytezos.using(key=cust_acc)
 
-            // Originate main zkchannel contract
-            out = cust_py.origination(script=main_code.script(initial_storage=initial_storage)).autofill().sign().send(min_confirmations=min_confirmations)
+                initial_storage = {
+                    "cid": channel_id,
+                    "close_flag": close_scalar_bytes,
+                    "context_string": "zkChannels mutual close",
+                    "custAddr": cust_addr,
+                    "custBal":0,
+                    "custFunding": cust_funding,
+                    "custPk": cust_pubkey,
+                    "delayExpiry": "1970-01-01T00:00:00Z",
+                    "g2": merch_g2,
+                    "merchAddr": merch_addr,
+                    "merchBal": 0,
+                    "merchFunding": merch_funding,
+                    "merchPk": merch_pubkey,
+                    "merchPk0": merch_y2s[0],
+                    "merchPk1": merch_y2s[1],
+                    "merchPk2": merch_y2s[2],
+                    "merchPk3": merch_y2s[3],
+                    "merchPk4": merch_y2s[4],
+                    "merchPk5": merch_x2,
+                    "revLock": "0x00",
+                    "selfDelay": 3,
+                    "status": 0
+                }
 
-            // Get address of main zkchannel contract
-            opg = pytezos.shell.blocks[-20:].find_operation(out.hash())
-            main_id = opg["contents"][0]["metadata"]["operation_result"]["originated_contracts"][0]
+                // Originate main zkchannel contract
+                out = cust_py.origination(script=main_code.script(initial_storage=initial_storage)).autofill().sign().send(min_confirmations=min_confirmations)
 
-            return main_id
+                // Get address of main zkchannel contract
+                opg = pytezos.shell.blocks[-20:].find_operation(out.hash())
+                main_id = opg["contents"][0]["metadata"]["operation_result"]["originated_contracts"][0]
+
+                return main_id
+        }
     };
 }
 
