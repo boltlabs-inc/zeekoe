@@ -1,5 +1,15 @@
 {
   "db": "SQLite",
+  "02abd5d85bbb322ad691487e3b4e1223a7caa1c0ab82d5b4398b15feab4e799f": {
+    "query": "INSERT INTO merchant_channels (\n                channel_id,\n                contract_id,\n                level,\n                merchant_deposit,\n                customer_deposit,\n                status,\n                closing_balances\n            ) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Right": 7
+      },
+      "nullable": []
+    }
+  },
   "076cdf23f2787d9df26bcbf900a6c8205379dabc0efdb0e5fd6d9a83e7e3745a": {
     "query": "SELECT\n                status as \"status: ChannelStatus\"\n            FROM merchant_channels\n            WHERE channel_id = ?\n            LIMIT 2",
     "describe": {
@@ -52,16 +62,6 @@
       "columns": [],
       "parameters": {
         "Right": 2
-      },
-      "nullable": []
-    }
-  },
-  "3f321c13248d22bde3791adf13e0c89bf3714fe4c2d0542e00a62de850470d20": {
-    "query": "INSERT INTO merchant_channels (\n                channel_id,\n                contract_id,\n                merchant_deposit,\n                customer_deposit,\n                status,\n                closing_balances\n            ) VALUES (?, ?, ?, ?, ?, ?)",
-    "describe": {
-      "columns": [],
-      "parameters": {
-        "Right": 6
       },
       "nullable": []
     }
@@ -282,18 +282,8 @@
       ]
     }
   },
-  "866f68c59d036e6c895aaaa65aad6b2805ece96bde8a6fc31e4abf4c3de0b0da": {
-    "query": "INSERT INTO nonces (data) VALUES (?) ON CONFLICT (data) DO NOTHING",
-    "describe": {
-      "columns": [],
-      "parameters": {
-        "Right": 1
-      },
-      "nullable": []
-    }
-  },
-  "9904dc5a059fc79241029d1efa5d09c4bfcefe55f0f69bccec5a8539334b7c95": {
-    "query": "\n            SELECT\n                channel_id AS \"channel_id: ChannelId\",\n                status as \"status: ChannelStatus\",\n                contract_id AS \"contract_id: ContractId\",\n                merchant_deposit AS \"merchant_deposit: MerchantBalance\",\n                customer_deposit AS \"customer_deposit: CustomerBalance\",\n                closing_balances AS \"closing_balances: ClosingBalances\"\n            FROM merchant_channels\n            WHERE channel_id LIKE ?\n            LIMIT 2\n        ",
+  "76c43f33b75ba69f1aa2bc95781ed60241760b8ae87a58f93f0f126dd050cd85": {
+    "query": "\n            SELECT\n                channel_id AS \"channel_id: ChannelId\",\n                status as \"status: ChannelStatus\",\n                contract_id AS \"contract_id: ContractId\",\n                level AS \"level: Level\",\n                merchant_deposit AS \"merchant_deposit: MerchantBalance\",\n                customer_deposit AS \"customer_deposit: CustomerBalance\",\n                closing_balances AS \"closing_balances: ClosingBalances\"\n            FROM merchant_channels\n            WHERE channel_id LIKE ?\n            LIMIT 2\n        ",
     "describe": {
       "columns": [
         {
@@ -312,18 +302,23 @@
           "type_info": "Blob"
         },
         {
-          "name": "merchant_deposit: MerchantBalance",
+          "name": "level: Level",
           "ordinal": 3,
           "type_info": "Blob"
         },
         {
-          "name": "customer_deposit: CustomerBalance",
+          "name": "merchant_deposit: MerchantBalance",
           "ordinal": 4,
           "type_info": "Blob"
         },
         {
-          "name": "closing_balances: ClosingBalances",
+          "name": "customer_deposit: CustomerBalance",
           "ordinal": 5,
+          "type_info": "Blob"
+        },
+        {
+          "name": "closing_balances: ClosingBalances",
+          "ordinal": 6,
           "type_info": "Blob"
         }
       ],
@@ -336,8 +331,19 @@
         false,
         false,
         false,
+        false,
         false
       ]
+    }
+  },
+  "866f68c59d036e6c895aaaa65aad6b2805ece96bde8a6fc31e4abf4c3de0b0da": {
+    "query": "INSERT INTO nonces (data) VALUES (?) ON CONFLICT (data) DO NOTHING",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Right": 1
+      },
+      "nullable": []
     }
   },
   "ab4f3979ed10a15a80b7cc6ac4dc7f70b4112ba3f17a71d2d28e49585316e388": {
@@ -462,6 +468,30 @@
         "Right": 2
       },
       "nullable": []
+    }
+  },
+  "f953021ba09df4f5fdcfc80a291cffa1403715be7b9ecae8c971728f9fe72619": {
+    "query": "SELECT contract_id as \"contract_id: ContractId\",\n                level as \"level: Level\"\n            FROM merchant_channels\n            WHERE channel_id = ?\n            LIMIT 2",
+    "describe": {
+      "columns": [
+        {
+          "name": "contract_id: ContractId",
+          "ordinal": 0,
+          "type_info": "Blob"
+        },
+        {
+          "name": "level: Level",
+          "ordinal": 1,
+          "type_info": "Blob"
+        }
+      ],
+      "parameters": {
+        "Right": 1
+      },
+      "nullable": [
+        false,
+        false
+      ]
     }
   },
   "fc251426308ae90596746c87a8d598387e9b52eaaecbcd47aa31fb238f2cb759": {

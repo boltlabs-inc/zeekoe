@@ -7,7 +7,7 @@ use zkabacus_crypto::{
 
 use zeekoe::{
     abort,
-    escrow::types::ContractId,
+    escrow::{notify::Level, types::ContractId},
     merchant::{config::Service, database::QueryMerchant, server::SessionKey, Chan},
     offer_abort, proceed,
     protocol::{self, establish, ChannelStatus, Party::Merchant},
@@ -170,6 +170,7 @@ async fn approve_and_establish(
 
     // TODO: receive contract id from customer (possibly also send block height, check spec)
     let contract_id: ContractId = todo!();
+    let level: Level = todo!();
 
     // NOTE: This set of on-chain verification checks is **subtly insufficient** unless the
     // on-chain contract's state machine is acyclic, which at the time of writing of this note
@@ -194,6 +195,7 @@ async fn approve_and_establish(
         .new_channel(
             &channel_id,
             &contract_id,
+            &level,
             &merchant_deposit,
             &customer_deposit,
         )
