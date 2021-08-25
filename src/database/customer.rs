@@ -470,8 +470,6 @@ impl QueryCustomer for SqlitePool {
         };
 
         // Update channel with new details.
-        //let some_id = Some(contract_id);
-        //let some_level = Some(level);
         sqlx::query!(
             "UPDATE customer_channels SET contract_id = ?, level = ? WHERE label = ?",
             contract_id,
