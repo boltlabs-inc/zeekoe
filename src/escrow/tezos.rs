@@ -267,7 +267,7 @@ mod establish {
     #[allow(unused)]
     pub async fn reclaim_customer_funding(
         contract_id: &ContractId,
-        customer_key_pair: &TezosKeyPair,https://static.stillinbeta.com/cold-iron/cold_iron/
+        customer_key_pair: &TezosKeyPair,
     ) -> Result<(), Error> {
         todo!()
     }
