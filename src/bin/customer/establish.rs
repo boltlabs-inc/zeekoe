@@ -29,6 +29,8 @@ use zeekoe::{
     },
 };
 
+use tezedge::crypto::Prefix;
+
 use super::{connect, connect_daemon, database, Command};
 
 #[derive(Debug, Clone, Serialize)]
@@ -294,9 +296,17 @@ async fn get_parameters(
         .await
         .context("Failed to receive merchant's range proof parameters")?;
 
-    // TODO: get the merchant's tz1 address
+    // Get the merchant's tz1 address
+    let (merchant_funding_address, chan) = chan
+        .recv()
+        .await
+        .context("Failed to receive merchant's funding address")?;
 
-    // TODO: get the merchant's tezos public key
+    // Get the merchant's Tezos public key
+    let (merchant_tezos_public_key, chan) = chan
+        .recv()
+        .await
+        .context("Failed to receive merchant's Tezos public key")?;
 
     chan.close();
 
@@ -306,8 +316,16 @@ async fn get_parameters(
     //   valid signatures on the correct range
     // - merchant's commitment parameters are valid Pedersen parameters
     // - merchant's tezos public key is valid
-    // - merchant's tezos public key corresponds to the tezos account that they specified
-    // - that address is actually a tz1 address
+
+    // Check that merchant's tezos public key corresponds to the tezos account that they specified
+    let merchant_account_matches = merchant_tezos_public_key.hash() == merchant_funding_address;
+
+    // Check that address is actually a tz1 address - e.g. uses EdDSA signature scheme.
+    let merchant_address_is_tz1 = matches!(merchant_funding_address.get_prefix(), Prefix::tz1);
+
+    if !(merchant_account_matches && merchant_address_is_tz1) {
+        return Err(establish::Error::InvalidParameters.into());
+    }
 
     Ok(zkabacus_crypto::customer::Config::from_parts(
         merchant_public_key,

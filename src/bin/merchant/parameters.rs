@@ -29,8 +29,10 @@ impl Method for Parameters {
         let (public_key, commitment_parameters, range_constraint_parameters) =
             merchant_config.extract_customer_config_parts();
 
-        let tezos_key_pair = TezosKeyPair::read_key_pair(&config.tezos_account)?;
-        let tezos_address = tezos_key_pair.public_key().hash();
+        let tezos_public_key = TezosKeyPair::read_key_pair(&config.tezos_account)?
+            .public_key()
+            .clone();
+        let tezos_address = tezos_public_key.hash();
 
         // Send those parameters to the customer
         chan.send(public_key)
@@ -39,7 +41,10 @@ impl Method for Parameters {
             .await?
             .send(range_constraint_parameters)
             .await?
-            // TODO: Send the merchant's tz1 address and tezos public key
+            .send(tezos_address)
+            .await?
+            .send(tezos_public_key)
+            .await?
             .close();
         Ok(())
     }
