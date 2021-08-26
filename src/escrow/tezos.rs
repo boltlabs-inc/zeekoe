@@ -18,6 +18,7 @@ lazy_static::lazy_static! {
             close_scalar_bytes = 'close_scalar
 
             def originate(
+                uri,
                 cust_acc,
                 cust_pubkey, merch_pubkey,
                 channel_id,
@@ -26,14 +27,15 @@ lazy_static::lazy_static! {
                 min_confirmations
             ):
                 // Customer pytezos interface
-                cust_py = pytezos.using(key=cust_acc)
+                // TODO: connect to specified URL
+                cust_py = pytezos.using(key=cust_acc, shell=uri)
 
                 initial_storage = {
                     "cid": channel_id,
                     "close_flag": close_scalar_bytes,
                     "context_string": "zkChannels mutual close",
                     "custAddr": cust_addr,
-                    "custBal":0,
+                    "custBal": 0,
                     "custFunding": cust_funding,
                     "custPk": cust_pubkey,
                     "delayExpiry": "1970-01-01T00:00:00Z",
@@ -82,6 +84,7 @@ fn merchant_public_key_to_python_input(
 mod establish {
     use super::PYTHON_CONTEXT;
     use crate::escrow::{notify::Level, types::*};
+    use http::Uri;
     use inline_python::{python, Context};
     use std::convert::TryFrom;
     use tezedge::{FromBase58Check, OriginatedAddress, ToBase58Check};
@@ -124,8 +127,8 @@ mod establish {
     /// The `originator_key_pair` should belong to whichever party originates the contract.
     /// Currently, this must be called by the customer. Its public key must be the same as
     /// the one in the provided [`CustomerFundingInformation`].
-    #[allow(unused)]
     pub async fn originate(
+        uri: Option<&Uri>,
         merchant_funding_info: &MerchantFundingInformation,
         customer_funding_info: &CustomerFundingInformation,
         merchant_public_key: &PublicKey,
@@ -141,11 +144,13 @@ mod establish {
         let customer_account = customer_funding_info.address.to_base58check();
         let customer_pubkey = customer_funding_info.public_key.to_base58check();
         let channel_id = channel_id.to_bytes().to_vec();
+        let uri = uri.map(|uri| uri.to_string());
 
         PYTHON_CONTEXT.run(python! {
             success = true
             try:
                 out = originate(
+                    'uri,
                     'customer_account, 'channel_id,
                     'customer_pubkey, 'merchant_pubkey,
                     'g2, 'y2s, 'x2,
