@@ -1,5 +1,5 @@
 /// The Michelson contract code for the ZkChannels contract.
-static CONTRACT_CODE: &str = include_str!("tezos_contract.tz");
+static CONTRACT_CODE: &str = include_str!("zkchannel_contract.tz");
 
 lazy_static::lazy_static! {
     /// The ZkChannels close scalar as bytes
