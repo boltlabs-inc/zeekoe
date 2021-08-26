@@ -168,8 +168,8 @@ pub mod parameters {
         recv PublicKey;
         recv CommitmentParameters; // TODO: this is a global default, does not need to be sent
         recv RangeConstraintParameters;
-        // TODO: tz1 address corresponding to merchant's public key
-        // TODO: merchant's tezos eddsa public key
+        recv String; // merchant's tezos tz1 address
+        recv Vec<u8>; // merchant's tezos eddsa public key
     };
 }
 

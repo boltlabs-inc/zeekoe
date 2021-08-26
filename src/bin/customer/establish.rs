@@ -169,9 +169,26 @@ impl Command for Establish {
         .await
         .context("Failed to initialize the channel")?;
 
+        use zeekoe::escrow::tezos::establish as tezos;
+
         if !self.off_chain {
-            // TODO: initialize contract on-chain via escrow agent (this should return a stream of
-            // updates to the contract)
+            // TODO: initialize contract on-chain via escrow agent
+            let uri = "localhost:20000".parse().unwrap();
+
+            tezos::originate(
+                Some(&uri),
+                &tezos::MerchantFundingInformation {
+                    balance: merchant_deposit,
+                    address: todo!("get tezos address for merchant"),
+                    public_key: todo!("get merchant public key"),
+                },
+                todo!(),
+                todo!(),
+                todo!(),
+                todo!(),
+                1,
+            )
+            .await;
 
             // Update database to indicate successful contract origination.
             database

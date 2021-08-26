@@ -81,7 +81,7 @@ fn merchant_public_key_to_python_input(
     (g2, y2s, x2)
 }
 
-mod establish {
+pub mod establish {
     use super::PYTHON_CONTEXT;
     use crate::escrow::{notify::Level, types::*};
     use http::Uri;
