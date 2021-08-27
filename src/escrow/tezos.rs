@@ -1,3 +1,8 @@
+use crate::escrow::{notify::Level, types::*};
+use inline_python::python;
+use tezedge::{OriginatedAddress, ToBase58Check};
+use zkabacus_crypto::{ChannelId, CustomerBalance, MerchantBalance, PublicKey};
+
 /// The Michelson contract code for the ZkChannels contract.
 static CONTRACT_CODE: &str = include_str!("zkchannel_contract.tz");
 
@@ -6,10 +11,10 @@ lazy_static::lazy_static! {
     static ref CLOSE_SCALAR_BYTES: [u8; 32] = zkabacus_crypto::CLOSE_SCALAR.to_bytes();
 
     /// The python execution context used for all pytezos operations.
-    static ref PYTHON_CONTEXT: inline_python::Context = {
+    static ref PYTHON: inline_python::Context = {
         let close_scalar = CLOSE_SCALAR_BYTES.to_vec();
 
-        inline_python::python! {
+        python! {
             from pytezos import pytezos, Contract, ContractInterface
             import json
 
@@ -27,7 +32,6 @@ lazy_static::lazy_static! {
                 min_confirmations
             ):
                 // Customer pytezos interface
-                // TODO: connect to specified URL
                 cust_py = pytezos.using(key=cust_acc, shell=uri)
 
                 initial_storage = {
@@ -60,9 +64,11 @@ lazy_static::lazy_static! {
 
                 // Get address of main zkchannel contract
                 opg = pytezos.shell.blocks[-20:].find_operation(out.hash())
-                main_id = opg["contents"][0]["metadata"]["operation_result"]["originated_contracts"][0]
+                contents = opg["contents"][0]
+                level = contents["level"]
+                main_id = contents["metadata"]["operation_result"]["originated_contracts"][0]
 
-                return main_id
+                return (main_id, level)
         }
     };
 }
@@ -81,14 +87,8 @@ fn merchant_public_key_to_python_input(
     (g2, y2s, x2)
 }
 
-mod establish {
-    use super::PYTHON_CONTEXT;
-    use crate::escrow::{notify::Level, types::*};
-    use http::Uri;
-    use inline_python::{python, Context};
-    use std::convert::TryFrom;
-    use tezedge::{FromBase58Check, OriginatedAddress, ToBase58Check};
-    use zkabacus_crypto::{ChannelId, CustomerBalance, MerchantBalance, PublicKey};
+pub mod establish {
+    use super::*;
 
     #[allow(unused)]
     pub struct CustomerFundingInformation {
@@ -118,6 +118,11 @@ mod establish {
         pub public_key: TezosPublicKey,
     }
 
+    /// An error while attempting to originate the contract.
+    #[derive(Debug, Clone, thiserror::Error)]
+    #[error("Could not originate contract: {0}")]
+    pub struct OriginateError(String);
+
     /// Originate a contract on chain.
     ///
     /// This call will wait until the contract is confirmed at depth.
@@ -128,30 +133,30 @@ mod establish {
     /// Currently, this must be called by the customer. Its public key must be the same as
     /// the one in the provided [`CustomerFundingInformation`].
     pub async fn originate(
-        uri: Option<&Uri>,
+        uri: Option<&http::Uri>,
         merchant_funding_info: &MerchantFundingInformation,
         customer_funding_info: &CustomerFundingInformation,
         merchant_public_key: &PublicKey,
         originator_key_pair: &TezosKeyMaterial,
         channel_id: &ChannelId,
         confirmation_depth: u64,
-    ) -> Result<(ContractId, Level), String> {
+    ) -> Result<(ContractId, Level), OriginateError> {
         let (g2, y2s, x2) = super::merchant_public_key_to_python_input(merchant_public_key);
         let merchant_funding = merchant_funding_info.balance.into_inner();
         let merchant_pubkey = merchant_funding_info.public_key.to_base58check();
 
+        let customer_account_details = originator_key_pair.file_contents();
         let customer_funding = customer_funding_info.balance.into_inner();
-        let customer_account = customer_funding_info.address.to_base58check();
         let customer_pubkey = customer_funding_info.public_key.to_base58check();
         let channel_id = channel_id.to_bytes().to_vec();
         let uri = uri.map(|uri| uri.to_string());
 
-        PYTHON_CONTEXT.run(python! {
+        PYTHON.run(python! {
             success = true
             try:
                 out = originate(
                     'uri,
-                    'customer_account, 'channel_id,
+                    'customer_account_details, 'channel_id,
                     'customer_pubkey, 'merchant_pubkey,
                     'g2, 'y2s, 'x2,
                     'customer_funding, 'merchant_funding,
@@ -162,16 +167,16 @@ mod establish {
                 error = str(e)
         });
 
-        if PYTHON_CONTEXT.get("success") {
-            let out = PYTHON_CONTEXT.get::<String>("out");
+        if PYTHON.get("success") {
+            let (contract_id, level) = PYTHON.get::<(String, u32)>("out");
             let contract_id = ContractId::new(
-                OriginatedAddress::from_base58check(&out)
+                OriginatedAddress::from_base58check(&contract_id)
                     .expect("Contract id returned from pytezos must be valid base58"),
             );
-            Ok((contract_id, todo!()))
+            Ok((contract_id, level.into()))
         } else {
-            let error = PYTHON_CONTEXT.get::<String>("error");
-            Err(error)
+            let error = PYTHON.get::<String>("error");
+            Err(OriginateError(error))
         }
     }
 

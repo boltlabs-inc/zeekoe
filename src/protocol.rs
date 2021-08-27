@@ -176,6 +176,7 @@ pub mod parameters {
 
 pub mod establish {
     use super::*;
+    use crate::escrow::types::*;
     use zkabacus_crypto::{
         ClosingSignature, CustomerBalance, EstablishProof, MerchantBalance, PayToken,
     };
@@ -211,11 +212,14 @@ pub mod establish {
         send String; // Channel establishment justification note
         // TODO: customer sends merchant:
         // - customer's tezos public key (eddsa public key)
+        send TezosPublicKey;
         // - customer's tezos account tz1 address corresponding to that public key
+        send TezosFundingAddress;
         // - SHA3-256 of:
         //   * merchant's pointcheval-sanders public key (`zkabacus_crypto::PublicKey`)
         //   * tz1 address corresponding to merchant's public key
         //   * merchant's tezos public key
+        send KeyHash;
         MerchantApproveEstablish;
     };
 

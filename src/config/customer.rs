@@ -5,12 +5,11 @@ use {
         path::{Path, PathBuf},
         time::Duration,
     },
-    tezedge::PrivateKey,
 };
 
 pub use super::DatabaseLocation;
 
-use crate::customer::defaults;
+use crate::{customer::defaults, escrow::types::TezosKeyMaterial};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "snake_case")]
@@ -29,7 +28,7 @@ pub struct Config {
     pub max_message_length: usize,
     #[serde(default = "defaults::max_note_length")]
     pub max_note_length: u64,
-    pub private_key: PathBuf,
+    pub tezos_key_material: PathBuf,
     #[serde(default)]
     pub trust_certificate: Option<PathBuf>,
 }
@@ -55,8 +54,7 @@ impl Config {
         Ok(config)
     }
 
-    pub async fn load_private_key(&self) -> anyhow::Result<PrivateKey> {
-        let contents = tokio::fs::read_to_string(&self.private_key).await?;
-        Ok(PrivateKey::from_base58check(&contents)?)
+    pub async fn load_tezos_key_material(&self) -> anyhow::Result<TezosKeyMaterial> {
+        Ok(TezosKeyMaterial::read_key_pair(&self.tezos_key_material)?)
     }
 }

@@ -4,9 +4,11 @@ pub mod tezos;
 pub mod types {
 
     use super::notify::Level;
-    use tezedge::OriginatedAddress;
+    use tezedge::{crypto::base58check::ToBase58Check, OriginatedAddress};
+    use zkabacus_crypto::PublicKey as ZkAbacusPublicKey;
     use {
         serde::{Deserialize, Serialize},
+        sha3::{Digest, Sha3_256},
         std::{
             fmt::{self, Display, Formatter},
             fs,
@@ -85,9 +87,24 @@ pub mod types {
             todo!()
         }
 
-        /// Get the public key.
+        /// Transform into just the public key.
         pub fn into_public_key(self) -> TezosPublicKey {
             self.public_key
+        }
+
+        /// Get the public key.
+        pub fn public_key(&self) -> &TezosPublicKey {
+            &self.public_key
+        }
+
+        /// Get the funding address.
+        pub fn funding_address(&self) -> TezosFundingAddress {
+            self.public_key().hash()
+        }
+
+        /// The contents of the Tezos key file that was used to create this struct.
+        pub fn file_contents(&self) -> &str {
+            &self.file_contents
         }
     }
 
@@ -104,6 +121,34 @@ pub mod types {
     impl ContractDetails {
         pub fn merchant_funding_address(&self) -> TezosFundingAddress {
             self.merchant_tezos_public_key.hash()
+        }
+    }
+
+    /// A SHA3-256 hash of the merchant's public keys.
+    #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+    pub struct KeyHash([u8; 32]);
+
+    impl KeyHash {
+        /// Compute the SHA3-256 hash of the merchant's Pointcheval-Sanders [`ZkAbacusPublicKey`],
+        /// their [`TezosPublicKey`], and the [`TezosFundingAddress`] associated with that public
+        /// key.
+        ///
+        /// Note: the funding address is hashed from its checked base58 representation, rather than
+        /// the raw bytes.
+        pub fn new(
+            zkabacus_public_key: &ZkAbacusPublicKey,
+            funding_address: TezosFundingAddress,
+            tezos_public_key: &TezosPublicKey,
+        ) -> Self {
+            let mut hasher = Sha3_256::new();
+
+            hasher.update(zkabacus_public_key.to_bytes());
+            hasher.update(funding_address.to_base58check());
+            hasher.update(tezos_public_key);
+
+            let mut digested = [0; 32];
+            digested.copy_from_slice(hasher.finalize().as_ref());
+            Self(digested)
         }
     }
 
