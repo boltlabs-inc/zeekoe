@@ -22,6 +22,7 @@ CREATE TABLE merchant_channels (
   id SERIAL PRIMARY KEY,
   channel_id TEXT NOT NULL,
   contract_id BLOB NOT NULL,
+  level BLOB NOT NULL,
   merchant_deposit BLOB NOT NULL,
   customer_deposit BLOB NOT NULL,
   status TEXT NOT NULL
@@ -32,6 +33,7 @@ CREATE TABLE merchant_channels (
       "active",
       "pending_close",
       "closed"
-    ))
+    )),
+  closing_balances BLOB NOT NULL
 );
 CREATE INDEX merchant_channels_channel_id ON merchant_channels (channel_id);

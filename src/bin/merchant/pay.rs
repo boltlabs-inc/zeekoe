@@ -2,6 +2,7 @@ use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng};
 
 use zeekoe::{
     abort,
+    escrow::types::TezosKeyMaterial,
     merchant::{config::Service, database::QueryMerchant, server::SessionKey, Chan},
     offer_abort, proceed,
     protocol::{self, pay, Party::Merchant},
@@ -21,6 +22,7 @@ impl Method for Pay {
         &self,
         rng: StdRng,
         client: &reqwest::Client,
+        _tezos_key_material: TezosKeyMaterial,
         service: &Service,
         merchant_config: &MerchantConfig,
         database: &dyn QueryMerchant,

@@ -25,14 +25,23 @@ pub enum State {
     Ready(zkabacus::Ready),
     /// Payment has been started, which means customer can close on new or old balance.
     Started(zkabacus::Started),
-    /// Customer has revoked their ability to close on the old balance, but has not yet received the
-    /// ability to make a new payment.
+    /// Customer has revoked their ability to close on the old balance, but has not yet received
+    /// the ability to make a new payment.
     Locked(zkabacus::Locked),
     /// A party has initiated closing, but it is not yet finalized on chain.
+    ///
+    /// Note: this [`ClosingMessage`](zkabcus::ClosingMessage) indicates the channel state as
+    /// proposed by the customer, which may be different from the final balances.
     PendingClose(zkabacus::ClosingMessage),
     /// Merchant has evidence that disputes the close balances proposed by the customer.
+    ///
+    /// Note: this [`ClosingMessage`](zkabcus::ClosingMessage) indicates the channel state as
+    /// proposed by the customer, which may be different from the final balances.
     Dispute(zkabacus::ClosingMessage),
     /// Channel has been closed on chain.
+    ///
+    /// Note: this [`ClosingMessage`](zkabcus::ClosingMessage) indicates the channel state as
+    /// proposed by the customer, which may be different from the final balances.
     Closed(zkabacus::ClosingMessage),
 }
 

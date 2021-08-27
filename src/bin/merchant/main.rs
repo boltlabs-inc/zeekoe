@@ -14,6 +14,7 @@ use {
 };
 
 use zeekoe::{
+    escrow::types::TezosKeyMaterial,
     merchant::{
         cli::{self, Run},
         config::{DatabaseLocation, Service},
@@ -61,6 +62,7 @@ impl Command for Run {
         // Share the configuration between all server threads
         let merchant_config = Arc::new(merchant_config);
         let client = reqwest::Client::new();
+        let tezos_key_material = TezosKeyMaterial::read_key_pair(config.tezos_account.clone())?;
 
         // Sender and receiver to indicate graceful shutdown should occur
         let (terminate, _) = broadcast::channel(1);
@@ -76,6 +78,7 @@ impl Command for Run {
                 let database = database.clone();
                 let service = Arc::new(service.clone());
                 let mut wait_terminate = terminate.subscribe();
+                let tezos_key_material = tezos_key_material.clone();
 
                 async move {
                     // Initialize a new `Server` with parameters taken from the configuration
@@ -100,6 +103,7 @@ impl Command for Run {
                         let merchant_config = merchant_config.clone();
                         let database = database.clone();
                         let service = service.clone();
+                        let tezos_key_material = tezos_key_material.clone();
 
                         // TODO: permit configuration option to make this deterministic for testing
                         let rng = StdRng::from_entropy();
@@ -109,6 +113,7 @@ impl Command for Run {
                                 0 => Parameters.run(
                                     rng,
                                     &client,
+                                    tezos_key_material,
                                     &service,
                                     &merchant_config,
                                     database.as_ref(),
@@ -118,6 +123,7 @@ impl Command for Run {
                                 1 => Establish.run(
                                     rng,
                                     &client,
+                                    tezos_key_material,
                                     &service,
                                     &merchant_config,
                                     database.as_ref(),
@@ -127,6 +133,7 @@ impl Command for Run {
                                 2 => Pay.run(
                                     rng,
                                     &client,
+                                    tezos_key_material,
                                     &service,
                                     &merchant_config,
                                     database.as_ref(),
@@ -136,6 +143,7 @@ impl Command for Run {
                                 3 => Close.run(
                                     rng,
                                     &client,
+                                    tezos_key_material,
                                     &service,
                                     &merchant_config,
                                     database.as_ref(),
@@ -198,6 +206,7 @@ where
         &self,
         rng: StdRng,
         client: &reqwest::Client,
+        tezos_key_material: TezosKeyMaterial,
         config: &Service,
         merchant_config: &zkabacus_crypto::merchant::Config,
         database: &dyn QueryMerchant,
