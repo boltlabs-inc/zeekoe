@@ -22,12 +22,15 @@ use zeekoe::{
         database::{self, zkchannels_state, QueryCustomer, QueryCustomerExt, State},
         Chan, ChannelName, Config,
     },
+    escrow::types::ContractDetails,
     offer_abort, proceed,
     protocol::{
         establish,
         Party::{Customer, Merchant},
     },
 };
+
+use tezedge::crypto::Prefix;
 
 use super::{connect, connect_daemon, database, Command};
 
@@ -50,7 +53,7 @@ impl Command for Establish {
         } = self;
 
         // Format deposit amounts as the correct types
-        let customer_deposit = CustomerBalance::try_new(
+        let customer_balance = CustomerBalance::try_new(
             self.deposit
                 .try_into_minor_units()
                 .ok_or(establish::Error::InvalidDeposit(Customer))?
@@ -58,7 +61,7 @@ impl Command for Establish {
         )
         .map_err(|_| establish::Error::InvalidDeposit(Customer))?;
 
-        let merchant_deposit = MerchantBalance::try_new(match self.merchant_deposit {
+        let merchant_balance = MerchantBalance::try_new(match self.merchant_deposit {
             None => 0,
             Some(d) => d
                 .try_into_minor_units()
@@ -73,7 +76,8 @@ impl Command for Establish {
             .context("Failed to connect to local database")?;
 
         // Run a **separate** session to get the merchant's public parameters
-        let zkabacus_customer_config = get_parameters(&config, &address).await?;
+        let (zkabacus_customer_config, contract_details) =
+            get_parameters(&config, &address).await?;
 
         // Connect and select the Establish session
         let (session_key, chan) = connect(&config, &address)
@@ -100,10 +104,10 @@ impl Command for Establish {
             .send(customer_randomness)
             .await
             .context("Failed to send customer randomness for channel ID")?
-            .send(customer_deposit)
+            .send(customer_balance)
             .await
             .context("Failed to send customer deposit amount")?
-            .send(merchant_deposit)
+            .send(merchant_balance)
             .await
             .context("Failed to send merchant deposit amount")?
             .send(note)
@@ -140,8 +144,8 @@ impl Command for Establish {
         // Generate structure holding information about the establishment that's about to take place
         let establishment = Establishment {
             merchant_ps_public_key: zkabacus_customer_config.merchant_public_key().clone(),
-            customer_deposit,
-            merchant_deposit,
+            customer_deposit: customer_balance,
+            merchant_deposit: merchant_balance,
             channel_id,
             close_scalar_bytes: CLOSE_SCALAR.to_bytes(),
         };
@@ -153,17 +157,22 @@ impl Command for Establish {
         // Use the specified label, or else use the `ZkChannelAddress` as a string
         let label = label.unwrap_or_else(|| ChannelName::new(format!("{}", address)));
 
+        let zkabacus_request_parameters = ZkAbacusRequestParameters {
+            customer_config: zkabacus_customer_config,
+            channel_id,
+            merchant_balance,
+            customer_balance,
+            context,
+        };
+
         // Run zkAbacus.Initialize
         let (actual_label, chan) = zkabacus_initialize(
             &mut rng,
             database.as_ref(),
-            zkabacus_customer_config,
+            zkabacus_request_parameters,
+            contract_details,
             label,
             &address,
-            channel_id,
-            context,
-            merchant_deposit,
-            customer_deposit,
             chan,
         )
         .await
@@ -269,7 +278,7 @@ impl Command for Establish {
 async fn get_parameters(
     config: &Config,
     address: &ZkChannelAddress,
-) -> Result<zkabacus_crypto::customer::Config, anyhow::Error> {
+) -> Result<(zkabacus_crypto::customer::Config, ContractDetails), anyhow::Error> {
     // Connect to the merchant
     let (_session_key, chan) = connect(config, address).await?;
 
@@ -294,9 +303,17 @@ async fn get_parameters(
         .await
         .context("Failed to receive merchant's range proof parameters")?;
 
-    // TODO: get the merchant's tz1 address
+    // Get the merchant's tz1 address
+    let (merchant_funding_address, chan) = chan
+        .recv()
+        .await
+        .context("Failed to receive merchant's funding address")?;
 
-    // TODO: get the merchant's tezos public key
+    // Get the merchant's Tezos public key
+    let (merchant_tezos_public_key, chan) = chan
+        .recv()
+        .await
+        .context("Failed to receive merchant's Tezos public key")?;
 
     chan.close();
 
@@ -306,14 +323,37 @@ async fn get_parameters(
     //   valid signatures on the correct range
     // - merchant's commitment parameters are valid Pedersen parameters
     // - merchant's tezos public key is valid
-    // - merchant's tezos public key corresponds to the tezos account that they specified
-    // - that address is actually a tz1 address
 
-    Ok(zkabacus_crypto::customer::Config::from_parts(
-        merchant_public_key,
-        revocation_commitment_parameters,
-        range_constraint_parameters,
+    // Check that merchant's tezos public key corresponds to the tezos account that they specified
+    let merchant_account_matches = merchant_tezos_public_key.hash() == merchant_funding_address;
+
+    // Check that address is actually a tz1 address - e.g. uses EdDSA signature scheme.
+    let merchant_address_is_tz1 = matches!(merchant_funding_address.get_prefix(), Prefix::tz1);
+
+    if !(merchant_account_matches && merchant_address_is_tz1) {
+        return Err(establish::Error::InvalidParameters.into());
+    }
+
+    Ok((
+        zkabacus_crypto::customer::Config::from_parts(
+            merchant_public_key,
+            revocation_commitment_parameters,
+            range_constraint_parameters,
+        ),
+        ContractDetails {
+            merchant_tezos_public_key,
+            contract_id: None,
+            contract_level: None,
+        },
     ))
+}
+
+struct ZkAbacusRequestParameters {
+    customer_config: zkabacus_crypto::customer::Config,
+    channel_id: ChannelId,
+    merchant_balance: MerchantBalance,
+    customer_balance: CustomerBalance,
+    context: ProofContext,
 }
 
 /// The core zkAbacus.Initialize protocol.
@@ -321,26 +361,22 @@ async fn get_parameters(
 /// If successful returns the [`ChannelName`] that the channel was *actually* inserted into the
 /// database using (which may differ from the one specified if the one specified was already in
 /// use!), and the [`Chan`] ready for the next part of the establish protocol.
-#[allow(clippy::too_many_arguments)]
 async fn zkabacus_initialize(
     mut rng: &mut StdRng,
     database: &dyn QueryCustomer,
-    customer_config: zkabacus_crypto::customer::Config,
+    request_parameters: ZkAbacusRequestParameters,
+    contract_details: ContractDetails,
     label: ChannelName,
     address: &ZkChannelAddress,
-    channel_id: ChannelId,
-    context: ProofContext,
-    merchant_deposit: MerchantBalance,
-    customer_deposit: CustomerBalance,
     chan: Chan<establish::Initialize>,
 ) -> Result<(ChannelName, Chan<establish::CustomerSupplyContractInfo>), anyhow::Error> {
     let (requested, proof) = Requested::new(
         &mut rng,
-        customer_config,
-        channel_id,
-        merchant_deposit,
-        customer_deposit,
-        &context,
+        request_parameters.customer_config,
+        request_parameters.channel_id,
+        request_parameters.merchant_balance,
+        request_parameters.customer_balance,
+        &request_parameters.context,
     );
 
     // Send the establish proof
@@ -368,7 +404,7 @@ async fn zkabacus_initialize(
     proceed!(in chan);
 
     // Store the inactive channel state in the database
-    let actual_label = store_inactive_local(database, label, address, inactive)
+    let actual_label = store_inactive_local(database, label, address, inactive, &contract_details)
         .await
         .context("Failed to store inactive channel state in local database")?;
 
@@ -382,6 +418,7 @@ async fn store_inactive_local(
     label: ChannelName,
     address: &ZkChannelAddress,
     mut inactive: Inactive,
+    contract_details: &ContractDetails,
 ) -> Result<ChannelName, anyhow::Error> {
     // This loop iterates trying to insert the channel, adding suffixes "(1)", "(2)", etc.
     // onto the label name until it finds an unused label
@@ -394,7 +431,10 @@ async fn store_inactive_local(
         };
 
         // Try inserting the inactive state with this label
-        match database.new_channel(&actual_label, address, inactive).await {
+        match database
+            .new_channel(&actual_label, address, inactive, contract_details)
+            .await
+        {
             Ok(()) => break actual_label, // report the label that worked
             Err((returned_inactive, database::Error::ChannelExists(_))) => {
                 inactive = returned_inactive; // restore the inactive state, try again

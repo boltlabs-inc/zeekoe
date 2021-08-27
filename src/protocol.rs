@@ -159,6 +159,7 @@ pub type ZkChannels = Session! {
 };
 
 pub mod parameters {
+    use crate::escrow::types::{TezosFundingAddress, TezosPublicKey};
     use zkabacus_crypto::{CommitmentParameters, PublicKey, RangeConstraintParameters};
 
     use super::*;
@@ -166,10 +167,10 @@ pub mod parameters {
     /// Get the public parameters for the merchant.
     pub type Parameters = Session! {
         recv PublicKey;
-        recv CommitmentParameters; // TODO: this is a global default, does not need to be sent
+        recv CommitmentParameters;
         recv RangeConstraintParameters;
-        // TODO: tz1 address corresponding to merchant's public key
-        // TODO: merchant's tezos eddsa public key
+        recv TezosFundingAddress;
+        recv TezosPublicKey;
     };
 }
 
@@ -181,6 +182,8 @@ pub mod establish {
 
     #[derive(Debug, Clone, Error, Serialize, Deserialize)]
     pub enum Error {
+        #[error("Received invalid parameters from merchant")]
+        InvalidParameters,
         #[error("Invalid {0} deposit amount")]
         InvalidDeposit(Party),
         #[error("Channel funding request rejected: {0}")]

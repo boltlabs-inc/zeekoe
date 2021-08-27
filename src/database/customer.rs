@@ -12,9 +12,14 @@ use zkabacus_crypto::{
     CustomerBalance, MerchantBalance,
 };
 
+use tezedge::crypto::ToBase58Check;
+
 use crate::{
     customer::{client::ZkChannelAddress, ChannelName},
-    escrow::{notify::Level, types::ContractId},
+    escrow::{
+        notify::Level,
+        types::{ContractDetails, ContractId, TezosPublicKey},
+    },
 };
 
 mod state;
@@ -66,14 +71,11 @@ pub struct ChannelDetails {
     pub customer_deposit: CustomerBalance,
     pub address: ZkChannelAddress,
     pub closing_balances: ClosingBalances,
-    /// ID of Tezos contract originated on chain.
-    pub contract_id: Option<ContractId>,
-    /// Level at which Tezos contract is originated.
-    pub contract_level: Option<Level>,
+    pub contract_details: ContractDetails,
 }
 
 /// The balances of a channel at closing. These may change during a close flow.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct ClosingBalances {
     pub merchant_balance: Option<MerchantBalance>,
     pub customer_balance: Option<CustomerBalance>,
@@ -164,6 +166,7 @@ pub trait QueryCustomer: Send + Sync {
         channel_name: &ChannelName,
         address: &ZkChannelAddress,
         inactive: Inactive,
+        contract_details: &ContractDetails,
     ) -> std::result::Result<(), (Inactive, Error)>;
 
     /// Get the address of a given channel.
@@ -261,6 +264,7 @@ impl QueryCustomer for SqlitePool {
         channel_name: &ChannelName,
         address: &ZkChannelAddress,
         inactive: Inactive,
+        contract_details: &ContractDetails,
     ) -> std::result::Result<(), (Inactive, Error)> {
         let merchant_deposit = *inactive.merchant_balance();
         let customer_deposit = *inactive.customer_balance();
@@ -284,9 +288,14 @@ impl QueryCustomer for SqlitePool {
                 return Err(Error::ChannelExists(channel_name.clone()));
             }
 
+            // Return an error if contract details are already originated
+            if contract_details.contract_id.is_some() || contract_details.contract_level.is_some() {
+                return Err(Error::InvalidContractDetails(channel_name.clone()));
+            }
+
             let default_balances = ClosingBalances::default();
-            //let default_contract_id: Option<ContractId> = None;
-            //let default_contract_level: Option<Level> = None;
+            let merchant_tezos_public_key_string =
+                contract_details.merchant_tezos_public_key.to_base58check();
             let result = sqlx::query!(
                 "INSERT INTO customer_channels (
                     label,
@@ -295,15 +304,17 @@ impl QueryCustomer for SqlitePool {
                     customer_deposit,
                     state,
                     closing_balances,
+                    merchant_tezos_public_key,
                     contract_id,
                     level
-                ) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL)",
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL)",
                 channel_name,
                 address,
                 merchant_deposit,
                 customer_deposit,
                 state,
                 default_balances,
+                merchant_tezos_public_key_string,
             )
             .execute(&mut transaction)
             .await
@@ -555,7 +566,7 @@ impl QueryCustomer for SqlitePool {
     }
 
     async fn get_channels(&self) -> Result<Vec<ChannelDetails>> {
-        let channels = sqlx::query!(
+        sqlx::query!(
             r#"SELECT
                 label AS "label: ChannelName",
                 state AS "state: State",
@@ -563,6 +574,7 @@ impl QueryCustomer for SqlitePool {
                 customer_deposit AS "customer_deposit: CustomerBalance",
                 merchant_deposit AS "merchant_deposit: MerchantBalance",
                 closing_balances AS "closing_balances: ClosingBalances",
+                merchant_tezos_public_key AS "merchant_tezos_public_key: String",
                 contract_id AS "contract_id: ContractId",
                 level AS "level: Level"
             FROM customer_channels"#
@@ -570,19 +582,26 @@ impl QueryCustomer for SqlitePool {
         .fetch_all(self)
         .await?
         .into_iter()
-        .map(|r| ChannelDetails {
-            label: r.label,
-            state: r.state,
-            address: r.address,
-            customer_deposit: r.customer_deposit,
-            merchant_deposit: r.merchant_deposit,
-            closing_balances: r.closing_balances,
-            contract_id: r.contract_id,
-            contract_level: r.level,
+        .map(|r| -> Result<ChannelDetails> {
+            let label_copy = r.label.clone();
+            Ok(ChannelDetails {
+                label: r.label,
+                state: r.state,
+                address: r.address,
+                customer_deposit: r.customer_deposit,
+                merchant_deposit: r.merchant_deposit,
+                closing_balances: r.closing_balances,
+                contract_details: ContractDetails {
+                    merchant_tezos_public_key: TezosPublicKey::from_base58check(
+                        &r.merchant_tezos_public_key,
+                    )
+                    .map_err(|_| Error::InvalidContractDetails(label_copy))?,
+                    contract_id: r.contract_id,
+                    contract_level: r.level,
+                },
+            })
         })
-        .collect();
-
-        Ok(channels)
+        .collect()
     }
 
     async fn with_channel_state_erased<'a>(
@@ -802,8 +821,16 @@ mod tests {
             .unwrap();
 
         let inactive = requested.complete(closing_signature).unwrap();
+        let contract_details = ContractDetails {
+            merchant_tezos_public_key: TezosPublicKey::from_base58check(
+                "edpku5Ei6Dni4qwoJGqXJs13xHfyu4fhUg6zqZkFyiEh1mQhFD3iZE",
+            )
+            .unwrap(),
+            contract_id: None,
+            contract_level: None,
+        };
 
-        conn.new_channel(channel_name, &address, inactive)
+        conn.new_channel(channel_name, &address, inactive, &contract_details)
             .await
             .map_err(|(_, e)| e)?;
 

@@ -7,7 +7,10 @@ use zkabacus_crypto::{
 
 use zeekoe::{
     abort,
-    escrow::{notify::Level, types::ContractId},
+    escrow::{
+        notify::Level,
+        types::{ContractId, TezosKeyMaterial},
+    },
     merchant::{config::Service, database::QueryMerchant, server::SessionKey, Chan},
     offer_abort, proceed,
     protocol::{self, establish, ChannelStatus, Party::Merchant},
@@ -25,6 +28,7 @@ impl Method for Establish {
         &self,
         mut rng: StdRng,
         client: &reqwest::Client,
+        _tezos_key_material: TezosKeyMaterial,
         service: &Service,
         zkabacus_merchant_config: &ZkAbacusConfig,
         database: &dyn QueryMerchant,
