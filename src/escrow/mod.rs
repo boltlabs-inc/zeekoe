@@ -3,6 +3,7 @@ pub mod tezos;
 
 pub mod types {
 
+    use super::notify::Level;
     use tezedge::OriginatedAddress;
     use {
         serde::{Deserialize, Serialize},
@@ -85,6 +86,22 @@ pub mod types {
         /// Get the secret key.
         pub fn secret_key(&self) -> &tezedge::PrivateKey {
             &self.secret_key
+        }
+    }
+
+    /// Details about the on-chain location and merchant party of a zkChannels contract.
+    pub struct ContractDetails {
+        /// Public key for the merchant party.
+        pub merchant_tezos_public_key: TezosPublicKey,
+        /// ID of Tezos contract originated on chain.
+        pub contract_id: Option<ContractId>,
+        /// Level at which Tezos contract is originated.
+        pub contract_level: Option<Level>,
+    }
+
+    impl ContractDetails {
+        pub fn merchant_funding_address(&self) -> TezosFundingAddress {
+            self.merchant_tezos_public_key.hash()
         }
     }
 

@@ -6,6 +6,7 @@ CREATE TABLE customer_channels (
   customer_deposit BLOB NOT NULL,
   state BLOB NOT NULL,
   closing_balances BLOB NOT NULL,
+  merchant_tezos_public_key TEXT NOT NULL,
   contract_id TEXT,
   level INTEGER
 );
