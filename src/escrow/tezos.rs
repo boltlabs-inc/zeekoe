@@ -48,7 +48,7 @@ mod establish {
         merchant_funding_info: &MerchantFundingInformation,
         customer_funding_info: &CustomerFundingInformation,
         merchant_public_key: &PublicKey,
-        originator_key_pair: &TezosKeyPair,
+        originator_key_pair: &TezosKeyMaterial,
         channel_id: &ChannelId,
     ) -> Result<(ContractId, Level), Error> {
         todo!()
@@ -69,7 +69,7 @@ mod establish {
         notifications: &Notifications,
         contract_id: &ContractId,
         customer_funding_info: &CustomerFundingInformation,
-        customer_key_pair: &TezosKeyPair,
+        customer_key_pair: &TezosKeyMaterial,
     ) -> Result<(), Error> {
         todo!()
     }
@@ -139,7 +139,7 @@ mod establish {
         notifications: &Notifications,
         contract_id: &ContractId,
         merchant_funding_info: &MerchantFundingInformation,
-        merchant_key_pair: &TezosKeyPair,
+        merchant_key_pair: &TezosKeyMaterial,
     ) -> Result<(), Error> {
         todo!()
     }
@@ -156,7 +156,7 @@ mod establish {
     pub async fn reclaim_customer_funding(
         notifications: &Notifications,
         contract_id: &ContractId,
-        customer_key_pair: &TezosKeyPair,
+        customer_key_pair: &TezosKeyMaterial,
     ) -> Result<(), Error> {
         todo!()
     }
@@ -186,7 +186,7 @@ mod close {
     pub async fn expiry(
         notifications: &Notifications,
         contract_id: &ContractId,
-        merchant_key_pair: &TezosKeyPair,
+        merchant_key_pair: &TezosKeyMaterial,
     ) -> Result<(), Error> {
         todo!()
     }
@@ -206,7 +206,7 @@ mod close {
     pub async fn merch_claim(
         notifications: &Notifications,
         contract_id: &ContractId,
-        merchant_key_pair: &TezosKeyPair,
+        merchant_key_pair: &TezosKeyMaterial,
     ) -> Result<(), Error> {
         todo!()
     }
@@ -229,7 +229,7 @@ mod close {
         notifications: &Notifications,
         contract_id: &ContractId,
         close_message: &ClosingMessage,
-        customer_key_pair: &TezosKeyPair,
+        customer_key_pair: &TezosKeyMaterial,
     ) -> Result<(), Error> {
         todo!()
     }
@@ -249,7 +249,7 @@ mod close {
         notifications: &Notifications,
         contract_id: &ContractId,
         revocation_secret: &RevocationSecret,
-        merchant_key_pair: &TezosKeyPair,
+        merchant_key_pair: &TezosKeyMaterial,
     ) -> Result<(), Error> {
         todo!()
     }
@@ -268,7 +268,7 @@ mod close {
     pub async fn cust_claim(
         notifications: &Notifications,
         contract_id: &ContractId,
-        customer_key_pair: &TezosKeyPair,
+        customer_key_pair: &TezosKeyMaterial,
     ) -> Result<(), Error> {
         todo!()
     }
@@ -283,7 +283,7 @@ mod close {
         notifications: &Notifications,
         contract_id: &ContractId,
         close_state: &CloseState,
-        merchant_key_pair: &TezosKeyPair,
+        merchant_key_pair: &TezosKeyMaterial,
     ) -> Result<OperationSignatureInfo, Error> {
         todo!()
     }
@@ -306,7 +306,7 @@ mod close {
         customer_balance: &CustomerBalance,
         merchant_balance: &MerchantBalance,
         authorization_signature: &OperationSignatureInfo,
-        merchant_key_pair: &TezosKeyPair,
+        merchant_key_pair: &TezosKeyMaterial,
     ) -> Result<(), Error> {
         todo!()
     }

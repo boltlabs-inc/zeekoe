@@ -6,6 +6,7 @@ use rand::SeedableRng;
 
 use zeekoe::{
     abort,
+    escrow::types::TezosKeyMaterial,
     merchant::{
         cli,
         config::Service,
@@ -34,6 +35,7 @@ impl Method for Close {
         &self,
         _rng: StdRng,
         _client: &reqwest::Client,
+        _tezos_key_material: TezosKeyMaterial,
         _service: &Service,
         merchant_config: &MerchantConfig,
         database: &dyn QueryMerchant,

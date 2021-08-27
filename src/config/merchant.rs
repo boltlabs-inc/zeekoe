@@ -13,6 +13,7 @@ use crate::merchant::defaults;
 #[non_exhaustive]
 pub struct Config {
     pub database: DatabaseLocation,
+    pub tezos_account: PathBuf,
     #[serde(rename = "service")]
     pub services: Vec<Service>,
 }
@@ -35,7 +36,6 @@ pub struct Service {
     pub approve: Approver,
     pub private_key: PathBuf,
     pub certificate: PathBuf,
-    pub tezos_account: PathBuf,
 }
 
 impl Config {
@@ -50,10 +50,10 @@ impl Config {
 
         // Adjust contained paths to be relative to the config path
         config.database = config.database.relative_to(config_dir);
+        config.tezos_account = config_dir.join(config.tezos_account);
         for service in config.services.as_mut_slice() {
             service.private_key = config_dir.join(&service.private_key);
             service.certificate = config_dir.join(&service.certificate);
-            service.tezos_account = config_dir.join(&service.tezos_account);
         }
 
         Ok(config)

@@ -1,7 +1,7 @@
 use {async_trait::async_trait, rand::rngs::StdRng};
 
 use zeekoe::{
-    escrow::types::TezosKeyPair,
+    escrow::types::TezosKeyMaterial,
     merchant::{config::Service, database::QueryMerchant, server::SessionKey, Chan},
     protocol,
 };
@@ -19,6 +19,7 @@ impl Method for Parameters {
         &self,
         _rng: StdRng,
         _client: &reqwest::Client,
+        tezos_key_material: TezosKeyMaterial,
         config: &Service,
         merchant_config: &zkabacus_crypto::merchant::Config,
         database: &dyn QueryMerchant,
@@ -29,9 +30,7 @@ impl Method for Parameters {
         let (public_key, commitment_parameters, range_constraint_parameters) =
             merchant_config.extract_customer_config_parts();
 
-        let tezos_public_key = TezosKeyPair::read_key_pair(&config.tezos_account)?
-            .public_key()
-            .clone();
+        let tezos_public_key = tezos_key_material.into_public_key();
         let tezos_address = tezos_public_key.hash();
 
         // Send those parameters to the customer
