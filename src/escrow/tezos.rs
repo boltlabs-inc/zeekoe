@@ -1,4 +1,4 @@
-mod establish {
+pub mod establish {
     use crate::escrow::{notify::Level, types::*};
     use zkabacus_crypto::{ChannelId, CustomerBalance, MerchantBalance, PublicKey};
 
@@ -153,7 +153,7 @@ mod establish {
     }
 }
 
-mod close {
+pub mod close {
     use crate::escrow::types::*;
 
     use {
@@ -219,6 +219,11 @@ mod close {
         close_message: &ClosingMessage,
         customer_key_pair: &TezosKeyMaterial,
     ) -> Result<(), Error> {
+        // This function should:
+        // - Generate customer authorization EdDSA signature on the operation with the customer's
+        //   Tezos public key.
+        // - Send custClose entrypoint calling operation to blockchain. This operation results in a
+        //   timelock on the customer's balance and an immediate payout of the merchant balance
         todo!()
     }
 

@@ -10,6 +10,7 @@ use {
     rand::rngs::StdRng,
     serde::Serialize,
     std::{convert::Infallible, fs::File, path::PathBuf},
+    thiserror::Error,
 };
 
 use zeekoe::{
@@ -18,6 +19,7 @@ use zeekoe::{
         database::{zkchannels_state, QueryCustomer, QueryCustomerExt, State},
         Chan, ChannelName, Config,
     },
+    escrow::{tezos, types::TezosKeyMaterial},
     offer_abort, proceed,
     protocol::{close, Party::Customer},
 };
@@ -29,55 +31,33 @@ use zkabacus_crypto::{
 use super::{connect, connect_daemon, database, Command};
 use anyhow::Context;
 
+#[derive(Debug, Error)]
+enum Error {
+    #[error("Cannot initiate close because there are no stored contract details.")]
+    NoContractDetails(ChannelName),
+}
+
 #[async_trait]
 impl Command for Close {
     #[allow(unused)]
     async fn run(self, mut rng: StdRng, config: self::Config) -> Result<(), anyhow::Error> {
+        let tezos_key_material = config
+            .load_tezos_key_material()
+            .await
+            .context("Failed to load Tezos key material")?;
+
         if self.force {
-            unilateral_close(&self, rng, config)
+            unilateral_close(&self, rng, config, tezos_key_material)
                 .await
                 .context("Unilateral close failed")?;
         } else {
-            mutual_close(&self, rng, config)
+            mutual_close(&self, rng, config, tezos_key_material)
                 .await
                 .context("Mutual close failed")?;
         }
 
         Ok(())
     }
-}
-
-/// Initiate channel closure on the current balances as part of a unilateral customer or a
-/// unilateral merchant close.
-///
-/// **Usage**: This function can be called
-/// - directly from the command line to initiate unilateral customer channel closure.
-/// - in response to a unilateral merchant close: upon receipt of a notification that an
-/// operation calling the expiry entrypoint is confirmed on chain at any depth.
-#[allow(unused)]
-async fn close(
-    close: &Close,
-    rng: StdRng,
-    database: &dyn QueryCustomer,
-) -> Result<(), anyhow::Error> {
-    // Retrieve the close state and update channel status to PendingClose.
-    let _close_message = get_close_message(rng, database, &close.label)
-        .await
-        .context("Failed to get closing information.")?;
-
-    // TODO: Call the customer close entrypoint which will take:
-    // - current channel balances
-    // - contract ID
-    // - revocation lock
-    // Raise an error if it fails.
-    //
-    // This function will:
-    // - Generate customer authorization EdDSA signature on the operation with the customer's
-    //   Tezos public key.
-    // - Send custClose entrypoint calling operation to blockchain. This operation results in a
-    //   timelock on the customer's balance and an immediate payout of the merchant balance
-
-    Ok(())
 }
 
 /// Update channel balances when merchant receives payout in unilateral close flows.
@@ -254,10 +234,18 @@ struct Closing {
     revocation_lock: RevocationLock,
 }
 
+/// Initiate channel closure on the current balances as part of a unilateral customer or a
+/// unilateral merchant close.
+///
+/// **Usage**: This function can be called
+/// - directly from the command line to initiate unilateral customer channel closure.
+/// - in response to a unilateral merchant close: upon receipt of a notification that an
+/// operation calling the expiry entrypoint is confirmed on chain at any depth.
 async fn unilateral_close(
     close: &Close,
     rng: StdRng,
     config: self::Config,
+    tezos_key_material: TezosKeyMaterial,
 ) -> Result<(), anyhow::Error> {
     let database = database(&config)
         .await
@@ -268,24 +256,44 @@ async fn unilateral_close(
         .await
         .context("Failed to fetch closing message from database")?;
 
-    let closing = Closing {
-        merchant_balance: *close_message.merchant_balance(),
-        customer_balance: *close_message.customer_balance(),
-        closing_signature: close_message.closing_signature().clone(),
-        revocation_lock: close_message.revocation_lock().clone(),
-        channel_id: *close_message.channel_id(),
-    };
+    if !close.off_chain {
+        let contract_id = match database
+            .contract_details(&close.label)
+            .await
+            .context(format!("Failed to retrieve contract for {}", &close.label))?
+        {
+            Some((contract_id, _)) => contract_id,
+            None => return Err(Error::NoContractDetails(close.label.clone()).into()),
+        };
 
-    if close.off_chain {
-        // Write the closing message to disk
-        write_close_json(&closing)?;
+        // Call the custClose entrypoint and wait for it to be confirmed on chain.
+        tezos::close::cust_close(&contract_id, &close_message, &tezos_key_material)
+            .await
+            .context("Failed to post custClose transaction")?;
+
+        // React to a successfully posted custClose.
+        finalize_customer_close(
+            database.as_ref(),
+            &close.label,
+            *close_message.merchant_balance(),
+        )
+        .await?;
     } else {
-        // TODO: Perform a close on chain.
+        // TODO: Print out custClose transaction
+        // Wait for customer confirmation that it posted
+
+        let closing = Closing {
+            merchant_balance: *close_message.merchant_balance(),
+            customer_balance: *close_message.customer_balance(),
+            closing_signature: close_message.closing_signature().clone(),
+            revocation_lock: close_message.revocation_lock().clone(),
+            channel_id: *close_message.channel_id(),
+        };
+        write_close_json(&closing)?;
     }
 
-    // TODO: Assert channel is Closed.
-
-    // Notify the on-chain monitoring daemon this channel is closed.
+    // Notify the on-chain monitoring daemon this channel has started to close.
+    // TODO: Do we need to alert the polling service about the new timeout potential?
     refresh_daemon(&config).await
 }
 
@@ -293,6 +301,7 @@ async fn mutual_close(
     close: &Close,
     rng: StdRng,
     config: self::Config,
+    tezos_key_material: TezosKeyMaterial,
 ) -> Result<(), anyhow::Error> {
     let database = database(&config)
         .await
