@@ -87,9 +87,19 @@ pub mod types {
             todo!()
         }
 
-        /// Get the public key.
+        /// Transform into just the public key.
         pub fn into_public_key(self) -> TezosPublicKey {
             self.public_key
+        }
+
+        /// Get the public key.
+        pub fn public_key(&self) -> &TezosPublicKey {
+            &self.public_key
+        }
+
+        /// Get the funding address.
+        pub fn funding_address(&self) -> TezosFundingAddress {
+            self.public_key().hash()
         }
     }
 
@@ -121,9 +131,9 @@ pub mod types {
         /// Note: the funding address is hashed from its checked base58 representation, rather than
         /// the raw bytes.
         pub fn new(
-            zkabacus_public_key: ZkAbacusPublicKey,
+            zkabacus_public_key: &ZkAbacusPublicKey,
             funding_address: TezosFundingAddress,
-            tezos_public_key: TezosPublicKey,
+            tezos_public_key: &TezosPublicKey,
         ) -> Self {
             let mut hasher = Sha3_256::new();
 

@@ -22,7 +22,7 @@ use zeekoe::{
         database::{self, zkchannels_state, QueryCustomer, QueryCustomerExt, State},
         Chan, ChannelName, Config,
     },
-    escrow::types::ContractDetails,
+    escrow::types::{ContractDetails, KeyHash},
     offer_abort, proceed,
     protocol::{
         establish,
@@ -52,6 +52,14 @@ impl Command for Establish {
             ..
         } = self;
 
+        // Connect to the customer database
+        let database = database(&config)
+            .await
+            .context("Failed to connect to local database")?;
+
+        // Generate randomness for the channel ID
+        let customer_randomness = CustomerRandomness::new(&mut rng);
+
         // Format deposit amounts as the correct types
         let customer_balance = CustomerBalance::try_new(
             self.deposit
@@ -70,14 +78,24 @@ impl Command for Establish {
         })
         .map_err(|_| establish::Error::InvalidDeposit(Merchant))?;
 
-        // Connect to the customer database
-        let database = database(&config)
+        // Load the customer's Tezos account details
+        let tezos_key_material = config
+            .load_tezos_key_material()
             .await
-            .context("Failed to connect to local database")?;
+            .context("Failed to load customer key material")?;
+        let tezos_public_key = tezos_key_material.public_key().clone();
+        let tezos_address = tezos_public_key.hash();
 
         // Run a **separate** session to get the merchant's public parameters
         let (zkabacus_customer_config, contract_details) =
             get_parameters(&config, &address).await?;
+
+        // Compute a hash of the merchant's public key material.
+        let key_hash = KeyHash::new(
+            zkabacus_customer_config.merchant_public_key(),
+            contract_details.merchant_funding_address(),
+            &contract_details.merchant_tezos_public_key,
+        );
 
         // Connect and select the Establish session
         let (session_key, chan) = connect(&config, &address)
@@ -96,9 +114,6 @@ impl Command for Establish {
             .unwrap_or_else(|| zeekoe::customer::cli::Note::String(String::from("")))
             .read(config.max_note_length)?;
 
-        // Generate and send the customer randomness to the merchant
-        let customer_randomness = CustomerRandomness::new(&mut rng);
-
         // Send the request for the funding of the channel
         let chan = chan
             .send(customer_randomness)
@@ -112,15 +127,16 @@ impl Command for Establish {
             .context("Failed to send merchant deposit amount")?
             .send(note)
             .await
-            .context("Failed to send channel establishment note")?;
-
-        // TODO: customer sends merchant:
-        // - customer's tezos public key (eddsa public key)
-        // - customer's tezos account tz1 address corresponding to that public key
-        // - SHA3-256 of:
-        //   * merchant's pointcheval-sanders public key (`zkabacus_crypto::PublicKey`)
-        //   * tz1 address corresponding to merchant's public key
-        //   * merchant's tezos public key
+            .context("Failed to send channel establishment note")?
+            .send(tezos_public_key)
+            .await
+            .context("Failed to send customer's Tezos public key")?
+            .send(tezos_address)
+            .await
+            .context("Failed to send customer's Tezos account")?
+            .send(key_hash)
+            .await
+            .context("Failed to send hash of merchant's public keys")?;
 
         // Allow the merchant to reject the funding of the channel, else continue
         offer_abort!(in chan as Customer);
@@ -137,8 +153,10 @@ impl Command for Establish {
             customer_randomness,
             // Merchant's Pointcheval-Sanders public key:
             zkabacus_customer_config.merchant_public_key(),
-            &[], // TODO: fill this in with bytes of merchant's tezos public key
-            &[], // TODO: fill this in with bytes of customer's tezos public key
+            // Merchant's Tezos public key
+            contract_details.merchant_tezos_public_key.as_ref(),
+            // Customer's Tezos public key
+            tezos_key_material.public_key().as_ref(),
         );
 
         // Generate structure holding information about the establishment that's about to take place

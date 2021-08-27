@@ -9,7 +9,7 @@ use zeekoe::{
     abort,
     escrow::{
         notify::Level,
-        types::{ContractId, TezosKeyMaterial, KeyHash},
+        types::{ContractId, KeyHash, TezosKeyMaterial, TezosPublicKey},
     },
     merchant::{config::Service, database::QueryMerchant, server::SessionKey, Chan},
     offer_abort, proceed,
@@ -30,7 +30,7 @@ impl Method for Establish {
         &self,
         mut rng: StdRng,
         client: &reqwest::Client,
-        _tezos_key_material: TezosKeyMaterial,
+        tezos_key_material: TezosKeyMaterial,
         service: &Service,
         zkabacus_merchant_config: &ZkAbacusConfig,
         database: &dyn QueryMerchant,
@@ -61,7 +61,7 @@ impl Method for Establish {
             .await
             .context("Failed to receive establish note")?;
 
-        // Receive the customer's Tezos public key (eddsa public key)
+        // Receive the customer's Tezos public key (EdDSA public key)
         let (customer_tezos_public_key, chan) = chan
             .recv()
             .await
@@ -86,11 +86,15 @@ impl Method for Establish {
         let funding_address_is_tz1 = matches!(customer_funding_address.get_prefix(), Prefix::tz1);
 
         // Check that the key hash matches the merchant's expected key hash
-        // TODO: where does merchant store its key material?
-        //let merchant_keys_match = key_hash == KeyHash::new(todo!());
+        let merchant_keys_match = key_hash
+            == KeyHash::new(
+                zkabacus_merchant_config.signing_keypair().public_key(),
+                tezos_key_material.funding_address(),
+                tezos_key_material.public_key(),
+            );
 
-        // TODO: Add other checks to this
-        if !(customer_keys_match && funding_address_is_tz1) {
+        // TODO: Add "valid tezos public key" check to this
+        if !(customer_keys_match && funding_address_is_tz1 && merchant_keys_match) {
             abort!(in chan return establish::Error::Rejected("invalid inputs".into()))
         }
 
@@ -122,6 +126,8 @@ impl Method for Establish {
             session_key,
             merchant_deposit,
             customer_deposit,
+            tezos_key_material.public_key(),
+            &customer_tezos_public_key,
             chan,
         )
         .await;
@@ -151,6 +157,8 @@ async fn approve_and_establish(
     session_key: SessionKey,
     merchant_deposit: MerchantBalance,
     customer_deposit: CustomerBalance,
+    merchant_tezos_public_key: &TezosPublicKey,
+    customer_tezos_public_key: &TezosPublicKey,
     chan: Chan<establish::MerchantApproveEstablish>,
 ) -> Result<(), anyhow::Error> {
     // The approval service has approved
@@ -171,8 +179,8 @@ async fn approve_and_establish(
         customer_randomness,
         // Merchant's Pointcheval-Sanders public key:
         zkabacus_merchant_config.signing_keypair().public_key(),
-        &[], // TODO: fill this in with bytes from merchant's tezos public key
-        &[], // TODO: fill this in with bytes from customer's tezos public key
+        merchant_tezos_public_key.as_ref(),
+        customer_tezos_public_key.as_ref(),
     );
 
     // Generate the proof context for the establish proof
