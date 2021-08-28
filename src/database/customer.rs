@@ -190,10 +190,7 @@ pub trait QueryCustomer: Send + Sync {
     ) -> Result<()>;
 
     /// Get contract information for a given channel.
-    async fn contract_details(
-        &self,
-        channel_name: &ChannelName,
-    ) -> Result<Option<(ContractId, Level)>>;
+    async fn contract_details(&self, channel_name: &ChannelName) -> Result<ContractDetails>;
 
     /// Set contract information for a given channel. Will fail if the contract information has
     /// previously been set.
@@ -220,6 +217,9 @@ pub trait QueryCustomer: Send + Sync {
 
     /// Get all the information about all the channels.
     async fn get_channels(&self) -> Result<Vec<ChannelDetails>>;
+
+    /// Get information about a single channel.
+    async fn get_channel(&self, channel_name: &ChannelName) -> Result<ChannelDetails>;
 
     /// **Don't call this function directly:** instead call [`QueryCustomer::with_channel_state`]
     /// or [`QueryCustomer::mark_closing_channel`].
@@ -427,14 +427,12 @@ impl QueryCustomer for SqlitePool {
         Ok(())
     }
 
-    async fn contract_details(
-        &self,
-        channel_name: &ChannelName,
-    ) -> Result<Option<(ContractId, Level)>> {
+    async fn contract_details(&self, channel_name: &ChannelName) -> Result<ContractDetails> {
         let record = sqlx::query!(
             r#"
             SELECT contract_id AS "contract_id: ContractId",
-                level AS "contract_level: Level"
+                level AS "contract_level: Level",
+                merchant_tezos_public_key AS "merchant_tezos_public_key: String"
             FROM customer_channels
             WHERE label = ?"#,
             channel_name,
@@ -444,11 +442,21 @@ impl QueryCustomer for SqlitePool {
         .await
         .ok_or_else(|| Error::NoSuchChannel(channel_name.clone()))??;
 
-        Ok(match (record.contract_id, record.contract_level) {
-            (Some(contract_id), Some(contract_level)) => Some((contract_id, contract_level)),
-            (None, None) => None,
+        // Try to parse the Tezos key
+        let merchant_tezos_public_key =
+            TezosPublicKey::from_base58check(&record.merchant_tezos_public_key)
+                .map_err(|_| Error::InvalidContractDetails(channel_name.clone()))?;
+
+        // Return the results if they are valid (e.g. if either all or none of the originated
+        // contract details are set)
+        match (record.contract_id.clone(), record.contract_level) {
+            (Some(_), Some(_)) | (None, None) => Ok(ContractDetails {
+                merchant_tezos_public_key,
+                contract_id: record.contract_id,
+                contract_level: record.contract_level,
+            }),
             _ => return Err(Error::InvalidContractDetails(channel_name.clone())),
-        })
+        }
     }
 
     async fn initialize_contract_details(
@@ -602,6 +610,45 @@ impl QueryCustomer for SqlitePool {
             })
         })
         .collect()
+    }
+
+    async fn get_channel(&self, channel_name: &ChannelName) -> Result<ChannelDetails> {
+        sqlx::query!(
+            r#"SELECT
+                state AS "state: State",
+                address AS "address: ZkChannelAddress",
+                customer_deposit AS "customer_deposit: CustomerBalance",
+                merchant_deposit AS "merchant_deposit: MerchantBalance",
+                closing_balances AS "closing_balances: ClosingBalances",
+                merchant_tezos_public_key AS "merchant_tezos_public_key: String",
+                contract_id AS "contract_id: ContractId",
+                level AS "level: Level"
+            FROM customer_channels 
+            WHERE label = ?"#,
+            channel_name,
+        )
+        .fetch(self)
+        .next()
+        .await
+        .ok_or_else(|| Error::NoSuchChannel(channel_name.clone()))?
+        .map(|r| -> Result<ChannelDetails> {
+            Ok(ChannelDetails {
+                label: channel_name.clone(),
+                state: r.state,
+                address: r.address,
+                customer_deposit: r.customer_deposit,
+                merchant_deposit: r.merchant_deposit,
+                closing_balances: r.closing_balances,
+                contract_details: ContractDetails {
+                    merchant_tezos_public_key: TezosPublicKey::from_base58check(
+                        &r.merchant_tezos_public_key,
+                    )
+                    .map_err(|_| Error::InvalidContractDetails(channel_name.clone()))?,
+                    contract_id: r.contract_id,
+                    contract_level: r.level,
+                },
+            })
+        })?
     }
 
     async fn with_channel_state_erased<'a>(
@@ -852,7 +899,12 @@ mod tests {
         insert_channel(&channel_name, &conn).await?;
 
         // make sure contract details are not set initially
-        if conn.contract_details(&channel_name).await?.is_some() {
+        if conn
+            .contract_details(&channel_name)
+            .await?
+            .contract_id
+            .is_some()
+        {
             panic!("Contract details should not be set yet.")
         }
 
@@ -867,10 +919,13 @@ mod tests {
             .await?;
 
         // make sure saved details match expected values
-        if let Some((saved_id, saved_level)) = conn.contract_details(&channel_name).await? {
-            assert!(saved_id == contract_id && saved_level == level)
-        } else {
-            panic!("Contract details did not get set when they should.")
+        let details = conn.contract_details(&channel_name).await?;
+        match (details.contract_id, details.contract_level) {
+            (Some(saved_id), Some(saved_level)) => {
+                assert!(saved_id == contract_id && saved_level == level)
+            }
+            (None, None) => panic!("Contract details did not get set when they should"),
+            _ => panic!("Contract details were only half-saved"),
         }
 
         // make sure we cannot overwrite saved contact details

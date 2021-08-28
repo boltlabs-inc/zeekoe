@@ -200,6 +200,8 @@ pub mod types {
         InvalidZkChannelsContract(ContractId),
         #[error("Failed to produce an authorization signature for mutual close operation for contract ID {0}")]
         SigningFailed(ContractId),
+        #[error("Mutual close authorization signature is invalid for contract ID {0}")]
+        InvalidAuthorizationSignature(ContractId),
         #[error("Failed to read key from file")]
         KeyFileInvalid,
     }

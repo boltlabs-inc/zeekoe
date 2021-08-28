@@ -35,7 +35,7 @@ impl Method for Close {
         &self,
         _rng: StdRng,
         _client: &reqwest::Client,
-        _tezos_key_material: TezosKeyMaterial,
+        tezos_key_material: TezosKeyMaterial,
         _service: &Service,
         merchant_config: &MerchantConfig,
         database: &dyn QueryMerchant,
@@ -43,13 +43,29 @@ impl Method for Close {
         chan: Chan<Self::Protocol>,
     ) -> Result<(), anyhow::Error> {
         // Run zkAbacus close and update channel status to PendingClose
-        let (chan, _close_state) = zkabacus_close(merchant_config, database, chan)
+        let (chan, close_state) = zkabacus_close(merchant_config, database, chan)
             .await
             .context("Mutual close failed")?;
 
-        // TODO: Generate an authorization signature under the merchant's EDDSA Tezos key.
-        // The signature should be over a tuple with
-        // (contract id, "zkChannels mutual close", channel id, customer balance, merchant balance).
+        // Get contract ID for this channel
+        let (contract_id, _) = database
+            .contract_details(close_state.channel_id())
+            .await
+            .context(format!(
+                "Failed to retrieve contract ID (id: {})",
+                close_state.channel_id()
+            ))?;
+
+        // Generate an authorization signature under the merchant's EdDSA Tezos key.
+        let authorization_signature =
+            tezos::close::authorize_mutual_close(&contract_id, &close_state, &tezos_key_material)
+                .await
+                .context("Failed to post mutualClose entrypoint")?;
+
+        let chan = chan
+            .send(authorization_signature)
+            .await
+            .context("Failed to send mutual close authorization signature")?;
 
         // Give the customer the opportunity to reject an invalid authorization signature.
         offer_abort!(in chan as Merchant);

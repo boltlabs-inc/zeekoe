@@ -209,16 +209,16 @@ pub mod establish {
     pub type CustomerProposeFunding = Session! {
         send CustomerBalance;
         send MerchantBalance;
-        send String; // Channel establishment justification note
-        // TODO: customer sends merchant:
-        // - customer's tezos public key (eddsa public key)
+        // Channel establishment justification note
+        send String;
+        // Customer's tezos public key (EdDSA public key)
         send TezosPublicKey;
-        // - customer's tezos account tz1 address corresponding to that public key
+        // Customer's tezos account tz1 address
         send TezosFundingAddress;
-        // - SHA3-256 of:
-        //   * merchant's pointcheval-sanders public key (`zkabacus_crypto::PublicKey`)
-        //   * tz1 address corresponding to merchant's public key
-        //   * merchant's tezos public key
+        // SHA3-256 of:
+        // - merchant's pointcheval-sanders public key (`zkabacus_crypto::PublicKey`)
+        // - tz1 address corresponding to merchant's public key
+        // - merchant's tezos public key
         send KeyHash;
         MerchantApproveEstablish;
     };
@@ -258,10 +258,14 @@ pub mod establish {
     };
 }
 pub mod close {
-    use dialectic::types::Done;
-    use zkabacus_crypto::{CloseState, CloseStateSignature};
+    use {
+        dialectic::types::Done,
+        zkabacus_crypto::{CloseState, CloseStateSignature},
+    };
 
-    use crate::database::customer::StateName;
+    use crate::{
+        database::customer::StateName, escrow::tezos::close::MutualCloseAuthorizationSignature,
+    };
 
     use super::*;
 
@@ -289,8 +293,9 @@ pub mod close {
     };
 
     pub type MerchantSendAuthorization = Session! {
-       // TODO: Send auth signature from tezos.
-       ChooseAbort<Done, Error>
+        // Tezos authorization signature
+        recv MutualCloseAuthorizationSignature;
+        ChooseAbort<Done, Error>
     };
 }
 
