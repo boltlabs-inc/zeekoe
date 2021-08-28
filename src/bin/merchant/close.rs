@@ -6,7 +6,7 @@ use rand::SeedableRng;
 
 use zeekoe::{
     abort,
-    escrow::types::TezosKeyMaterial,
+    escrow::{tezos, types::TezosKeyMaterial},
     merchant::{
         cli,
         config::Service,
@@ -20,7 +20,7 @@ use zeekoe::{
 
 use zkabacus_crypto::{
     merchant::Config as MerchantConfig, ChannelId, CloseState, CustomerBalance, MerchantBalance,
-    Verification,
+    RevocationLock, Verification,
 };
 
 use super::Method;
@@ -66,58 +66,93 @@ impl Method for Close {
 ///
 /// **Usage**: this should be called after receiving a notification that a custClose entrypoint
 /// call is confirmed on chain at any depth.
-#[allow(unused, clippy::diverging_sub_expression)]
+#[allow(unused)]
 async fn process_customer_close(
     database: &dyn QueryMerchant,
+    tezos_key_material: &TezosKeyMaterial,
     channel_id: &ChannelId,
+    revocation_lock: &RevocationLock,
 ) -> Result<(), anyhow::Error> {
-    // TODO: Extract revocation lock from notification and atomically
-    // - check that it is fresh (e.g. not in the database with a revocation secret),
-    // - insert it into the database,
-    // - retrieve any secrets already associated with the lock.
-    let revlock_is_fresh = todo!();
-
     // Retrieve current channel status.
     let current_status = database
         .get_channel_status(channel_id)
         .await
-        .context("Failed to check channel status")?;
+        .context(format!(
+            "Failed to check channel status (id: {})",
+            channel_id
+        ))?;
 
-    // If the lock *does not* have a revocation secret, update channel status to PendingClose.
-    if revlock_is_fresh {
-        database
-            .compare_and_swap_channel_status(
+    // Save the provided revocation lock (from the entrypoint call) and retrieve any existing
+    // revocation secrets associated with it.
+    let possible_secrets = database
+        .insert_revocation(revocation_lock, None)
+        .await
+        .context(format!(
+            "Failed to look up revocation lock (id: {})",
+            channel_id
+        ))?;
+
+    // Get the first secret, if it exists.
+    match possible_secrets.iter().flatten().next() {
+        // If the lock *does not* have a revocation secret, update channel status to PendingClose.
+        None => {
+            database
+                .compare_and_swap_channel_status(
+                    channel_id,
+                    &current_status,
+                    &ChannelStatus::PendingClose,
+                )
+                .await
+                .with_context(|| {
+                    format!(
+                        "Failed to update channel to PendingClose status (id: {})",
+                        &channel_id
+                    )
+                })?;
+            Ok(())
+        }
+        // If the lock already has a revocation secret, start the dispute process.
+        Some(revocation_secret) => {
+            // Update channel status to Dispute
+            database
+                .compare_and_swap_channel_status(
+                    channel_id,
+                    &current_status,
+                    &ChannelStatus::Dispute,
+                )
+                .await
+                .with_context(|| {
+                    format!(
+                        "Failed to update channel to Dispute status (id: {})",
+                        &channel_id
+                    )
+                })?;
+
+            // Retrieve contract ID
+            let (contract_id, _) = database
+                .contract_details(channel_id)
+                .await
+                .context("Failed to retrieve contract details")?;
+
+            // Call the merchDispute entrypoint and wait for it to be confirmed
+            let final_balances =
+                tezos::close::merch_dispute(&contract_id, revocation_secret, tezos_key_material)
+                    .await
+                    .context(format!(
+                        "Failed to post merchDispute entrypoint (id: {})",
+                        &channel_id
+                    ))?;
+
+            // React to successfully confirmed dispute
+            finalize_dispute(
+                database,
                 channel_id,
-                &current_status,
-                &ChannelStatus::PendingClose,
+                final_balances.customer_balance(),
+                final_balances.merchant_balance(),
             )
             .await
-            .with_context(|| {
-                format!(
-                    "Failed to update channel to PendingClose status (id: {})",
-                    &channel_id
-                )
-            })?;
-        Ok(())
-    } else {
-        // If the lock already has an associated revocation secret, update channel status
-        // to Dispute.
-        database
-            .compare_and_swap_channel_status(channel_id, &current_status, &ChannelStatus::Dispute)
-            .await
-            .with_context(|| {
-                format!(
-                    "Failed to update channel to Dispute status (id: {})",
-                    &channel_id
-                )
-            })?;
-
-        // TODO: If the lock has an associated revocation secret, call the merchDispute
-        // entrypoint with:
-        // - contract id
-        // - revocation secret
-        // E.g. call the "dispute" function from escrow API.
-        todo!()
+            .context(format!("Failed to finalize dispute (id: {})", channel_id))
+        }
     }
 }
 
@@ -186,19 +221,6 @@ async fn finalize_customer_close(
     }
 }
 
-/// Get the updated channel balances when all the money goes to the merchant.
-fn dispute_balances(
-    merchant_balance: MerchantBalance,
-    customer_balance: CustomerBalance,
-) -> Result<(MerchantBalance, CustomerBalance), anyhow::Error> {
-    let updated_merchant_balance =
-        MerchantBalance::try_new(merchant_balance.into_inner() + customer_balance.into_inner())
-            .context("Failed to compute disputed merchant balance")?;
-    let updated_customer_balance = CustomerBalance::try_new(0)
-        .context("Impossible: failed to compute disputed customer zero balance")?;
-    Ok((updated_merchant_balance, updated_customer_balance))
-}
-
 /// Process a confirmed merchant dispute event.
 ///
 /// **Usage**: this should be called after receiving a notification that a merchDispute
@@ -225,14 +247,13 @@ async fn finalize_dispute(
 
     // Update final balances to indicate successful dispute (i.e., that the transfer of the
     // customer's balance to merchant is confirmed).
-    let (updated_merchant_balance, updated_customer_balance) =
-        dispute_balances(merchant_balance, customer_balance)?;
+    // TODO: assert that customer/merchant balance matches expected pattern of 0/all?
     Ok(database
         .update_closing_balances(
             channel_id,
-            &ChannelStatus::Dispute,
-            updated_merchant_balance,
-            Some(updated_customer_balance),
+            &ChannelStatus::Closed,
+            merchant_balance,
+            Some(customer_balance),
         )
         .await
         .context(format!(

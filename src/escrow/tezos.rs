@@ -164,6 +164,21 @@ pub mod close {
         },
     };
 
+    pub struct FinalBalances {
+        merchant_balance: MerchantBalance,
+        customer_balance: CustomerBalance,
+    }
+
+    impl FinalBalances {
+        pub fn merchant_balance(&self) -> MerchantBalance {
+            self.merchant_balance
+        }
+
+        pub fn customer_balance(&self) -> CustomerBalance {
+            self.customer_balance
+        }
+    }
+
     /// Initiate expiry close flow via the `expiry` entrypoint on the given [`ContractId`].
     ///
     /// This function will wait until the expiry operation is confirmed at depth and is called
@@ -196,7 +211,7 @@ pub mod close {
     pub async fn merch_claim(
         contract_id: &ContractId,
         merchant_key_pair: &TezosKeyMaterial,
-    ) -> Result<(), Error> {
+    ) -> Result<(FinalBalances), Error> {
         todo!()
     }
 
@@ -218,7 +233,7 @@ pub mod close {
         contract_id: &ContractId,
         close_message: &ClosingMessage,
         customer_key_pair: &TezosKeyMaterial,
-    ) -> Result<(), Error> {
+    ) -> Result<(MerchantBalance), Error> {
         // This function should:
         // - Generate customer authorization EdDSA signature on the operation with the customer's
         //   Tezos public key.
@@ -242,7 +257,7 @@ pub mod close {
         contract_id: &ContractId,
         revocation_secret: &RevocationSecret,
         merchant_key_pair: &TezosKeyMaterial,
-    ) -> Result<(), Error> {
+    ) -> Result<(FinalBalances), Error> {
         todo!()
     }
 
@@ -260,7 +275,7 @@ pub mod close {
     pub async fn cust_claim(
         contract_id: &ContractId,
         customer_key_pair: &TezosKeyMaterial,
-    ) -> Result<(), Error> {
+    ) -> Result<(CustomerBalance), Error> {
         todo!()
     }
 
@@ -296,7 +311,7 @@ pub mod close {
         merchant_balance: &MerchantBalance,
         authorization_signature: &OperationSignatureInfo,
         merchant_key_pair: &TezosKeyMaterial,
-    ) -> Result<(), Error> {
+    ) -> Result<(FinalBalances), Error> {
         todo!()
     }
 }
