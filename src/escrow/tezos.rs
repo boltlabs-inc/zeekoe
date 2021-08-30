@@ -6,6 +6,9 @@ use zkabacus_crypto::{ChannelId, CustomerBalance, MerchantBalance, PublicKey};
 /// The Michelson contract code for the ZkChannels contract.
 static CONTRACT_CODE: &str = include_str!("zkchannel_contract.tz");
 
+/// The default confirmation depth to consider chain operations to be final.
+pub const DEFAULT_CONFIRMATION_DEPTH: u64 = 20;
+
 lazy_static::lazy_static! {
     /// The ZkChannels close scalar as bytes
     static ref CLOSE_SCALAR_BYTES: [u8; 32] = zkabacus_crypto::CLOSE_SCALAR.to_bytes();
@@ -125,13 +128,15 @@ pub mod establish {
 
     /// Originate a contract on chain.
     ///
-    /// This call will wait until the contract is confirmed at depth.
-    /// It returns the new [`ContractId`] and the [`Level`] of the block that contains the
-    /// originated contract.
+    /// This call will wait until the contract is confirmed at depth. It returns the new
+    /// [`ContractId`] and the [`Level`] of the block that contains the originated contract.
     ///
     /// The `originator_key_pair` should belong to whichever party originates the contract.
-    /// Currently, this must be called by the customer. Its public key must be the same as
-    /// the one in the provided [`CustomerFundingInformation`].
+    /// Currently, this must be called by the customer. Its public key must be the same as the one
+    /// in the provided [`CustomerFundingInformation`].
+    ///
+    /// By default, this uses the Tezos mainnet; however, another URI may be specified to point to a
+    /// sandbox or testnet node.
     pub async fn originate(
         uri: Option<&http::Uri>,
         merchant_funding_info: &MerchantFundingInformation,

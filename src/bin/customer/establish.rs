@@ -31,7 +31,7 @@ use zeekoe::{
 };
 
 use tezedge::crypto::Prefix;
-use zeekoe::escrow::tezos::establish as tezos;
+use zeekoe::escrow::tezos;
 
 use super::{connect, connect_daemon, database, Command};
 
@@ -202,18 +202,17 @@ impl Command for Establish {
 
         // TODO: parameterize these hard-coded defaults
         let uri = "localhost:20000".parse().unwrap();
-        let confirmation_depth = 1;
 
         if !self.off_chain {
             // Originate the contract on-chain
-            tezos::originate(
+            tezos::establish::originate(
                 Some(&uri),
-                &tezos::MerchantFundingInformation {
+                &tezos::establish::MerchantFundingInformation {
                     balance: merchant_balance,
                     address: contract_details.merchant_funding_address(),
                     public_key: contract_details.merchant_tezos_public_key.clone(),
                 },
-                &tezos::CustomerFundingInformation {
+                &tezos::establish::CustomerFundingInformation {
                     balance: customer_balance,
                     address: tezos_address.clone(),
                     public_key: tezos_public_key.clone(),
@@ -221,7 +220,7 @@ impl Command for Establish {
                 &merchant_public_key,
                 &tezos_key_material,
                 &channel_id,
-                confirmation_depth,
+                tezos::DEFAULT_CONFIRMATION_DEPTH,
             )
             .await
             .context("Failed to originate contract on-chain")?;
