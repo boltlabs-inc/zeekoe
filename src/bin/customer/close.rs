@@ -17,6 +17,7 @@ use zeekoe::{
     abort,
     customer::{
         cli::Close,
+        client::ZkChannelAddress,
         database::{zkchannels_state, QueryCustomer, QueryCustomerExt, State},
         Chan, ChannelName, Config,
     },
@@ -87,41 +88,33 @@ async fn unilateral_close(
         .await
         .context("Failed to connect to local database")?;
 
-    // Read the closing message without changing the database state
+    // Read the closing message and set the channel state to PendingClose
     let close_message = get_close_message(rng, database.as_ref(), &close.label)
         .await
         .context("Failed to fetch closing message from database")?;
 
+    // If the customer balance is non-zero, do nothing
+    if close_message.customer_balance().into_inner() == 0 {
+        return Ok(());
+    }
     if !close.off_chain {
-        // Only correct the balances if the customer balance is non-zero.
-        if close_message.customer_balance().into_inner() != 0 {
-            let contract_id = match database
-                .contract_details(&close.label)
-                .await
-                .context(format!("Failed to retrieve contract for {}", &close.label))?
-                .contract_id
-            {
-                Some(contract_id) => contract_id,
-                None => return Err(Error::NoContractDetails(close.label.clone()).into()),
-            };
+        let contract_id = match database
+            .contract_details(&close.label)
+            .await
+            .context(format!("Failed to retrieve contract for {}", &close.label))?
+            .contract_id
+        {
+            Some(contract_id) => contract_id,
+            None => return Err(Error::NoContractDetails(close.label.clone()).into()),
+        };
 
-            // Call the custClose entrypoint and wait for it to be confirmed on chain.
-            tezos::close::cust_close(&contract_id, &close_message, &tezos_key_material)
-                .await
-                .context("Failed to post custClose transaction")?;
-
-            // React to a successfully posted custClose.
-            finalize_customer_close(
-                database.as_ref(),
-                &close.label,
-                *close_message.merchant_balance(),
-            )
-            .await?;
-        }
+        // Call the custClose entrypoint and wait for it to be confirmed on chain
+        tezos::close::cust_close(&contract_id, &close_message, &tezos_key_material)
+            .await
+            .context("Failed to post custClose transaction")?;
     } else {
-        // TODO: Print out custClose transaction
+        // TODO: Print out information necessary to produce custClose transaction
         // Wait for customer confirmation that it posted
-
         let closing = Closing {
             merchant_balance: *close_message.merchant_balance(),
             customer_balance: *close_message.customer_balance(),
@@ -131,6 +124,14 @@ async fn unilateral_close(
         };
         write_close_json(&closing)?;
     }
+
+    // React to a successfully posted custClose: update final merchant balance
+    finalize_customer_close(
+        database.as_ref(),
+        &close.label,
+        *close_message.merchant_balance(),
+    )
+    .await?;
 
     // Notify the on-chain monitoring daemon this channel has started to close.
     // TODO: Do we need to alert the polling service about the new timeout potential?
@@ -149,7 +150,7 @@ async fn finalize_customer_close(
 ) -> anyhow::Result<()> {
     // TODO: assert that the db status is PendingClose,
 
-    // Indicate that the merchant balance has been paid out to the merchant.
+    // Indicate that the merchant balance has been paid out to the merchant
     database
         .update_closing_balances(channel_name, merchant_balance, None)
         .await
@@ -175,13 +176,13 @@ async fn claim_funds(
 ) -> Result<(), anyhow::Error> {
     let channel_name = &close.label;
 
-    // Retrieve channel information.
+    // Retrieve channel information
     let channel_details = database.get_channel(channel_name).await.context(format!(
         "Failed to retrieve channel details to claim funds for {}",
         channel_name.clone()
     ))?;
 
-    // if database status is PendingClose, call the custClaim entrypoint.
+    // if database status is PendingClose, call the custClaim entrypoint
     match channel_details.state {
         State::PendingClose(_) => {
             let contract_id = channel_details.contract_details.contract_id
@@ -200,7 +201,7 @@ async fn claim_funds(
             finalize_close(database, channel_name, final_balances.merchant_balance(), final_balances.customer_balance())
                 .await
         }
-        // If it is Dispute, do nothing.
+        // If it is Dispute, do nothing
         State::Dispute(_) => Ok(()),
         _ => Err(anyhow::anyhow!(format!(
             "Failed to claim customer funds for {} due to unexpected channel state: expected PendingClose or Dispute, got {}",
@@ -261,7 +262,7 @@ async fn finalize_dispute(
             channel_name
         ))?;
 
-    // Indicate that all balances are paid out to the merchant.
+    // Indicate that all balances are paid out to the merchant
     database
         .update_closing_balances(channel_name, merchant_balance, Some(customer_balance))
         .await
@@ -286,7 +287,7 @@ async fn finalize_close(
     merchant_balance: MerchantBalance,
     customer_balance: CustomerBalance,
 ) -> Result<(), anyhow::Error> {
-    // Update status from PendingClose to Closed.
+    // Update status from PendingClose to Closed
     database
         .with_channel_state(
             channel_name,
@@ -299,7 +300,7 @@ async fn finalize_close(
             channel_name
         ))?;
 
-    // Update final balances to indicate that the customer balance is paid out to the customer.
+    // Update final balances to indicate that the customer balance is paid out to the customer
     database
         .update_closing_balances(channel_name, merchant_balance, Some(customer_balance))
         .await
@@ -326,23 +327,19 @@ async fn mutual_close(
         close.label.clone()
     ))?;
 
-    // Connect and select the Close session
-    let (_session_key, chan) = connect(&config, &channel_details.address)
-        .await
-        .context("Failed to connect to merchant")?;
-
-    let chan = chan
-        .choose::<3>()
-        .await
-        .context("Failed selecting close session with merchant")?;
-
     // Run zkAbacus mutual close, which sets the channel status to PendingClose and gives the
-    // customer authorization to call the mutual close entrypoint.
-    let (close_state, chan) = zkabacus_close(rng, database.as_ref(), &close.label, chan)
-        .await
-        .context("zkAbacus close failed.")?;
+    // customer authorization to call the mutual close entrypoint
+    let (close_state, chan) = zkabacus_close(
+        rng,
+        database.as_ref(),
+        &close.label,
+        &config,
+        &channel_details.address,
+    )
+    .await
+    .context("zkAbacus close failed.")?;
 
-    // Receive an authorization signature from merchant under the merchant's EdDSA Tezos key.
+    // Receive an authorization signature from merchant under the merchant's EdDSA Tezos key
     let (authorization_signature, chan) = chan
         .recv()
         .await
@@ -372,7 +369,7 @@ async fn mutual_close(
         abort!(in chan return close::Error::InvalidMerchantAuthSignature)
     }
 
-    // Otherwise, close the dialectic channel
+    // Otherwise, close the dialectic channel...
     proceed!(in chan);
     chan.close();
 
@@ -385,7 +382,7 @@ async fn mutual_close(
         close.label.clone()
     ))?;
 
-    // Finalize the result of the mutual close entrypoint call.
+    // Finalize the result of the mutual close entrypoint call
     finalize_mutual_close(
         database.as_ref(),
         &config,
@@ -409,13 +406,13 @@ async fn finalize_mutual_close(
     merchant_balance: MerchantBalance,
     customer_balance: CustomerBalance,
 ) -> Result<(), anyhow::Error> {
-    // Update database channel status from PendingClose to Closed.
+    // Update database channel status from PendingClose to Closed
     // and save final balances (should match those in the ClosingMessage)
     finalize_close(database, channel_name, merchant_balance, customer_balance)
         .await
         .context("Failed to finalize mutual close");
 
-    // Notify the on-chain monitoring daemon this channel is closed.
+    // Notify the on-chain monitoring daemon this channel is closed
     refresh_daemon(config).await
 }
 
@@ -423,8 +420,20 @@ async fn zkabacus_close(
     rng: StdRng,
     database: &dyn QueryCustomer,
     channel_name: &ChannelName,
-    chan: Chan<close::Close>,
+    config: &self::Config,
+    address: &ZkChannelAddress,
 ) -> Result<(CloseState, Chan<close::MerchantSendAuthorization>), anyhow::Error> {
+    // Connect communication channel to the merchant
+    let (_session_key, chan) = connect(config, address)
+        .await
+        .context("Failed to connect to merchant")?;
+
+    // Select the Close session
+    let chan = chan
+        .choose::<3>()
+        .await
+        .context("Failed selecting close session with merchant")?;
+
     // Generate the closing message and update state to PendingClose
     let closing_message = get_close_message(rng, database, channel_name)
         .await
@@ -432,7 +441,7 @@ async fn zkabacus_close(
 
     let (close_signature, close_state) = closing_message.into_parts();
 
-    // Send the pieces of the CloseMessage.
+    // Send the pieces of the CloseMessage
     let chan = chan
         .send(close_signature)
         .await
@@ -441,7 +450,7 @@ async fn zkabacus_close(
         .await
         .context("Failed to send close state")?;
 
-    // Let merchant reject an invalid or outdated `CloseMessage`.
+    // Let merchant reject an invalid or outdated `CloseMessage`
     offer_abort!(in chan as Customer);
 
     Ok((close_state, chan))

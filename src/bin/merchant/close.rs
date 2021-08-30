@@ -56,7 +56,7 @@ impl Method for Close {
                 close_state.channel_id()
             ))?;
 
-        // Generate an authorization signature under the merchant's EdDSA Tezos key.
+        // Generate an authorization signature under the merchant's EdDSA Tezos key
         let authorization_signature =
             tezos::close::authorize_mutual_close(&contract_id, &close_state, &tezos_key_material)
                 .await
@@ -67,7 +67,7 @@ impl Method for Close {
             .await
             .context("Failed to send mutual close authorization signature")?;
 
-        // Give the customer the opportunity to reject an invalid authorization signature.
+        // Give the customer the opportunity to reject an invalid authorization signature
         offer_abort!(in chan as Merchant);
 
         // Close the dialectic channel.
@@ -356,22 +356,22 @@ async fn zkabacus_close(
     // Otherwise, abort with an error.
     match merchant_config.check_close_signature(close_signature, &close_state) {
         Verification::Verified => {
-            // Check that the revocation lock is fresh and insert.
+            // Check that the revocation lock is fresh and insert
             if database
                 .insert_revocation(close_state.revocation_lock(), None)
                 .await
                 .context("Failed to insert revocation lock into database")?
                 .is_empty()
             {
-                // If it's fresh, continue with protocol.
+                // If it's fresh, continue with protocol
                 proceed!(in chan);
                 Ok((chan, close_state))
             } else {
-                // If it has been seen before, abort.
+                // If it has been seen before, abort
                 abort!(in chan return close::Error::KnownRevocationLock)
             }
         }
-        // Abort if the close signature was invalid.
+        // Abort if the close signature was invalid
         Verification::Failed => abort!(in chan return close::Error::InvalidCloseStateSignature),
     }
 }
@@ -518,7 +518,7 @@ async fn finalize_expiry_close(
     merchant_balance: MerchantBalance,
     customer_balance: CustomerBalance,
 ) -> Result<(), anyhow::Error> {
-    // Update channel status to Closed.
+    // Update channel status to Closed
     database
         .compare_and_swap_channel_status(
             channel_id,
@@ -531,7 +531,7 @@ async fn finalize_expiry_close(
             channel_id
         ))?;
 
-    // Indicate that all balances are paid out to the merchant.
+    // Indicate that all balances are paid out to the merchant
     Ok(database
         .update_closing_balances(
             channel_id,

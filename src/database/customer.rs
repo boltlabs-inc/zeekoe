@@ -189,7 +189,7 @@ pub trait QueryCustomer: Send + Sync {
         customer_balance: Option<CustomerBalance>,
     ) -> Result<()>;
 
-    /// Get contract information for a given channel.
+    /// Get the merchant's Tezos key and details about the originated Tezos contract if it exists.
     async fn contract_details(&self, channel_name: &ChannelName) -> Result<ContractDetails>;
 
     /// Set contract information for a given channel. Will fail if the contract information has
@@ -215,10 +215,14 @@ pub trait QueryCustomer: Send + Sync {
         new_address: &ZkChannelAddress,
     ) -> Result<()>;
 
-    /// Get all the information about all the channels.
+    /// Get complete [`ChannelDetails`] for _every_ channel, including the current status and
+    /// balances, the zkAbacus state, the merchant's address for initiating sub-protocols,
+    /// details about the originated contract, and any money that has been paid out.
     async fn get_channels(&self) -> Result<Vec<ChannelDetails>>;
 
-    /// Get information about a single channel.
+    /// Get complete [`ChannelDetails`] for the given channel, including the current status and
+    /// balances, the zkAbacus state, the merchant's address for initiating sub-protocols,
+    /// details about the originated contract, and any money that has been paid out.
     async fn get_channel(&self, channel_name: &ChannelName) -> Result<ChannelDetails>;
 
     /// **Don't call this function directly:** instead call [`QueryCustomer::with_channel_state`]

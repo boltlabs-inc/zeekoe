@@ -363,32 +363,4 @@ pub mod close {
     ) -> Result<(FinalBalances), Error> {
         todo!()
     }
-
-    #[cfg(test)]
-    mod tests {
-
-        use super::MutualCloseAuthorizationSignature;
-
-        #[test]
-        fn mutual_close_authorization_deserializes() {
-            let mcas = MutualCloseAuthorizationSignature {
-                operation_hash: "here is a stupid operation hash 0x0".to_string(),
-                operation_with_signature: "here is a very bad operation with signature 108"
-                    .to_string(),
-                signature: "0xksdja3ulkdfjklsdjfalksdhf;ls".to_string(),
-            };
-            let serialized_mcas = bincode::serialize(&mcas).unwrap();
-            println!("{:?}", String::from_utf8(serialized_mcas.clone()));
-            let de_mcas =
-                bincode::deserialize::<MutualCloseAuthorizationSignature>(&serialized_mcas)
-                    .unwrap();
-
-            assert_eq!(mcas.operation_hash(), de_mcas.operation_hash());
-            assert_eq!(
-                mcas.operation_with_signature(),
-                de_mcas.operation_with_signature()
-            );
-            assert_eq!(mcas.signature(), de_mcas.signature());
-        }
-    }
 }
