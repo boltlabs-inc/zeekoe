@@ -154,18 +154,12 @@ pub mod establish {
 }
 
 pub mod close {
-    use serde::de::SeqAccess;
     use zkabacus_crypto::ChannelId;
 
     use crate::escrow::types::*;
 
     use {
-        serde::{
-            de::{self, Visitor},
-            ser::SerializeStruct,
-            Deserialize, Serialize,
-        },
-        std::fmt,
+        serde::{Deserialize, Serialize},
         tezedge::signer::OperationSignatureInfo,
         zkabacus_crypto::{
             customer::ClosingMessage, revlock::RevocationSecret, CloseState, CustomerBalance,
@@ -173,18 +167,48 @@ pub mod close {
         },
     };
 
-    #[derive(Debug, Clone)]
-    pub struct MutualCloseAuthorizationSignature(OperationSignatureInfo);
+    /// Merchant authorization signature for a mutual close operation.
+    ///
+    /// The internals of this type are a dupe for the tezedge [`OperationSigantureInfo`] type.
+    /// We're not reusing that type because it isn't serializable, and because we may want to
+    /// change the internal storage here.
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct MutualCloseAuthorizationSignature {
+        /// base58check with prefix (`Prefix::operation`) encoded operation hash.
+        operation_hash: String,
+        /// forged operation (hex) concatenated with signature('hex').
+        operation_with_signature: String,
+        /// operation signature encoded with base58check with prefix (`Prefix::edsig`).
+        signature: String,
+    }
 
     impl MutualCloseAuthorizationSignature {
+        pub fn from_operation_signature_info(info: OperationSignatureInfo) -> Self {
+            let OperationSignatureInfo {
+                operation_hash,
+                operation_with_signature,
+                signature,
+            } = info;
+            Self {
+                operation_hash,
+                operation_with_signature,
+                signature,
+            }
+        }
+
+        /// Get the operation hash.
         pub fn operation_hash(&self) -> &String {
-            &self.0.operation_hash
+            &self.operation_hash
         }
+
+        /// Get the forged operation hash concatenated with the signature.
         pub fn operation_with_signature(&self) -> &String {
-            &self.0.operation_with_signature
+            &self.operation_with_signature
         }
+
+        /// Get the signature by itself.
         pub fn signature(&self) -> &String {
-            &self.0.signature
+            &self.signature
         }
     }
 
@@ -299,7 +323,7 @@ pub mod close {
     pub async fn cust_claim(
         contract_id: &ContractId,
         customer_key_pair: &TezosKeyMaterial,
-    ) -> Result<(CustomerBalance), Error> {
+    ) -> Result<FinalBalances, Error> {
         todo!()
     }
 
@@ -340,81 +364,19 @@ pub mod close {
         todo!()
     }
 
-    impl Serialize for MutualCloseAuthorizationSignature {
-        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        where
-            S: serde::Serializer,
-        {
-            let mut mcas = serializer.serialize_struct("MutualCloseAuthorizationSignature", 3)?;
-            mcas.serialize_field("operation hash", self.operation_hash())?;
-            mcas.serialize_field("operation_with_signature", self.operation_with_signature())?;
-            mcas.serialize_field("signature", self.signature())?;
-            mcas.end()
-        }
-    }
-
-    impl<'de> Deserialize<'de> for MutualCloseAuthorizationSignature {
-        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-        where
-            D: serde::Deserializer<'de>,
-        {
-            struct MutualCloseAuthorizationSignatureVisitor;
-
-            impl<'de> Visitor<'de> for MutualCloseAuthorizationSignatureVisitor {
-                type Value = MutualCloseAuthorizationSignature;
-
-                fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                    formatter.write_str("struct MutualCloseAuthorizationSignature")
-                }
-
-                fn visit_seq<V>(
-                    self,
-                    mut seq: V,
-                ) -> Result<MutualCloseAuthorizationSignature, V::Error>
-                where
-                    V: SeqAccess<'de>,
-                {
-                    let operation_hash = seq
-                        .next_element()?
-                        .ok_or_else(|| de::Error::invalid_length(0, &self))?;
-                    let operation_with_signature = seq
-                        .next_element()?
-                        .ok_or_else(|| de::Error::invalid_length(1, &self))?;
-                    let signature = seq
-                        .next_element()?
-                        .ok_or_else(|| de::Error::invalid_length(2, &self))?;
-                    Ok(MutualCloseAuthorizationSignature(OperationSignatureInfo {
-                        operation_hash,
-                        operation_with_signature,
-                        signature,
-                    }))
-                }
-            }
-
-            const FIELDS: &'static [&'static str] =
-                &["operation_hash", "operation_with_signature", "signature"];
-            deserializer.deserialize_struct(
-                "MutualCloseAuthorizationSignature",
-                FIELDS,
-                MutualCloseAuthorizationSignatureVisitor,
-            )
-        }
-    }
-
     #[cfg(test)]
     mod tests {
-        use tezedge::signer::OperationSignatureInfo;
 
         use super::MutualCloseAuthorizationSignature;
 
         #[test]
         fn mutual_close_authorization_deserializes() {
-            let mcas = MutualCloseAuthorizationSignature(OperationSignatureInfo {
+            let mcas = MutualCloseAuthorizationSignature {
                 operation_hash: "here is a stupid operation hash 0x0".to_string(),
                 operation_with_signature: "here is a very bad operation with signature 108"
                     .to_string(),
                 signature: "0xksdja3ulkdfjklsdjfalksdhf;ls".to_string(),
-            });
+            };
             let serialized_mcas = bincode::serialize(&mcas).unwrap();
             println!("{:?}", String::from_utf8(serialized_mcas.clone()));
             let de_mcas =

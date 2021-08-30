@@ -173,28 +173,39 @@ async fn claim_funds(
     config: self::Config,
     customer_key_material: TezosKeyMaterial,
 ) -> Result<(), anyhow::Error> {
+    let channel_name = &close.label;
+
     // Retrieve channel information.
-    let channel_details = database.get_channel(&close.label).await.context(format!(
+    let channel_details = database.get_channel(channel_name).await.context(format!(
         "Failed to retrieve channel details to claim funds for {}",
-        close.label.clone()
+        channel_name.clone()
     ))?;
 
     // if database status is PendingClose, call the custClaim entrypoint.
-    match channel_details.status {
-        State::PendingClose(_) => tezos::close::cust_claim(
-            channel_details.contract_details.contract_id,
-            &customer_key_material,
-        )
-        .await
-        .context(format!(
-            "Failed to claim customer funds for {}",
-            close.label.clone()
-        )),
+    match channel_details.state {
+        State::PendingClose(_) => {
+            let contract_id = channel_details.contract_details.contract_id
+                .ok_or_else(|| anyhow::anyhow!("Failed to claim customer funds for {} because contract details were not correctly saved", channel_name))?;
+            let final_balances = tezos::close::cust_claim(
+                &contract_id,
+                &customer_key_material,
+            )
+            .await
+            .context(format!(
+                "Failed to claim customer funds for {}",
+                channel_name.clone()
+            ))?;
+
+            // Respond to finalized custClaim call
+            finalize_close(database, channel_name, final_balances.merchant_balance(), final_balances.customer_balance())
+                .await
+        }
         // If it is Dispute, do nothing.
-        State::Dispute(_) => (),
+        State::Dispute(_) => Ok(()),
         _ => Err(anyhow::anyhow!(format!(
-            "Unexpected state: expected PendingClose or Dispute, got {}",
-            channel_details.status
+            "Failed to claim customer funds for {} due to unexpected channel state: expected PendingClose or Dispute, got {}",
+            channel_name.clone(),
+            channel_details.state.state_name(),
         ))),
     }
 }
