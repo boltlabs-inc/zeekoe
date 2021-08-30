@@ -1,3 +1,10 @@
+use super::{
+    notify::Level,
+    types::{ContractId, Error},
+};
+
+use {anyhow::Context, async_trait::async_trait};
+
 pub mod establish {
     use crate::escrow::{notify::Level, types::*};
     use zkabacus_crypto::{ChannelId, CustomerBalance, MerchantBalance, PublicKey};
@@ -362,5 +369,31 @@ pub mod close {
         customer_key_pair: &TezosKeyMaterial,
     ) -> Result<(FinalBalances), Error> {
         todo!()
+    }
+}
+
+#[async_trait]
+pub trait QueryContracts: Send + Sync {
+    async fn get_contracts(&self) -> Result<Vec<(ContractId, Level)>, Error>;
+}
+pub struct PollingService {}
+
+impl PollingService {
+    /// A single iteration of the polling service.
+    pub async fn run(&self, database: &dyn QueryContracts) -> Result<(), anyhow::Error> {
+        loop {
+            // Retrieve list of contract IDs from database
+            let contracts = database
+                .get_contracts()
+                .await
+                .context("Failed to retrieve contract IDs")?;
+
+            // Query each contract ID and dispatch on the result
+            for (_contract_id, _level) in contracts {
+                // pytezos - query contract
+            }
+
+            todo!()
+        }
     }
 }
