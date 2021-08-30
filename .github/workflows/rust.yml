@@ -20,6 +20,8 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - uses: actions/checkout@v2
+        with:
+          submodules: recursive
 
       - uses: actions-rs/toolchain@v1
         with:
