@@ -167,14 +167,36 @@ async fn finalize_customer_close(
 /// the contract's customer claim delay has passed *and* the custClose entrypoint call/operation
 /// is confirmed on chain at any depth.
 #[allow(unused)]
-async fn claim_funds(close: &Close, config: self::Config) -> Result<(), anyhow::Error> {
-    // TODO: assert that the db status is PendingClose,
-    // If it is Dispute, do nothing.
+async fn claim_funds(
+    database: &dyn QueryCustomer,
+    close: &Close,
+    config: self::Config,
+    customer_key_material: TezosKeyMaterial,
+) -> Result<(), anyhow::Error> {
+    // Retrieve channel information.
+    let channel_details = database.get_channel(&close.label).await.context(format!(
+        "Failed to retrieve channel details to claim funds for {}",
+        close.label.clone()
+    ))?;
 
-    // TODO: Otherwise, call the custClaim entrypoint which will take:
-    // - contract ID
-
-    Ok(())
+    // if database status is PendingClose, call the custClaim entrypoint.
+    match channel_details.status {
+        State::PendingClose(_) => tezos::close::cust_claim(
+            channel_details.contract_details.contract_id,
+            &customer_key_material,
+        )
+        .await
+        .context(format!(
+            "Failed to claim customer funds for {}",
+            close.label.clone()
+        )),
+        // If it is Dispute, do nothing.
+        State::Dispute(_) => (),
+        _ => Err(anyhow::anyhow!(format!(
+            "Unexpected state: expected PendingClose or Dispute, got {}",
+            channel_details.status
+        ))),
+    }
 }
 
 /// Update channel to indicate a dispute.
