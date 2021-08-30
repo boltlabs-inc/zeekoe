@@ -73,8 +73,7 @@ impl Method for Close {
         // Close the dialectic channel.
         chan.close();
 
-        todo!()
-        //Ok(())
+        Ok(())
     }
 }
 
@@ -383,18 +382,27 @@ impl Command for cli::Close {
         // Retrieve zkAbacus config from the database
         let database = database(&config).await?;
 
+        // Load Tezos keys from file
+        let tezos_key_material = TezosKeyMaterial::read_key_pair(config.tezos_account.clone())?;
+
         // Either initialize the merchant's config afresh, or get existing config if it exists
         // (it should already exist)
         let merchant_config = database
             .fetch_or_create_config(&mut StdRng::from_entropy()) // TODO: allow determinism
             .await?;
 
-        // Make sure exactly one correct command line option is satisfied.
+        // Make sure exactly one correct command line option is satisfied
         match (self.channel, self.all) {
             (Some(channel_id), false) => {
-                expiry(&merchant_config, database.as_ref(), &channel_id).await
+                expiry(
+                    &merchant_config,
+                    database.as_ref(),
+                    &channel_id,
+                    &tezos_key_material,
+                )
+                .await
             }
-            // TODO: iterate through database; call expiry for every channel.
+            // TODO: iterate through database; call expiry for every channel
             (None, true) => Err(anyhow::anyhow!(
                 "Closing all channels is not yet implemented."
             )),
@@ -410,8 +418,9 @@ async fn expiry(
     _merchant_config: &MerchantConfig,
     database: &dyn QueryMerchant,
     channel_id: &ChannelId,
+    tezos_key_material: &TezosKeyMaterial,
 ) -> Result<(), anyhow::Error> {
-    // Retrieve current channel status.
+    // Retrieve current channel status
     let current_status = database
         .get_channel_status(channel_id)
         .await
@@ -426,16 +435,22 @@ async fn expiry(
             &channel_id
         ))?;
 
-    // TODO: call expiry entrypoint, which will take
-    // - contract ID
-    // Raise an error if it fails.
-    //
-    // This function will:
-    // - Generate merchant authorization EdDSA signature on the operation with the merchant's
-    //   Tezos public key.
-    // - Send operation to blockchain
+    // Retrieve contract details
+    let (contract_id, _) = database
+        .contract_details(channel_id)
+        .await
+        .context(format!(
+            "Failed to retrieve contract details (id: {})",
+            &channel_id
+        ))?;
 
-    Ok(())
+    // Call expiry entrypoint
+    tezos::close::expiry(&contract_id, tezos_key_material)
+        .await
+        .context(format!(
+            "Failed to initiate expiry close flow (id: {})",
+            &channel_id
+        ))
 }
 
 /// Claim the channel balances.
@@ -447,6 +462,7 @@ async fn expiry(
 async fn claim_expiry_funds(
     database: &dyn QueryMerchant,
     channel_id: &ChannelId,
+    tezos_key_material: &TezosKeyMaterial,
 ) -> Result<(), anyhow::Error> {
     // Assert database status is PendingClose
     let channel_status = database
@@ -462,12 +478,31 @@ async fn claim_expiry_funds(
         .into());
     }
 
-    // TODO: call merchClaim entrypoint, which will take
-    // - contract ID
-    // Raise an error if it fails.
-    //
-    // This function will transfer all the channel funds to the merchant account.
-    todo!()
+    // Retrieve contract details
+    let (contract_id, _) = database
+        .contract_details(channel_id)
+        .await
+        .context(format!(
+            "Failed to retrieve contract details (id: {})",
+            &channel_id
+        ))?;
+
+    // Call merchClaim entrypoint and retrieve final channel balances
+    let final_balances = tezos::close::merch_claim(&contract_id, tezos_key_material)
+        .await
+        .context(format!(
+            "Failed to claim merchant funds (id: {})",
+            &channel_id
+        ))?;
+
+    // React to successfully confirmed merchClaim
+    finalize_expiry_close(
+        database,
+        channel_id,
+        final_balances.merchant_balance(),
+        final_balances.customer_balance(),
+    )
+    .await
 }
 
 /// Finalize the channel balances. This is called during a unilateral merchant close flow if the
