@@ -1,9 +1,27 @@
-use super::{
-    notify::Level,
-    types::{ContractId, Error},
-};
+use crate::escrow::types::ContractStatus;
 
-use {anyhow::Context, async_trait::async_trait};
+use super::types::ContractId;
+
+pub struct ContractState {
+    /// Current contract status.
+    status: ContractStatus,
+    /// Indicator to whether the timeout on the contract has expired, if it was set.
+    timeout_expired: Option<bool>,
+}
+
+impl ContractState {
+    pub fn status(&self) -> ContractStatus {
+        self.status
+    }
+
+    pub fn timeout_expired(&self) -> Option<bool> {
+        self.timeout_expired
+    }
+}
+
+pub fn get_contract_state(_contract_id: &ContractId) -> ContractState {
+    todo!()
+}
 
 pub mod establish {
     use crate::escrow::{notify::Level, types::*};
@@ -369,31 +387,5 @@ pub mod close {
         customer_key_pair: &TezosKeyMaterial,
     ) -> Result<(FinalBalances), Error> {
         todo!()
-    }
-}
-
-#[async_trait]
-pub trait QueryContracts: Send + Sync {
-    async fn get_contracts(&self) -> Result<Vec<(ContractId, Level)>, Error>;
-}
-pub struct PollingService {}
-
-impl PollingService {
-    /// A single iteration of the polling service.
-    pub async fn run(&self, database: &dyn QueryContracts) -> Result<(), anyhow::Error> {
-        loop {
-            // Retrieve list of contract IDs from database
-            let contracts = database
-                .get_contracts()
-                .await
-                .context("Failed to retrieve contract IDs")?;
-
-            // Query each contract ID and dispatch on the result
-            for (_contract_id, _level) in contracts {
-                // pytezos - query contract
-            }
-
-            todo!()
-        }
     }
 }

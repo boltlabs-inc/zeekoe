@@ -3,6 +3,8 @@ pub mod tezos;
 
 pub mod types {
 
+    use std::convert::TryFrom;
+
     use super::notify::Level;
     use tezedge::{crypto::base58check::ToBase58Check, OriginatedAddress};
     use zkabacus_crypto::PublicKey as ZkAbacusPublicKey;
@@ -178,6 +180,43 @@ pub mod types {
                 Entrypoint::MerchantClaim => "merchClaim",
                 Entrypoint::MutualClose => "mutualClose",
             })
+        }
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    pub enum ContractStatus {
+        AwaitingCustomerFunding = 0,
+        AwaitingMerchantFunding,
+        Open,
+        Expiry,
+        CustomerClose,
+        Closed,
+        FundingReclaimed,
+    }
+
+    impl TryFrom<i32> for ContractStatus {
+        type Error = anyhow::Error;
+
+        fn try_from(v: i32) -> Result<Self, Self::Error> {
+            match v {
+                x if x == ContractStatus::AwaitingCustomerFunding as i32 => {
+                    Ok(ContractStatus::AwaitingCustomerFunding)
+                }
+                x if x == ContractStatus::AwaitingMerchantFunding as i32 => {
+                    Ok(ContractStatus::AwaitingMerchantFunding)
+                }
+                x if x == ContractStatus::Open as i32 => Ok(ContractStatus::Open),
+                x if x == ContractStatus::Expiry as i32 => Ok(ContractStatus::Expiry),
+                x if x == ContractStatus::CustomerClose as i32 => Ok(ContractStatus::CustomerClose),
+                x if x == ContractStatus::Closed as i32 => Ok(ContractStatus::Closed),
+                x if x == ContractStatus::FundingReclaimed as i32 => {
+                    Ok(ContractStatus::FundingReclaimed)
+                }
+                _ => Err(anyhow::anyhow!(
+                    "Failed to convert value {} to ContractStatus",
+                    v
+                )),
+            }
         }
     }
 
