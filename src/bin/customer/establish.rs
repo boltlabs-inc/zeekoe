@@ -160,15 +160,6 @@ impl Command for Establish {
             tezos_key_material.public_key().as_ref(),
         );
 
-        // Generate structure holding information about the establishment that's about to take place
-        let establishment = Establishment {
-            merchant_ps_public_key: zkabacus_customer_config.merchant_public_key().clone(),
-            customer_deposit: customer_balance,
-            merchant_deposit: merchant_balance,
-            channel_id,
-            close_scalar_bytes: CLOSE_SCALAR.to_bytes(),
-        };
-
         // Generate the proof context for the establish proof
         // TODO: the context should actually be formed from a session transcript up to this point
         let context = ProofContext::new(&session_key.to_bytes());
@@ -176,8 +167,14 @@ impl Command for Establish {
         // Use the specified label, or else use the `ZkChannelAddress` as a string
         let label = label.unwrap_or_else(|| ChannelName::new(format!("{}", address)));
 
-        // Copy out the merchant public key before we use it
-        let merchant_public_key = zkabacus_customer_config.merchant_public_key().clone();
+        // Collect the information we need to write info out to disk if necessary
+        let establishment = Establishment {
+            merchant_ps_public_key: zkabacus_customer_config.merchant_public_key().clone(),
+            customer_deposit: customer_balance,
+            merchant_deposit: merchant_balance,
+            channel_id,
+            close_scalar_bytes: CLOSE_SCALAR.to_bytes(),
+        };
 
         let zkabacus_request_parameters = ZkAbacusRequestParameters {
             customer_config: zkabacus_customer_config,
@@ -203,7 +200,17 @@ impl Command for Establish {
         // TODO: parameterize these hard-coded defaults
         let uri = "localhost:20000".parse().unwrap();
 
-        if !self.off_chain {
+        // Write out establishment struct to disk if operating in off-chain mode
+        if true
+        // FIXME: restore this check after finishing all on-chain methods
+        // self.off_chain
+        {
+            write_establish_json(&establishment)?;
+        }
+
+        if self.off_chain {
+            // TODO: prompt user to submit the origination of the contract
+        } else {
             // Originate the contract on-chain
             tezos::establish::originate(
                 Some(&uri),
@@ -217,90 +224,93 @@ impl Command for Establish {
                     address: tezos_address.clone(),
                     public_key: tezos_public_key.clone(),
                 },
-                &merchant_public_key,
+                &establishment.merchant_ps_public_key,
                 &tezos_key_material,
                 &channel_id,
                 tezos::DEFAULT_CONFIRMATION_DEPTH,
             )
             .await
             .context("Failed to originate contract on-chain")?;
-
-            // Update database to indicate successful contract origination.
-            database
-                .with_channel_state(
-                    &actual_label,
-                    zkchannels_state::Inactive,
-                    |inactive| -> Result<_, Infallible> { Ok((State::Originated(inactive), ())) },
-                )
-                .await
-                .with_context(|| {
-                    format!(
-                        "Failed to update channel {} to Originated status",
-                        &actual_label
-                    )
-                })??;
-
-            // TODO: fund contract via escrow agent
-
-            // Update database to indicate successful customer funding.
-            database
-                .with_channel_state(
-                    &actual_label,
-                    zkchannels_state::Originated,
-                    |inactive| -> Result<_, Infallible> {
-                        Ok((State::CustomerFunded(inactive), ()))
-                    },
-                )
-                .await
-                .with_context(|| {
-                    format!(
-                        "Failed to update channel {} to CustomerFunded status",
-                        &actual_label
-                    )
-                })??;
         }
+
+        // Update database to indicate successful contract origination.
+        database
+            .with_channel_state(
+                &actual_label,
+                zkchannels_state::Inactive,
+                |inactive| -> Result<_, Infallible> { Ok((State::Originated(inactive), ())) },
+            )
+            .await
+            .with_context(|| {
+                format!(
+                    "Failed to update channel {} to Originated status",
+                    &actual_label
+                )
+            })??;
+
+        // FIXME: remove this once filled in
+        #[allow(clippy::if_same_then_else)]
+        if self.off_chain {
+            // TODO: prompt user to fund the contract on chain
+        } else {
+            // TODO: fund contract via escrow agent
+        }
+
+        // Update database to indicate successful customer funding.
+        database
+            .with_channel_state(
+                &actual_label,
+                zkchannels_state::Originated,
+                |inactive| -> Result<_, Infallible> { Ok((State::CustomerFunded(inactive), ())) },
+            )
+            .await
+            .with_context(|| {
+                format!(
+                    "Failed to update channel {} to CustomerFunded status",
+                    &actual_label
+                )
+            })??;
 
         // TODO: send contract id to merchant (possibly also send block height, check spec)
 
         // Allow the merchant to indicate whether it funded the channel
         offer_abort!(in chan as Customer);
 
-        if !self.off_chain {
+        // FIXME: remove this once filled in
+        #[allow(clippy::if_same_then_else, clippy::needless_bool)]
+        let merchant_funding_successful: bool = if self.off_chain {
+            // TODO: prompt user to check that the merchant funding was provided
+            true
+        } else {
             // TODO: if merchant contribution was non-zero, check that merchant funding was provided
             // within a configurable timeout and to the desired block depth and that the status of
             // the contract is locked. if not, recommend unilateral close
             // Note: the following database update may be moved around once the merchant funding
             // check is added.
+            true // FIXME: check this!
+        };
 
-            // Update database to indicate successful merchant funding.
-            database
-                .with_channel_state(
-                    &actual_label,
-                    zkchannels_state::CustomerFunded,
-                    |inactive| -> Result<_, Infallible> {
-                        Ok((State::MerchantFunded(inactive), ()))
-                    },
-                )
-                .await
-                .with_context(|| {
-                    format!(
-                        "Failed to update channel {} to MerchantFunded status",
-                        &actual_label
-                    )
-                })??;
-        }
-
-        let merchant_funding_successful: bool = true; // TODO: query tezos for merchant funding
-
+        // Abort if merchant funding was not successful
         if !merchant_funding_successful {
             abort!(in chan return establish::Error::FailedMerchantFunding);
         }
-        proceed!(in chan);
 
-        if self.off_chain {
-            // Write the establishment information to disk
-            write_establish_json(&establishment)?;
-        }
+        // Update database to indicate successful merchant funding.
+        database
+            .with_channel_state(
+                &actual_label,
+                zkchannels_state::CustomerFunded,
+                |inactive| -> Result<_, Infallible> { Ok((State::MerchantFunded(inactive), ())) },
+            )
+            .await
+            .with_context(|| {
+                format!(
+                    "Failed to update channel {} to MerchantFunded status",
+                    &actual_label
+                )
+            })??;
+
+        proceed!(in chan);
 
         // Run zkAbacus.Activate
         zkabacus_activate(&config, database.as_ref(), &actual_label, chan)
