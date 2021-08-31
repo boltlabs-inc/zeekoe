@@ -259,7 +259,7 @@ pub mod close {
     pub async fn merch_claim(
         contract_id: &ContractId,
         merchant_key_pair: &TezosKeyMaterial,
-    ) -> Result<(FinalBalances), Error> {
+    ) -> Result<FinalBalances, Error> {
         todo!()
     }
 
@@ -281,7 +281,7 @@ pub mod close {
         contract_id: &ContractId,
         close_message: &ClosingMessage,
         customer_key_pair: &TezosKeyMaterial,
-    ) -> Result<(MerchantBalance), Error> {
+    ) -> Result<MerchantBalance, Error> {
         // This function should:
         // - Generate customer authorization EdDSA signature on the operation with the customer's
         //   Tezos public key.
@@ -360,7 +360,7 @@ pub mod close {
         merchant_balance: &MerchantBalance,
         authorization_signature: MutualCloseAuthorizationSignature,
         customer_key_pair: &TezosKeyMaterial,
-    ) -> Result<(FinalBalances), Error> {
+    ) -> Result<FinalBalances, Error> {
         todo!()
     }
 }
