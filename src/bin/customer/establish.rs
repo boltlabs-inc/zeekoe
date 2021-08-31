@@ -184,7 +184,7 @@ impl Command for Establish {
             channel_id,
             merchant_balance,
             customer_balance,
-            context: context,
+            context,
         };
 
         // Run zkAbacus.Initialize

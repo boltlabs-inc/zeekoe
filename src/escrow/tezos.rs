@@ -82,7 +82,7 @@ fn merchant_public_key_to_python_input(
     let zkabacus_crypto::PublicKey { g2, y2s, x2, .. } = public_key;
     let g2 = g2.to_compressed().to_vec();
     let y2s = y2s
-        .into_iter()
+        .iter()
         .map(|y2| y2.to_compressed().to_vec())
         .collect::<Vec<_>>();
     let x2 = x2.to_compressed().to_vec();
