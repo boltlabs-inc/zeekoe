@@ -1,7 +1,7 @@
 use structopt::StructOpt;
 
 #[path = "customer/main.rs"]
-mod customer;
+pub(crate) mod customer;
 
 #[path = "merchant/main.rs"]
 mod merchant;

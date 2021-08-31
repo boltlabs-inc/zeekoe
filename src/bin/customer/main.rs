@@ -20,7 +20,7 @@ use zeekoe::{
     protocol,
 };
 
-mod close;
+pub mod close;
 mod establish;
 mod manage;
 mod pay;

@@ -33,6 +33,12 @@ pub enum State {
     /// Note: this [`ClosingMessage`](zkabcus::ClosingMessage) indicates the channel state as
     /// proposed by the customer, which may be different from the final balances.
     PendingClose(zkabacus::ClosingMessage),
+    /// The customer has made a legitimate claim to funds on chain.
+    ///
+    /// Note: this [`ClosingMessage`](zkabcus::ClosingMessage) indicates the channel state as
+    /// proposed by the customer, which may be different from the final balances.
+    PendingCustomerClaim(zkabacus::ClosingMessage),
+    /// The merchant has initiated a channel closure via the expiry flow.
     /// Merchant has evidence that disputes the close balances proposed by the customer.
     ///
     /// Note: this [`ClosingMessage`](zkabcus::ClosingMessage) indicates the channel state as
@@ -70,6 +76,9 @@ pub mod zkchannels_state {
         /// Retrieve the zkAbacus state from a [`State`] variant. Fails if the `State` variant
         /// does not match `Self`.
         fn zkabacus_state(channel_state: State) -> Result<Self::ZkAbacusState, UnexpectedState>;
+
+        /// Indicate whether the [`State`] variant matches `Self`.
+        fn matches(self, channel_state: &State) -> bool;
     }
 
     /// Implement the [`ZkChannelState`] trait.
@@ -92,6 +101,14 @@ pub mod zkchannels_state {
                         }),
                     }
                 }
+
+                fn matches(self, channel_state: &State) -> bool {
+                    if let State::$state(_) = channel_state {
+                        true
+                    } else {
+                        false
+                    }
+                }
             }
         };
     }
@@ -104,6 +121,7 @@ pub mod zkchannels_state {
     impl_zkchannel_state!(Started, Started);
     impl_zkchannel_state!(Locked, Locked);
     impl_zkchannel_state!(PendingClose, ClosingMessage);
+    impl_zkchannel_state!(PendingCustomerClaim, ClosingMessage);
     impl_zkchannel_state!(Dispute, ClosingMessage);
     impl_zkchannel_state!(Closed, ClosingMessage);
 }
@@ -119,6 +137,7 @@ pub enum StateName {
     Started,
     Locked,
     PendingClose,
+    PendingCustomerClaim,
     Dispute,
     Closed,
 }
@@ -134,6 +153,7 @@ impl Display for StateName {
             StateName::Started => "started",
             StateName::Locked => "locked",
             StateName::PendingClose => "pending close",
+            StateName::PendingCustomerClaim => "pending customer claim",
             StateName::Dispute => "disputed",
             StateName::Closed => "closed",
         }
@@ -153,6 +173,7 @@ impl State {
             State::Started(_) => StateName::Started,
             State::Locked(_) => StateName::Locked,
             State::PendingClose(_) => StateName::PendingClose,
+            State::PendingCustomerClaim(_) => StateName::PendingCustomerClaim,
             State::Dispute(_) => StateName::Dispute,
             State::Closed(_) => StateName::Closed,
         }
@@ -169,6 +190,7 @@ impl State {
             State::Started(started) => started.customer_balance(),
             State::Locked(locked) => locked.customer_balance(),
             State::PendingClose(closing_message) => closing_message.customer_balance(),
+            State::PendingCustomerClaim(closing_message) => closing_message.customer_balance(),
             State::Dispute(closing_message) => closing_message.customer_balance(),
             State::Closed(closed) => closed.customer_balance(),
         }
@@ -184,6 +206,7 @@ impl State {
             State::Started(started) => started.merchant_balance(),
             State::Locked(locked) => locked.merchant_balance(),
             State::PendingClose(closing_message) => closing_message.merchant_balance(),
+            State::PendingCustomerClaim(closing_message) => closing_message.merchant_balance(),
             State::Dispute(closing_message) => closing_message.merchant_balance(),
             State::Closed(closed) => closed.merchant_balance(),
         }
@@ -199,6 +222,7 @@ impl State {
             State::Started(started) => started.channel_id(),
             State::Locked(locked) => locked.channel_id(),
             State::PendingClose(closing_message) => closing_message.channel_id(),
+            State::PendingCustomerClaim(closing_message) => closing_message.channel_id(),
             State::Dispute(closing_message) => closing_message.channel_id(),
             State::Closed(closed) => closed.channel_id(),
         }

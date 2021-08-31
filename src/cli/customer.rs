@@ -174,7 +174,11 @@ pub struct Close {
 
 #[derive(Debug, StructOpt)]
 #[non_exhaustive]
-pub struct Run {}
+pub struct Run {
+    /// Enable off-chain transactions.
+    #[structopt(long)]
+    pub off_chain: bool,
+}
 
 /// An argument specified on the command line which may be a string literal, or the special string
 /// `-`, which indicates that the value should be read from standard input.
