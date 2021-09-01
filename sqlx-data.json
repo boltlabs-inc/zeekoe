@@ -38,6 +38,60 @@
       ]
     }
   },
+  "1d1f1eec37210286928b7f6a04e9f1dd13e4e9752f227dd62d97157539e56f9a": {
+    "query": "SELECT\n                channel_id AS \"channel_id: ChannelId\",\n                status as \"status: ChannelStatus\",\n                contract_id AS \"contract_id: ContractId\",\n                level AS \"level: Level\",\n                merchant_deposit AS \"merchant_deposit: MerchantBalance\",\n                customer_deposit AS \"customer_deposit: CustomerBalance\",\n                closing_balances AS \"closing_balances: ClosingBalances\"\n            FROM merchant_channels",
+    "describe": {
+      "columns": [
+        {
+          "name": "channel_id: ChannelId",
+          "ordinal": 0,
+          "type_info": "Text"
+        },
+        {
+          "name": "status: ChannelStatus",
+          "ordinal": 1,
+          "type_info": "Text"
+        },
+        {
+          "name": "contract_id: ContractId",
+          "ordinal": 2,
+          "type_info": "Blob"
+        },
+        {
+          "name": "level: Level",
+          "ordinal": 3,
+          "type_info": "Blob"
+        },
+        {
+          "name": "merchant_deposit: MerchantBalance",
+          "ordinal": 4,
+          "type_info": "Blob"
+        },
+        {
+          "name": "customer_deposit: CustomerBalance",
+          "ordinal": 5,
+          "type_info": "Blob"
+        },
+        {
+          "name": "closing_balances: ClosingBalances",
+          "ordinal": 6,
+          "type_info": "Blob"
+        }
+      ],
+      "parameters": {
+        "Right": 0
+      },
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ]
+    }
+  },
   "25601de5c6748724f92d8a8e18ff3e95321a32b0dc0bb0cac2e0b0eb479dc78a": {
     "query": "UPDATE customer_channels SET address = ? WHERE label = ?",
     "describe": {
@@ -262,30 +316,6 @@
       "nullable": [
         true,
         true,
-        false
-      ]
-    }
-  },
-  "701b1322abf4140c04bd2023c9503c8ca57f257ecbfb61326e775f7a8b7888e7": {
-    "query": "SELECT\n                channel_id AS \"channel_id: ChannelId\",\n                status as \"status: ChannelStatus\"\n            FROM merchant_channels",
-    "describe": {
-      "columns": [
-        {
-          "name": "channel_id: ChannelId",
-          "ordinal": 0,
-          "type_info": "Text"
-        },
-        {
-          "name": "status: ChannelStatus",
-          "ordinal": 1,
-          "type_info": "Text"
-        }
-      ],
-      "parameters": {
-        "Right": 0
-      },
-      "nullable": [
-        false,
         false
       ]
     }

@@ -73,7 +73,7 @@ pub trait QueryMerchant: Send + Sync {
     ) -> Result<()>;
 
     /// Get information about every channel in the database.
-    async fn get_channels(&self) -> Result<Vec<(ChannelId, ChannelStatus)>>;
+    async fn get_channels(&self) -> Result<Vec<ChannelDetails>>;
 
     /// Get channel status for a particular channel based on its [`ChannelId`].
     async fn get_channel_status(&self, channel_id: &ChannelId) -> Result<ChannelStatus>;
@@ -418,17 +418,30 @@ impl QueryMerchant for SqlitePool {
         }
     }
 
-    async fn get_channels(&self) -> Result<Vec<(ChannelId, ChannelStatus)>> {
+    async fn get_channels(&self) -> Result<Vec<ChannelDetails>> {
         let channels = sqlx::query!(
             r#"SELECT
                 channel_id AS "channel_id: ChannelId",
-                status as "status: ChannelStatus"
+                status as "status: ChannelStatus",
+                contract_id AS "contract_id: ContractId",
+                level AS "level: Level",
+                merchant_deposit AS "merchant_deposit: MerchantBalance",
+                customer_deposit AS "customer_deposit: CustomerBalance",
+                closing_balances AS "closing_balances: ClosingBalances"
             FROM merchant_channels"#
         )
         .fetch_all(self)
         .await?
         .into_iter()
-        .map(|r| (r.channel_id, r.status))
+        .map(|r| ChannelDetails {
+            channel_id: r.channel_id,
+            status: r.status,
+            contract_id: r.contract_id,
+            level: r.level,
+            merchant_deposit: r.merchant_deposit,
+            customer_deposit: r.customer_deposit,
+            closing_balances: r.closing_balances,
+        })
         .collect();
 
         Ok(channels)
