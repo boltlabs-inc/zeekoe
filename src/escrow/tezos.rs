@@ -231,7 +231,7 @@ pub mod establish {
         let customer_funding = customer_funding_info.balance.into_inner();
         let customer_address = customer_funding_info.address.to_base58check();
         let customer_pubkey = customer_funding_info.public_key.to_base58check();
-        let channel_id = channel_id.to_bytes().to_vec();
+        let channel_id = hex_string(channel_id.to_bytes().to_vec());
         let uri = uri.map(|uri| uri.to_string());
 
         PYTHON.run(python! {
