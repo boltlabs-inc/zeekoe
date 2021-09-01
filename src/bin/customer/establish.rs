@@ -208,29 +208,39 @@ impl Command for Establish {
             write_establish_json(&establishment)?;
         }
 
-        if self.off_chain {
+        // The customer and merchant funding information
+        let merchant_funding_info = tezos::establish::MerchantFundingInformation {
+            balance: merchant_balance,
+            address: contract_details.merchant_funding_address(),
+            public_key: contract_details.merchant_tezos_public_key.clone(),
+        };
+        let customer_funding_info = tezos::establish::CustomerFundingInformation {
+            balance: customer_balance,
+            address: tezos_address.clone(),
+            public_key: tezos_public_key.clone(),
+        };
+
+        let (contract_id, origination_status, origination_level) = if self.off_chain {
             // TODO: prompt user to submit the origination of the contract
+            todo!("prompt user to submit contract origination details")
         } else {
             // Originate the contract on-chain
             tezos::establish::originate(
                 Some(&uri),
-                &tezos::establish::MerchantFundingInformation {
-                    balance: merchant_balance,
-                    address: contract_details.merchant_funding_address(),
-                    public_key: contract_details.merchant_tezos_public_key.clone(),
-                },
-                &tezos::establish::CustomerFundingInformation {
-                    balance: customer_balance,
-                    address: tezos_address.clone(),
-                    public_key: tezos_public_key.clone(),
-                },
+                &merchant_funding_info,
+                &customer_funding_info,
                 &establishment.merchant_ps_public_key,
                 &tezos_key_material,
                 &channel_id,
                 tezos::DEFAULT_CONFIRMATION_DEPTH,
             )
             .await
-            .context("Failed to originate contract on-chain")?;
+            .context("Failed to originate contract on-chain")?
+        };
+
+        // Check to make sure origination succeeded
+        if !matches!(origination_status, tezos::OperationStatus::Applied) {
+            todo!("Abort protocol because origination failed?")
         }
 
         // Update database to indicate successful contract origination.
@@ -250,10 +260,24 @@ impl Command for Establish {
 
         // FIXME: remove this once filled in
         #[allow(clippy::if_same_then_else)]
-        if self.off_chain {
+        let (customer_funding_status, customer_funding_level) = if self.off_chain {
             // TODO: prompt user to fund the contract on chain
+            todo!("prompt user to fund contract on chain and submit details")
         } else {
-            // TODO: fund contract via escrow agent
+            tezos::establish::add_customer_funding(
+                Some(&uri),
+                &contract_id,
+                &customer_funding_info,
+                &tezos_key_material,
+                tezos::DEFAULT_CONFIRMATION_DEPTH,
+            )
+            .await
+            .context("Failed to fund contract on-chain")?
+        };
+
+        // Check to make sure funding succeeded
+        if !matches!(customer_funding_status, tezos::OperationStatus::Applied) {
+            todo!("Abort protocol because funding failed?")
         }
 
         // Update database to indicate successful customer funding.

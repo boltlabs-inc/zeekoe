@@ -23,6 +23,12 @@ pub mod types {
     pub struct ContractId(OriginatedAddress);
     zkabacus_crypto::impl_sqlx_for_bincode_ty!(ContractId);
 
+    impl ContractId {
+        pub fn to_originated_address(self) -> OriginatedAddress {
+            self.0
+        }
+    }
+
     impl Display for ContractId {
         fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
             // TODO: Fill in with actual contract ID

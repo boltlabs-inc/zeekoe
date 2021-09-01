@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use crate::escrow::{notify::Level, types::*};
 use inline_python::python;
 use tezedge::{OriginatedAddress, ToBase58Check};
@@ -25,53 +27,79 @@ lazy_static::lazy_static! {
 
             close_scalar_bytes = 'close_scalar
 
+            // Originate a contract on chain
             def originate(
                 uri,
+                close_scalar_bytes,
+                cust_addr, merch_addr,
                 cust_acc,
                 cust_pubkey, merch_pubkey,
                 channel_id,
                 merch_g2, merch_y2s, merch_x2,
                 cust_funding, merch_funding,
+                min_confirmations,
+                self_delay
+            ):
+                // Customer pytezos interface
+                cust_py = pytezos.using(key=cust_acc, shell=uri)
+
+                initial_storage = {"cid": channel_id,
+                "close_scalar": close_scalar_bytes,
+                "context_string": "zkChannels mutual close",
+                "customer_address": cust_addr,
+                "customer_balance": cust_funding,
+                "customer_public_key": cust_pubkey,
+                "delay_expiry": "1970-01-01T00:00:00Z",
+                "g2": merch_g2,
+                "merchant_address": merch_addr,
+                "merchant_balance": merch_funding,
+                "merchant_public_key": merch_pubkey,
+                "y2s_0": merch_y2s[0],
+                "y2s_1": merch_y2s[1],
+                "y2s_2": merch_y2s[2],
+                "y2s_3": merch_y2s[3],
+                "y2s_4": merch_y2s[4],
+                "x2": merch_x2,
+                "revocation_lock": "0x00",
+                "self_delay": self_delay,
+                "status": 0}
+
+                // Originate main zkchannel contract
+                out = cust_py.origination(script=main_code.script(initial_storage=initial_storage)).autofill().sign().send(min_confirmations=min_confirmations)
+
+                // Get address, status, and level of main zkchannel contract
+                op_info = pytezos.using(shell=uri).shell.blocks[-20:].find_operation(out.hash())
+                contents = op_info["contents"][0]
+                contract_id = contents["metadata"]["operation_result"]["originated_contracts"][0]
+                status = contents["metadata"]["operation_result"]["status"]
+                level = 1 // TODO: Find out how to return the actual level, presumably from the block hash: op_info["branch"]
+
+                return (contract_id, status, level)
+
+            // Call the `addCustFunding` entrypoint of an extant contract
+            def add_customer_funding(
+                uri,
+                cust_acc,
+                contract_id,
+                cust_funding,
                 min_confirmations
             ):
                 // Customer pytezos interface
                 cust_py = pytezos.using(key=cust_acc, shell=uri)
 
-                initial_storage = {
-                    "cid": channel_id,
-                    "close_flag": close_scalar_bytes,
-                    "context_string": "zkChannels mutual close",
-                    "custAddr": cust_addr,
-                    "custBal": 0,
-                    "custFunding": cust_funding,
-                    "custPk": cust_pubkey,
-                    "delayExpiry": "1970-01-01T00:00:00Z",
-                    "g2": merch_g2,
-                    "merchAddr": merch_addr,
-                    "merchBal": 0,
-                    "merchFunding": merch_funding,
-                    "merchPk": merch_pubkey,
-                    "merchPk0": merch_y2s[0],
-                    "merchPk1": merch_y2s[1],
-                    "merchPk2": merch_y2s[2],
-                    "merchPk3": merch_y2s[3],
-                    "merchPk4": merch_y2s[4],
-                    "merchPk5": merch_x2,
-                    "revLock": "0x00",
-                    "selfDelay": 3,
-                    "status": 0
-                }
+                // Customer zkchannel contract interface
+                cust_ci = cust_py.contract(contract_id)
 
-                // Originate main zkchannel contract
-                out = cust_py.origination(script=main_code.script(initial_storage=initial_storage)).autofill().sign().send(min_confirmations=min_confirmations)
+                // Call the addCustFunding entrypoint
+                out = cust_ci.addCustFunding().with_amount(cust_funding).send(min_confirmations=min_confirmations)
 
-                // Get address of main zkchannel contract
-                opg = pytezos.shell.blocks[-20:].find_operation(out.hash())
-                contents = opg["contents"][0]
-                level = contents["level"]
-                main_id = contents["metadata"]["operation_result"]["originated_contracts"][0]
+                // Get status and level of the addCustFunding operation
+                op_info = pytezos.using(shell=uri).shell.blocks[-20:].find_operation(out.hash())
+                contents = op_info["contents"][0]
+                status = contents["metadata"]["operation_result"]["status"]
+                level = 1 // TODO: Find out how to return the actual level, presumably from the block hash: op_info["branch"]
 
-                return (main_id, level)
+                return (status, level)
         }
     };
 }
@@ -88,6 +116,37 @@ fn merchant_public_key_to_python_input(
     let x2 = x2.to_compressed().to_vec();
 
     (g2, y2s, x2)
+}
+
+/// The result of attempting an operation.
+pub enum OperationStatus {
+    /// The operation successfully was applied and included in the head block.
+    Applied,
+    /// The operation failed to be applied at all.
+    Failed,
+    /// The operation was backtracked.
+    Backtracked,
+    /// The operation was skipped.
+    Skipped,
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("Could not parse `OperationStatus` {0}")]
+pub struct OperationStatusParseError(String);
+
+impl FromStr for OperationStatus {
+    type Err = OperationStatusParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        use OperationStatus::*;
+        Ok(match s {
+            "applied" => Applied,
+            "failed" => Failed,
+            "backtracked" => Backtracked,
+            "skipped" => Skipped,
+            s => return Err(OperationStatusParseError(s.to_string())),
+        })
+    }
 }
 
 pub mod establish {
@@ -126,6 +185,11 @@ pub mod establish {
     #[error("Could not originate contract: {0}")]
     pub struct OriginateError(String);
 
+    /// An error while attempting to fund the contract.
+    #[derive(Debug, Clone, thiserror::Error)]
+    #[error("Could not fund contract: {0}")]
+    pub struct CustomerFundError(String);
+
     /// Originate a contract on chain.
     ///
     /// This call will wait until the contract is confirmed at depth. It returns the new
@@ -145,7 +209,7 @@ pub mod establish {
         originator_key_pair: &TezosKeyMaterial,
         channel_id: &ChannelId,
         confirmation_depth: u64,
-    ) -> Result<(ContractId, Level), OriginateError> {
+    ) -> Result<(ContractId, OperationStatus, Level), OriginateError> {
         let (g2, y2s, x2) = super::merchant_public_key_to_python_input(merchant_public_key);
         let merchant_funding = merchant_funding_info.balance.into_inner();
         let merchant_pubkey = merchant_funding_info.public_key.to_base58check();
@@ -173,12 +237,12 @@ pub mod establish {
         });
 
         if PYTHON.get("success") {
-            let (contract_id, level) = PYTHON.get::<(String, u32)>("out");
+            let (contract_id, status, level) = PYTHON.get::<(String, String, u32)>("out");
             let contract_id = ContractId::new(
                 OriginatedAddress::from_base58check(&contract_id)
                     .expect("Contract id returned from pytezos must be valid base58"),
             );
-            Ok((contract_id, level.into()))
+            Ok((contract_id, status.parse().unwrap(), level.into()))
         } else {
             let error = PYTHON.get::<String>("error");
             Err(OriginateError(error))
@@ -197,11 +261,45 @@ pub mod establish {
     /// - the `addFunding` entrypoint has not been called by the customer address before.
     #[allow(unused)]
     pub async fn add_customer_funding(
+        uri: Option<&http::Uri>,
         contract_id: &ContractId,
         customer_funding_info: &CustomerFundingInformation,
         customer_key_pair: &TezosKeyMaterial,
-    ) -> Result<(), Error> {
-        todo!()
+        confirmation_depth: u64,
+    ) -> Result<(OperationStatus, Level), CustomerFundError> {
+        let customer_funding = customer_funding_info.balance.into_inner();
+        let customer_account_details = customer_key_pair.file_contents();
+        let customer_pubkey = customer_funding_info.public_key.to_base58check();
+        let contract_id = contract_id.clone().to_originated_address().to_base58check();
+        let contract_id = &contract_id;
+        let uri = uri.map(|uri| uri.to_string());
+
+        PYTHON.run(python! {
+            success = true
+            try:
+                out = add_customer_funding(
+                    'uri,
+                    'customer_account_details,
+                    'contract_id,
+                    'customer_funding,
+                    'confirmation_depth
+                )
+            except Exception as e:
+                success = false
+                error = str(e)
+        });
+
+        if PYTHON.get("success") {
+            let (status, level) = PYTHON.get::<(String, u32)>("out");
+            let contract_id = ContractId::new(
+                OriginatedAddress::from_base58check(contract_id)
+                    .expect("Contract id returned from pytezos must be valid base58"),
+            );
+            Ok((status.parse().unwrap(), level.into()))
+        } else {
+            let error = PYTHON.get::<String>("error");
+            Err(CustomerFundError(error))
+        }
     }
 
     /// Verify that the contract specified by [`ContractId`] has been correctly originated on
