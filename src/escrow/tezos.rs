@@ -77,7 +77,8 @@ lazy_static::lazy_static! {
                 contents = op_info["contents"][0]
                 contract_id = contents["metadata"]["operation_result"]["originated_contracts"][0]
                 status = contents["metadata"]["operation_result"]["status"]
-                level = 1 // TODO: Find out how to return the actual level, presumably from the block hash: op_info["branch"]
+                block = op_info["branch"]
+                level = pytezos.using(shell=uri).shell.blocks[block].level()
 
                 return (contract_id, status, level)
 
@@ -102,7 +103,8 @@ lazy_static::lazy_static! {
                 op_info = pytezos.using(shell=uri).shell.blocks[-20:].find_operation(out.hash())
                 contents = op_info["contents"][0]
                 status = contents["metadata"]["operation_result"]["status"]
-                level = 1 // TODO: Find out how to return the actual level, presumably from the block hash: op_info["branch"]
+                block = op_info["branch"]
+                level = pytezos.using(shell=uri).shell.blocks[block].level()
 
                 return (status, level)
         }
