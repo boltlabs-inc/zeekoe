@@ -62,7 +62,13 @@ impl Command for Run {
         // Share the configuration between all server threads
         let merchant_config = Arc::new(merchant_config);
         let client = reqwest::Client::new();
-        let tezos_key_material = TezosKeyMaterial::read_key_pair(config.tezos_account.clone())?;
+        let tezos_key_material = TezosKeyMaterial::read_key_pair(config.tezos_account.clone())
+            .with_context(|| {
+                format!(
+                    "Could not read Tezos key material from {:?}",
+                    config.tezos_account
+                )
+            })?;
 
         // Sender and receiver to indicate graceful shutdown should occur
         let (terminate, _) = broadcast::channel(1);
