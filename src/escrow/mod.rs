@@ -63,17 +63,17 @@ pub mod types {
         /// The file should use the key file json formatting that is also used by faucet:
         /// https://faucet.tzalpha.net/
         pub fn read_key_pair(path: impl AsRef<Path>) -> Result<TezosKeyMaterial, Error> {
-            let file_contents = match fs::read_to_string(path) {
+            let file_contents = match fs::read_to_string(&path) {
                 Ok(key_file) => key_file,
                 Err(_) => return Err(Error::KeyFileInvalid),
             };
 
-            let file_contents_ref = &file_contents;
+            let path = path.as_ref().to_string_lossy();
 
             // Use pytezos parsing functions to parse account config file.
             let key_context: inline_python::Context = inline_python::python!(
                 from pytezos import pytezos;
-                client = pytezos.using(key='file_contents_ref)
+                client = pytezos.using(key='path)
                 public_key = client.key.public_key()
             );
 
