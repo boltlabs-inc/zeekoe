@@ -1,4 +1,5 @@
 database = { sqlite = "merchant.db" }
+tezos_account = "../tezos-contract/pytezos-tests/sample_files/tz1VcYZwxQoyxfjhpNiRkdCUe5rzs53LMev6.json"
 
 [[service]]
 address = "::1"

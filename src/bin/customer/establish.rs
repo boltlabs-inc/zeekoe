@@ -198,7 +198,7 @@ impl Command for Establish {
         .context("Failed to initialize the channel")?;
 
         // TODO: parameterize these hard-coded defaults
-        let uri = "localhost:20000".parse().unwrap();
+        let uri = "https://rpc.tzkt.io/edo2net/".parse().unwrap();
 
         // Write out establishment struct to disk if operating in off-chain mode
         if true
