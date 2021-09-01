@@ -233,6 +233,7 @@ impl Command for Establish {
                 &tezos_key_material,
                 &channel_id,
                 tezos::DEFAULT_CONFIRMATION_DEPTH,
+                tezos::DEFAULT_SELF_DELAY,
             )
             .await
             .context("Failed to originate contract on-chain")?

@@ -30,7 +30,7 @@ impl Method for Parameters {
         let (public_key, commitment_parameters, range_constraint_parameters) =
             merchant_config.extract_customer_config_parts();
 
-        let tezos_public_key = tezos_key_material.into_public_key();
+        let tezos_public_key = tezos_key_material.into_keypair().0;
         let tezos_address = tezos_public_key.hash();
 
         // Send those parameters to the customer

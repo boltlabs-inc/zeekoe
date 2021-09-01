@@ -11,13 +11,17 @@ static CONTRACT_CODE: &str = include_str!("zkchannel_contract.tz");
 /// The default confirmation depth to consider chain operations to be final.
 pub const DEFAULT_CONFIRMATION_DEPTH: u64 = 20;
 
+/// The default `self_delay` parameter: 2 days, in seconds.
+pub const DEFAULT_SELF_DELAY: u64 = 2 * 24 * 60 * 60;
+
 lazy_static::lazy_static! {
     /// The ZkChannels close scalar as bytes
-    static ref CLOSE_SCALAR_BYTES: [u8; 32] = zkabacus_crypto::CLOSE_SCALAR.to_bytes();
+    static ref CLOSE_SCALAR_HEX_STRING: String =
+        hex_string(zkabacus_crypto::CLOSE_SCALAR.to_bytes().to_vec());
 
     /// The python execution context used for all pytezos operations.
     static ref PYTHON: inline_python::Context = {
-        let close_scalar = CLOSE_SCALAR_BYTES.to_vec();
+        let close_scalar = &*CLOSE_SCALAR_HEX_STRING;
 
         python! {
             from pytezos import pytezos, Contract, ContractInterface
@@ -30,7 +34,6 @@ lazy_static::lazy_static! {
             // Originate a contract on chain
             def originate(
                 uri,
-                close_scalar_bytes,
                 cust_addr, merch_addr,
                 cust_acc,
                 cust_pubkey, merch_pubkey,
@@ -104,16 +107,23 @@ lazy_static::lazy_static! {
     };
 }
 
-fn merchant_public_key_to_python_input(
+/// Convert a byte vector into a string like "0xABC123".
+fn hex_string(bytes: Vec<u8>) -> String {
+    format!("0x{}", hex::encode(bytes))
+}
+
+/// Convert a Pointcheval-Sanders public key to its three components in string-encoded form suitable
+/// for pytezos.
+fn pointcheval_sanders_public_key_to_python_input(
     public_key: &zkabacus_crypto::PublicKey,
-) -> (Vec<u8>, Vec<Vec<u8>>, Vec<u8>) {
+) -> (String, Vec<String>, String) {
     let zkabacus_crypto::PublicKey { g2, y2s, x2, .. } = public_key;
-    let g2 = g2.to_compressed().to_vec();
+    let g2 = hex_string(g2.to_compressed().to_vec());
     let y2s = y2s
         .iter()
-        .map(|y2| y2.to_compressed().to_vec())
+        .map(|y2| hex_string(y2.to_compressed().to_vec()))
         .collect::<Vec<_>>();
-    let x2 = x2.to_compressed().to_vec();
+    let x2 = hex_string(x2.to_compressed().to_vec());
 
     (g2, y2s, x2)
 }
@@ -209,31 +219,40 @@ pub mod establish {
         originator_key_pair: &TezosKeyMaterial,
         channel_id: &ChannelId,
         confirmation_depth: u64,
+        self_delay: u64,
     ) -> Result<(ContractId, OperationStatus, Level), OriginateError> {
-        let (g2, y2s, x2) = super::merchant_public_key_to_python_input(merchant_public_key);
+        let (g2, y2s, x2) =
+            super::pointcheval_sanders_public_key_to_python_input(merchant_public_key);
         let merchant_funding = merchant_funding_info.balance.into_inner();
+        let merchant_address = merchant_funding_info.address.to_base58check();
         let merchant_pubkey = merchant_funding_info.public_key.to_base58check();
 
-        let customer_account_details = originator_key_pair.file_contents();
+        let customer_account_key = originator_key_pair.private_key().to_base58check();
         let customer_funding = customer_funding_info.balance.into_inner();
+        let customer_address = customer_funding_info.address.to_base58check();
         let customer_pubkey = customer_funding_info.public_key.to_base58check();
         let channel_id = channel_id.to_bytes().to_vec();
         let uri = uri.map(|uri| uri.to_string());
 
         PYTHON.run(python! {
-            success = true
-            try:
-                out = originate(
-                    'uri,
-                    'customer_account_details, 'channel_id,
-                    'customer_pubkey, 'merchant_pubkey,
-                    'g2, 'y2s, 'x2,
-                    'customer_funding, 'merchant_funding,
-                    'confirmation_depth
-                )
-            except Exception as e:
-                success = false
-                error = str(e)
+            success = True
+            // try:
+            out = originate(
+                'uri,
+                'customer_address, 'merchant_address,
+                'customer_account_key,
+                'customer_pubkey, 'merchant_pubkey,
+                'channel_id,
+                'g2, 'y2s, 'x2,
+                'customer_funding, 'merchant_funding,
+                'confirmation_depth,
+                'self_delay
+            )
+            // except Exception as e:
+            //     success = False
+            //     error = str(e)
+            //     with open("error.log", "w") as f:
+            //         f.write(error)
         });
 
         if PYTHON.get("success") {
@@ -275,7 +294,7 @@ pub mod establish {
         let uri = uri.map(|uri| uri.to_string());
 
         PYTHON.run(python! {
-            success = true
+            success = True
             try:
                 out = add_customer_funding(
                     'uri,
@@ -285,7 +304,7 @@ pub mod establish {
                     'confirmation_depth
                 )
             except Exception as e:
-                success = false
+                success = False
                 error = str(e)
         });
 

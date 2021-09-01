@@ -4,7 +4,9 @@ pub mod tezos;
 pub mod types {
 
     use super::notify::Level;
-    use tezedge::{crypto::base58check::ToBase58Check, OriginatedAddress};
+    use tezedge::{
+        crypto::base58check::ToBase58Check, OriginatedAddress, PrivateKey as TezosPrivateKey,
+    };
     use zkabacus_crypto::PublicKey as ZkAbacusPublicKey;
     use {
         serde::{Deserialize, Serialize},
@@ -50,9 +52,10 @@ pub mod types {
     pub type TezosFundingAddress = tezedge::ImplicitAddress;
 
     /// Tezos key material, with public key and contents of key file.
-    #[derive(Debug, Clone)]
+    #[derive(Clone)]
     pub struct TezosKeyMaterial {
         public_key: TezosPublicKey,
+        private_key: TezosPrivateKey,
         #[allow(unused)]
         file_contents: String,
     }
@@ -74,28 +77,37 @@ pub mod types {
             let key_context: inline_python::Context = inline_python::python!(
                 from pytezos import pytezos;
                 client = pytezos.using(key='path)
-                public_key = client.key.public_key()
+                public_key = str(client.key.public_key())
+                private_key = str(client.key.secret_key())
             );
 
             // Retrieve key strings from python context
             let public_key_string = key_context.get::<String>("public_key");
+            let private_key_string: String = key_context.get::<String>("private_key");
 
             // Parse strings using tezedge-client methods
             Ok(Self {
                 public_key: TezosPublicKey::from_base58check(&public_key_string)
+                    .map_err(|_| Error::KeyFileInvalid)?,
+                private_key: TezosPrivateKey::from_base58check(&private_key_string)
                     .map_err(|_| Error::KeyFileInvalid)?,
                 file_contents,
             })
         }
 
         /// Transform into just the public key.
-        pub fn into_public_key(self) -> TezosPublicKey {
-            self.public_key
+        pub fn into_keypair(self) -> (TezosPublicKey, TezosPrivateKey) {
+            (self.public_key, self.private_key)
         }
 
         /// Get the public key.
         pub fn public_key(&self) -> &TezosPublicKey {
             &self.public_key
+        }
+
+        /// Get the private key.
+        pub fn private_key(&self) -> &TezosPrivateKey {
+            &self.private_key
         }
 
         /// Get the funding address.
