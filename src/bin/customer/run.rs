@@ -22,7 +22,7 @@ use anyhow::Context;
 
 #[async_trait]
 impl Command for Run {
-    async fn run(self, rng: StdRng, config: Config) -> Result<(), anyhow::Error> {
+    async fn run(self, mut rng: StdRng, config: Config) -> Result<(), anyhow::Error> {
         let database = database(&config)
             .await
             .context("Customer chain-watching daemon failed to connect to local database")?;
@@ -75,7 +75,6 @@ impl Command for Run {
             let customer_key_material = customer_key_material.clone();
 
             loop {
-
                 // Retrieve list of channels from database
                 let channels = match database
                     .get_channels()
@@ -95,12 +94,15 @@ impl Command for Run {
                     };
 
                     // The channel has not reacted to an expiry transaction being posted
+                    // The condition is
+                    // - the contract is in Expiry state
+                    // - the local state is not PendingClose
                     if contract_state.status() == ContractStatus::Expiry
-                        && zkchannels_state::PendingClose.matches(&channel.state)
+                        && !zkchannels_state::PendingClose.matches(&channel.state)
                     {
                         // call unilateral close, which will decide whether to respond to expiry.
                         // if it posts a custClaim, will wait for it to be finalized.
-                        // should this go in a separate thread/block that is awaited elsewhere?
+                        // @kwf: should this go in a separate thread/block that is awaited elsewhere?
                         close::unilateral_close(
                             &channel.label,
                             self.off_chain,
@@ -113,6 +115,11 @@ impl Command for Run {
                     }
 
                     // The channel has not claimed funds after custClose timeout expired
+                    // The condition is:
+                    // - the contract is in the CustomerClose state
+                    // - the timeout has been set and expired
+                    // - the local state is not PendingCustomerClaim (e.g. we did not try to
+                    //   claim funds yet)
                     if contract_state.status() == ContractStatus::CustomerClose
                         && contract_state.timeout_expired().is_some()
                         && contract_state.timeout_expired().unwrap()
@@ -130,16 +137,34 @@ impl Command for Run {
                     }
 
                     // The channel has not reacted to a merchDispute transaction being posted
+                    // The condition is:
+                    // - the contract is Closed but the local state is still PendingClose
+                    // - the local merchant balance has been paid out (e.g. we are not in the
+                    //   expiry flow)
                     if contract_state.status() == ContractStatus::Closed
                         && zkchannels_state::PendingClose.matches(&channel.state)
                         && channel.closing_balances.merchant_balance.is_some()
                     {
-                        // call merchDispute
-                        close::process_dispute(database.as_ref(), &channel.label)
-                            .await
-                            .unwrap_or_else(|e| eprintln!("Error: {}", e));
-
-                        // TODO: also call finalize_dispute??
+                        // react to merchDispute
+                        match contract_state.final_balances() {
+                            Some(balances) => {
+                                close::process_dispute(database.as_ref(), &channel.label)
+                                    .await
+                                    .unwrap_or_else(|e| eprintln!("Error: {}", e));
+                                close::finalize_dispute(
+                                    database.as_ref(),
+                                    &channel.label,
+                                    balances.merchant_balance(),
+                                    balances.customer_balance(),
+                                )
+                                .await
+                                .unwrap_or_else(|e| eprintln!("Error: {}", e));
+                            }
+                            None => eprintln!(
+                                "Error: unable to process merchant dispute because \
+                                retrieved contract state did not define final balances."
+                            ),
+                        }
                     }
                 }
                 interval.tick().await;
@@ -153,7 +178,7 @@ impl Command for Run {
             .serve_while(address, None, initialize, interact, wait_terminate)
             .await?;
 
-        polling_service_thread_handle.await?;
+        polling_service_thread_handle.await??;
 
         Ok::<_, anyhow::Error>(())
     }

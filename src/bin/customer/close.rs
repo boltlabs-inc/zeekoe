@@ -91,7 +91,7 @@ struct Closing {
 pub async fn unilateral_close(
     channel_name: &ChannelName,
     off_chain: bool,
-    mut rng: &StdRng,
+    rng: &mut StdRng,
     database: &dyn QueryCustomer,
     tezos_key_material: &TezosKeyMaterial,
 ) -> Result<(), anyhow::Error> {
@@ -116,7 +116,7 @@ pub async fn unilateral_close(
         };
 
         // Call the custClose entrypoint and wait for it to be confirmed on chain
-        tezos::close::cust_close(&contract_id, &close_message, &tezos_key_material)
+        tezos::close::cust_close(&contract_id, &close_message, tezos_key_material)
             .await
             .context("Failed to post custClose transaction")?;
     } else {
@@ -193,7 +193,7 @@ pub async fn claim_funds(
                 },
             )
             .await
-            .context(format!("Failed to update channel status to PendingCustomerClaim for {}", channel_name))?;
+            .context(format!("Failed to update channel status to PendingCustomerClaim for {}", channel_name))??;
 
             let contract_id = channel_details.contract_details.contract_id
                 .ok_or_else(|| anyhow::anyhow!("Failed to claim customer funds for {} because contract details were not correctly saved", channel_name))?;
@@ -201,7 +201,7 @@ pub async fn claim_funds(
             // Post custClaim entrypoint on chain and wait for it to be confirmed
             let final_balances = tezos::close::cust_claim(
                 &contract_id,
-                &customer_key_material,
+                customer_key_material,
             )
             .await
             .context(format!(
@@ -255,7 +255,7 @@ pub async fn process_dispute(
 /// **Usage**: this function is called when a merchDispute entrypoint call/operation is confirmed
 /// on chain to the required confirmation depth.
 #[allow(unused)]
-async fn finalize_dispute(
+pub async fn finalize_dispute(
     database: &dyn QueryCustomer,
     channel_name: &ChannelName,
     merchant_balance: MerchantBalance,
@@ -308,7 +308,7 @@ async fn finalize_customer_claim(
         .context(format!(
             "Failed to update channel status to Closed for {}",
             channel_name
-        ))?;
+        ))??;
 
     // Update final balances to indicate that the customer balance is paid out to the customer
     database
@@ -343,7 +343,7 @@ async fn finalize_expiry(
         .context(format!(
             "Failed to update channel status to Closed for {}",
             channel_name
-        ))?;
+        ))??;
 
     // Update final balances to indicate that the customer balance is paid out to the customer
     database
@@ -462,7 +462,7 @@ async fn finalize_mutual_close(
 }
 
 async fn zkabacus_close(
-    rng: StdRng,
+    mut rng: StdRng,
     database: &dyn QueryCustomer,
     channel_name: &ChannelName,
     config: &self::Config,
@@ -480,7 +480,7 @@ async fn zkabacus_close(
         .context("Failed selecting close session with merchant")?;
 
     // Generate the closing message and update state to PendingClose
-    let closing_message = get_close_message(rng, database, channel_name)
+    let closing_message = get_close_message(&mut rng, database, channel_name)
         .await
         .context("Failed to generate mutual close data.")?;
 
@@ -504,20 +504,20 @@ async fn zkabacus_close(
 /// Extract the close message from the saved channel status (including the current state
 /// any stored signatures) and update the channel state to PendingClose atomically.
 async fn get_close_message(
-    mut rng: StdRng,
+    rng: &mut StdRng,
     database: &dyn QueryCustomer,
     channel_name: &ChannelName,
 ) -> Result<ClosingMessage, anyhow::Error> {
     let closing_message = database
         .with_closeable_channel(channel_name, |state| {
             let close_message = match state {
-                State::Inactive(inactive) => inactive.close(&mut rng),
-                State::Originated(inactive) => inactive.close(&mut rng),
-                State::CustomerFunded(inactive) => inactive.close(&mut rng),
-                State::MerchantFunded(inactive) => inactive.close(&mut rng),
-                State::Ready(ready) => ready.close(&mut rng),
-                State::Started(started) => started.close(&mut rng),
-                State::Locked(locked) => locked.close(&mut rng),
+                State::Inactive(inactive) => inactive.close(rng),
+                State::Originated(inactive) => inactive.close(rng),
+                State::CustomerFunded(inactive) => inactive.close(rng),
+                State::MerchantFunded(inactive) => inactive.close(rng),
+                State::Ready(ready) => ready.close(rng),
+                State::Started(started) => started.close(rng),
+                State::Locked(locked) => locked.close(rng),
                 State::PendingClose(close_message) => close_message,
                 // Cannot close on Disputed or Closed channels
                 _ => return Err(close::Error::UncloseableState(state.state_name())),
