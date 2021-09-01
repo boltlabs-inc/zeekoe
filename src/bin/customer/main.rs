@@ -20,11 +20,11 @@ use zeekoe::{
     protocol,
 };
 
-pub mod close;
+pub(crate) mod close;
 mod establish;
 mod manage;
 mod pay;
-mod run;
+mod watch;
 
 /// A single customer-side command, parameterized by the currently loaded configuration.
 ///

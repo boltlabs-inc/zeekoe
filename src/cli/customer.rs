@@ -33,7 +33,7 @@ pub enum Customer {
     Pay(Pay),
     Refund(Refund),
     Close(Close),
-    Run(Run),
+    Run(Watch),
 }
 
 /// List all the zkChannels you've established with merchants.
@@ -175,7 +175,7 @@ pub struct Close {
 /// Run the chain-watching server
 #[derive(Debug, StructOpt)]
 #[non_exhaustive]
-pub struct Run {
+pub struct Watch {
     /// Enable off-chain transactions.
     #[structopt(long)]
     pub off_chain: bool,

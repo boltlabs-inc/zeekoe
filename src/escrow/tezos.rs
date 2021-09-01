@@ -1,6 +1,6 @@
 use crate::escrow::types::ContractStatus;
 
-use super::types::ContractId;
+use super::types::{ContractId, Error};
 
 /// State of a zkChannels contract at a point in time.
 pub struct ContractState {
@@ -27,7 +27,7 @@ impl ContractState {
 /// This function should query the state of the contract at the given confirmation depth -- that
 /// is, the state of the the contract, but not accounting for the latest
 /// `DEFAULT_CONFIRMATION_DEPTH` blocks.
-pub fn get_contract_state(_contract_id: &ContractId) -> ContractState {
+pub async fn get_contract_state(_contract_id: &ContractId) -> Result<ContractState, Error> {
     todo!()
 }
 
