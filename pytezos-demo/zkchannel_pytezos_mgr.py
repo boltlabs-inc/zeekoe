@@ -35,10 +35,10 @@ class FeeTracker:
     def print_fees(self):
         pprint(self.fees)
 
-def add_funding(ci, amt):
+def add_cust_funding(ci, amt):
     print("Adding funds ({})".format(amt))
-    out = ci.addFunding().with_amount(amt).inject(_async=False)
-    print("addFunding ophash: ", out['hash'])
+    out = ci.addCustFunding().with_amount(amt).send(min_confirmations=1)
+    print("Add Cust Funding ophash: ", out['hash'])
     return out
 
 def originate(cust_py, init_params, cust_funding, merch_funding):
@@ -48,32 +48,30 @@ def originate(cust_py, init_params, cust_funding, merch_funding):
     channel_id = init_params.get("channel_id")
 
     # Merchant's PS pubkey, used for verifying the merchant's signature in custClose.
-    g2 = merch_ps_pk.get("g2")
-    y2s = merch_ps_pk.get("y2s")
-    x2 = merch_ps_pk.get("x2")
-
-    initial_storage = {'cid': channel_id, 
-    'close_flag': close_scalar_bytes,
-    'context_string': "zkChannels mutual close",
-    'custAddr': cust_addr, 
-    'custBal':0, 
-    'custFunding': cust_funding, 
-    'custPk': cust_pubkey, 
-    'delayExpiry': '1970-01-01T00:00:00Z', 
-    'g2':g2,
-    'merchAddr': merch_addr, 
-    'merchBal': 0, 
-    'merchFunding': merch_funding, 
-    'merchPk': merch_pubkey, 
-    'merchPk0': y2s[0],
-    'merchPk1': y2s[1],
-    'merchPk2': y2s[2],
-    'merchPk3': y2s[3],
-    'merchPk4': y2s[4],
-    'merchPk5': x2,
-    'revLock': '0x00', 
-    'selfDelay': 3, 
-    'status': 0}
+    merch_g2 = merch_ps_pk.get("g2")
+    merch_y2s = merch_ps_pk.get("y2s")
+    merch_x2 = merch_ps_pk.get("x2")
+    
+    initial_storage = {"cid": channel_id, 
+    "close_scalar": close_scalar_bytes,
+    "context_string": "zkChannels mutual close",
+    "customer_address": cust_addr, 
+    "customer_balance": cust_funding,  
+    "customer_public_key": cust_pubkey, 
+    "delay_expiry": "1970-01-01T00:00:00Z", 
+    "g2": merch_g2,
+    "merchant_address": merch_addr, 
+    "merchant_balance": merch_funding, 
+    "merchant_public_key": merch_pubkey, 
+    "y2s_0": merch_y2s[0],
+    "y2s_1": merch_y2s[1],
+    "y2s_2": merch_y2s[2],
+    "y2s_3": merch_y2s[3],
+    "y2s_4": merch_y2s[4],
+    "x2": merch_x2,
+    "revocation_lock": "0x00", 
+    "self_delay": 172800, 
+    "status": 0}
 
     # Originate main zkchannel contract
     print("Originate main zkChannel contract")
@@ -136,7 +134,7 @@ def zkchannel_establish(feetracker, cust_py, merch_py, establish_params):
     cust_ci = cust_py.contract(contract_id)
 
     # add customer's balance to the contract using 'addFunding' entrypoint
-    out = add_funding(cust_ci, cust_funding)
+    out = add_cust_funding(cust_ci, cust_funding)
     feetracker.add_result('addFunding', out)
 
     return contract_id
