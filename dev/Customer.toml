@@ -1,3 +1,3 @@
 database = { sqlite = "customer.db" }
 trust_certificate = "localhost.crt"
-private_key = "customer_private_key"
+tezos_key_material = "dev/customer_tezos_key_material.json"

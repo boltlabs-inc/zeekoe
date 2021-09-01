@@ -172,6 +172,7 @@ pub struct Close {
     pub off_chain: bool,
 }
 
+/// Run the chain-watching server
 #[derive(Debug, StructOpt)]
 #[non_exhaustive]
 pub struct Run {
