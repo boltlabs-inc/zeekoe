@@ -9,7 +9,7 @@ use zkabacus_crypto::{ChannelId, CustomerBalance, MerchantBalance, PublicKey};
 static CONTRACT_CODE: &str = include_str!("zkchannel_contract.tz");
 
 /// The default confirmation depth to consider chain operations to be final.
-pub const DEFAULT_CONFIRMATION_DEPTH: u64 = 20;
+pub const DEFAULT_CONFIRMATION_DEPTH: u64 = 1; // FIXME: put this back to 20 after testing
 
 /// The default `self_delay` parameter: 2 days, in seconds.
 pub const DEFAULT_SELF_DELAY: u64 = 2 * 24 * 60 * 60;
@@ -67,6 +67,8 @@ lazy_static::lazy_static! {
                 "self_delay": self_delay,
                 "status": 0}
 
+                print(initial_storage) // FIXME: delete this
+
                 // Originate main zkchannel contract
                 out = cust_py.origination(script=main_code.script(initial_storage=initial_storage)).autofill().sign().send(min_confirmations=min_confirmations)
 
@@ -118,12 +120,12 @@ fn pointcheval_sanders_public_key_to_python_input(
     public_key: &zkabacus_crypto::PublicKey,
 ) -> (String, Vec<String>, String) {
     let zkabacus_crypto::PublicKey { g2, y2s, x2, .. } = public_key;
-    let g2 = hex_string(g2.to_compressed().to_vec());
+    let g2 = hex_string(g2.to_uncompressed().to_vec());
     let y2s = y2s
         .iter()
-        .map(|y2| hex_string(y2.to_compressed().to_vec()))
+        .map(|y2| hex_string(y2.to_uncompressed().to_vec()))
         .collect::<Vec<_>>();
-    let x2 = hex_string(x2.to_compressed().to_vec());
+    let x2 = hex_string(x2.to_uncompressed().to_vec());
 
     (g2, y2s, x2)
 }
