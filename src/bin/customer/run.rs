@@ -146,25 +146,26 @@ impl Command for Run {
                         && channel.closing_balances.merchant_balance.is_some()
                     {
                         // react to merchDispute
-                        match contract_state.final_balances() {
-                            Some(balances) => {
-                                close::process_dispute(database.as_ref(), &channel.label)
-                                    .await
-                                    .unwrap_or_else(|e| eprintln!("Error: {}", e));
-                                close::finalize_dispute(
-                                    database.as_ref(),
-                                    &channel.label,
-                                    balances.merchant_balance(),
-                                    balances.customer_balance(),
-                                )
-                                .await
-                                .unwrap_or_else(|e| eprintln!("Error: {}", e));
-                            }
-                            None => eprintln!(
-                                "Error: unable to process merchant dispute because \
-                                retrieved contract state did not define final balances."
-                            ),
-                        }
+                        close::process_dispute(database.as_ref(), &channel.label)
+                            .await
+                            .unwrap_or_else(|e| eprintln!("Error: {}", e));
+                        close::finalize_dispute(database.as_ref(), &channel.label)
+                            .await
+                            .unwrap_or_else(|e| eprintln!("Error: {}", e));
+                    }
+
+                    // The channel has not reacted to a merchClaim transaction being posted
+                    // The condition is:
+                    // - the contract is Closed but the local state is still PendingClose
+                    // - the local merchant balance has not been paid out (we are in the expiry flow)
+                    if contract_state.status() == ContractStatus::Closed
+                        && zkchannels_state::PendingClose.matches(&channel.state)
+                        && channel.closing_balances.merchant_balance.is_none()
+                    {
+                        // react to merchClaim
+                        close::finalize_expiry(database.as_ref(), &channel.label)
+                            .await
+                            .unwrap_or_else(|e| eprintln!("Error: {}", e));
                     }
                 }
                 interval.tick().await;

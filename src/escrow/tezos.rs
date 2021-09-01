@@ -1,7 +1,5 @@
 use crate::escrow::types::ContractStatus;
 
-use self::close::FinalBalances;
-
 use super::types::ContractId;
 
 pub struct ContractState {
@@ -9,8 +7,6 @@ pub struct ContractState {
     status: ContractStatus,
     /// Indicator to whether the timeout on the contract has expired, if it was set.
     timeout_expired: Option<bool>,
-    /// Paid-out channel balances, if they exist yet.
-    final_balances: Option<FinalBalances>,
 }
 
 impl ContractState {
@@ -20,10 +16,6 @@ impl ContractState {
 
     pub fn timeout_expired(&self) -> Option<bool> {
         self.timeout_expired
-    }
-
-    pub fn final_balances(&self) -> Option<FinalBalances> {
-        self.final_balances
     }
 }
 

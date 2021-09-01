@@ -258,21 +258,25 @@ pub async fn process_dispute(
 pub async fn finalize_dispute(
     database: &dyn QueryCustomer,
     channel_name: &ChannelName,
-    merchant_balance: MerchantBalance,
-    customer_balance: CustomerBalance,
 ) -> Result<(), anyhow::Error> {
     // Update channel status from Dispute to Closed
-    database
+    let (customer_balance, merchant_balance) = database
         .with_channel_state(
             channel_name,
             zkchannels_state::Dispute,
-            |closing_message| -> Result<_, Infallible> { Ok((State::Closed(closing_message), ())) },
+            |closing_message| -> Result<_, anyhow::Error> {
+                let balances = transfer_balances_to_merchant(
+                    *closing_message.customer_balance(),
+                    *closing_message.merchant_balance(),
+                )?;
+                Ok((State::Closed(closing_message), balances))
+            },
         )
         .await
         .context(format!(
             "Failed to update channel status to Closed for {}",
             channel_name
-        ))?;
+        ))??;
 
     // Indicate that all balances are paid out to the merchant
     database
@@ -326,18 +330,22 @@ async fn finalize_customer_claim(
 ///
 /// **Usage**: this function is called as response to an on-chain event:
 /// - a merchClaim entrypoint call operation is confirmed on chain at the required confirmation depth
-async fn finalize_expiry(
+pub async fn finalize_expiry(
     database: &dyn QueryCustomer,
     channel_name: &ChannelName,
-    merchant_balance: MerchantBalance,
-    customer_balance: CustomerBalance,
 ) -> Result<(), anyhow::Error> {
     // Update status from PendingClose to Closed
-    database
+    let (customer_balance, merchant_balance) = database
         .with_channel_state(
             channel_name,
             zkchannels_state::PendingClose,
-            |closing_message| -> Result<_, Infallible> { Ok((State::Closed(closing_message), ())) },
+            |closing_message| -> Result<_, anyhow::Error> {
+                let balances = transfer_balances_to_merchant(
+                    *closing_message.customer_balance(),
+                    *closing_message.merchant_balance(),
+                )?;
+                Ok((State::Closed(closing_message), balances))
+            },
         )
         .await
         .context(format!(
@@ -451,11 +459,27 @@ async fn finalize_mutual_close(
     merchant_balance: MerchantBalance,
     customer_balance: CustomerBalance,
 ) -> Result<(), anyhow::Error> {
-    // Update database channel status from PendingClose to Closed
-    // and save final balances (should match those in the ClosingMessage)
-    finalize_expiry(database, channel_name, merchant_balance, customer_balance)
+    // Update status from PendingClose to Closed
+    database
+        .with_channel_state(
+            channel_name,
+            zkchannels_state::PendingClose,
+            |closing_message| Ok::<_, Infallible>((State::Closed(closing_message), ())),
+        )
         .await
-        .context("Failed to finalize mutual close");
+        .context(format!(
+            "Failed to update channel status to Closed for {}",
+            channel_name
+        ))??;
+
+    // Update final balances to indicate that the customer balance is paid out to the customer
+    database
+        .update_closing_balances(channel_name, merchant_balance, Some(customer_balance))
+        .await
+        .context(format!(
+            "Failed to save final channel balances for {} after successful close",
+            channel_name
+        ))?;
 
     // Notify the on-chain monitoring daemon this channel is closed
     refresh_daemon(config).await
@@ -531,6 +555,16 @@ async fn get_close_message(
         ))??;
 
     Ok(closing_message)
+}
+
+fn transfer_balances_to_merchant(
+    customer_balance: CustomerBalance,
+    merchant_balance: MerchantBalance,
+) -> Result<(CustomerBalance, MerchantBalance), anyhow::Error> {
+    Ok((
+        CustomerBalance::try_new(0)?,
+        MerchantBalance::try_new(customer_balance.into_inner() + merchant_balance.into_inner())?,
+    ))
 }
 
 fn write_close_json(closing: &Closing) -> Result<(), anyhow::Error> {
