@@ -2,6 +2,7 @@ use crate::escrow::types::ContractStatus;
 
 use super::types::ContractId;
 
+/// State of a zkChannels contract at a point in time.
 pub struct ContractState {
     /// Current contract status.
     status: ContractStatus,
@@ -10,15 +11,22 @@ pub struct ContractState {
 }
 
 impl ContractState {
+    /// Get the current status of the contract.
     pub fn status(&self) -> ContractStatus {
         self.status
     }
 
+    /// Get the indicator to whether the timeout was set and, if so, whether it has expired.
     pub fn timeout_expired(&self) -> Option<bool> {
         self.timeout_expired
     }
 }
 
+/// Query the chain to retrieve the confirmed state of the contract with the given [`ContractId`].
+///
+/// This function should query the state of the contract at the given confirmation depth -- that
+/// is, the state of the the contract, but not accounting for the latest
+/// `DEFAULT_CONFIRMATION_DEPTH` blocks.
 pub fn get_contract_state(_contract_id: &ContractId) -> ContractState {
     todo!()
 }

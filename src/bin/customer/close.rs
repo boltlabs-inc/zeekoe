@@ -41,7 +41,6 @@ enum Error {
 
 #[async_trait]
 impl Command for Close {
-    #[allow(unused)]
     async fn run(self, mut rng: StdRng, config: self::Config) -> Result<(), anyhow::Error> {
         let tezos_key_material = config
             .load_tezos_key_material()
@@ -136,7 +135,6 @@ pub async fn unilateral_close(
     finalize_customer_close(database, channel_name, *close_message.merchant_balance()).await?;
 
     // Notify the on-chain monitoring daemon this channel has started to close.
-    // TODO: Do we need to alert the polling service about the new timeout potential?
     //refresh_daemon(&config).await
     Ok(())
 }
@@ -145,7 +143,6 @@ pub async fn unilateral_close(
 ///
 /// **Usage**: this function is called when the
 /// custClose entrypoint call/operation is confirmed on chain at an appropriate depth.
-#[allow(unused)]
 async fn finalize_customer_close(
     database: &dyn QueryCustomer,
     channel_name: &ChannelName,
@@ -227,7 +224,6 @@ pub async fn claim_funds(
 ///
 /// **Usage**: this function is called in response to a merchDispute entrypoint call/operation that is
 /// confirmed on chain at any depth.
-#[allow(unused)]
 pub async fn process_dispute(
     database: &dyn QueryCustomer,
     channel_name: &ChannelName,
@@ -245,7 +241,7 @@ pub async fn process_dispute(
         .context(format!(
             "Failed to update channel status to Dispute for {}",
             channel_name
-        ))?;
+        ))??;
 
     Ok(())
 }
@@ -254,7 +250,6 @@ pub async fn process_dispute(
 ///
 /// **Usage**: this function is called when a merchDispute entrypoint call/operation is confirmed
 /// on chain to the required confirmation depth.
-#[allow(unused)]
 pub async fn finalize_dispute(
     database: &dyn QueryCustomer,
     channel_name: &ChannelName,
@@ -451,10 +446,9 @@ async fn mutual_close(
 /// **Usage**: This should be called when the customer receives a confirmation from the blockchain
 /// that the mutual close operation has been applied and has reached required confirmation depth.
 /// It will only be called after a successful execution of [`mutual_close()`].
-#[allow(unused)]
 async fn finalize_mutual_close(
     database: &dyn QueryCustomer,
-    config: &self::Config,
+    _config: &self::Config,
     channel_name: &ChannelName,
     merchant_balance: MerchantBalance,
     customer_balance: CustomerBalance,
@@ -482,7 +476,8 @@ async fn finalize_mutual_close(
         ))?;
 
     // Notify the on-chain monitoring daemon this channel is closed
-    refresh_daemon(config).await
+    // refresh_daemon(config).await
+    Ok(())
 }
 
 async fn zkabacus_close(
@@ -581,6 +576,7 @@ fn write_close_json(closing: &Closing) -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+#[allow(unused)]
 async fn refresh_daemon(config: &Config) -> anyhow::Result<()> {
     let (_session_key, chan) = connect_daemon(config)
         .await

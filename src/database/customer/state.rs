@@ -38,7 +38,6 @@ pub enum State {
     /// Note: this [`ClosingMessage`](zkabcus::ClosingMessage) indicates the channel state as
     /// proposed by the customer, which may be different from the final balances.
     PendingCustomerClaim(zkabacus::ClosingMessage),
-    /// The merchant has initiated a channel closure via the expiry flow.
     /// Merchant has evidence that disputes the close balances proposed by the customer.
     ///
     /// Note: this [`ClosingMessage`](zkabcus::ClosingMessage) indicates the channel state as

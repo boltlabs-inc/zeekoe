@@ -182,6 +182,7 @@ pub mod types {
         }
     }
 
+    /// The set of statuses that a zkChannels contract can enter.
     #[derive(Debug, Clone, Copy, PartialEq)]
     pub enum ContractStatus {
         AwaitingCustomerFunding = 0,

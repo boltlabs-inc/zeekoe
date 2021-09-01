@@ -102,7 +102,6 @@ impl Command for Run {
                     {
                         // call unilateral close, which will decide whether to respond to expiry.
                         // if it posts a custClaim, will wait for it to be finalized.
-                        // @kwf: should this go in a separate thread/block that is awaited elsewhere?
                         close::unilateral_close(
                             &channel.label,
                             self.off_chain,
@@ -125,8 +124,7 @@ impl Command for Run {
                         && contract_state.timeout_expired().unwrap()
                         && !zkchannels_state::PendingCustomerClaim.matches(&channel.state)
                     {
-                        // call custClaim and wait for it to be finalized (should this go in a
-                        // separate thread that is awaited elsewhere?)
+                        // call custClaim and wait for it to be finalized
                         close::claim_funds(
                             database.as_ref(),
                             &channel.label,
