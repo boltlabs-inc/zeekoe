@@ -13,6 +13,8 @@ use {
     tokio::sync::broadcast,
 };
 
+use std::time::Duration;
+
 use zeekoe::{
     escrow::{
         tezos,
@@ -21,7 +23,7 @@ use zeekoe::{
     merchant::{
         cli::{self, Run},
         config::{DatabaseLocation, Service},
-        database::{connect_sqlite, QueryMerchant},
+        database::{connect_sqlite, ChannelDetails, QueryMerchant},
         defaults::config_path,
         server::SessionKey,
         Chan, Cli, Config, Server,
@@ -69,6 +71,10 @@ impl Command for Run {
 
         // Sender and receiver to indicate graceful shutdown should occur
         let (terminate, _) = broadcast::channel(1);
+
+        // Clone resources that will be used by both the server and the polling service
+        // let polling_service_database = database.clone();
+        // let polling_service_tezos_key_material = tezos_key_material.clone();
 
         // Collect the futures for the result of running each specified server
         let mut server_futures: FuturesUnordered<_> = config
@@ -177,18 +183,54 @@ impl Command for Run {
             })
             .collect();
 
-        // Wait for each server to finish, and print its error if it did
-        loop {
-            if server_futures.is_empty() {
-                break;
-            }
+        // Set the polling service interval to run every 60 seconds
+        let mut polling_interval = tokio::time::interval(Duration::from_secs(60));
 
-            if let Some(result) = server_futures.next().await {
-                if let Err(e) = result {
-                    eprintln!("Error: {}", e);
+        // Get a join handle for the polling service
+        let polling_service_join_handle = async move {
+            // Clone resources
+            //let database = polling_service_database;
+            //let tezos_key_material = polling_service_tezos_key_material;
+            let database = database.clone();
+            let tezos_key_material = tezos_key_material.clone();
+
+            loop {
+                // Retrieve list of channels from database
+                let channels = match database
+                    .get_channels()
+                    .await
+                    .context("Merchant chain watcher failed to retrieve contract IDs")
+                {
+                    Ok(channels) => channels,
+                    Err(e) => return Err::<(), anyhow::Error>(e),
+                };
+
+                // Query each contract ID and dispatch on the result
+                for channel in channels {
+                    let database = database.clone();
+                    let tezos_key_material = tezos_key_material.clone();
+                    tokio::spawn(async move {
+                        dispatch_channel(database.as_ref(), &channel, tezos_key_material)
+                            .await
+                            .unwrap_or_else(|e| {
+                                eprintln!("Error dispatching on {}: {}", &channel.channel_id, e)
+                            });
+                    });
                 }
-            } else {
-                break;
+                polling_interval.tick().await;
+            }
+        };
+
+        // Wait for either the servers or the polling service to finish
+        tokio::select! {
+            Some(Err(e)) = server_futures.next() => {
+                eprintln!("Error: {}", e);
+            },
+            Err(e) = polling_service_join_handle => {
+                eprintln!("Error: {}", e);
+            }
+            else => {
+                eprintln!("Shutting down...")
             }
         }
 
@@ -197,72 +239,66 @@ impl Command for Run {
 }
 
 #[allow(unused)]
-async fn merchant_poll(
+async fn dispatch_channel(
     database: &dyn QueryMerchant,
+    channel: &ChannelDetails,
     tezos_key_material: TezosKeyMaterial,
 ) -> Result<(), anyhow::Error> {
-    let channels = database
-        .get_channels()
+    // Retrieve on-chain contract status
+    let contract_state = tezos::get_contract_state(&channel.contract_id)
         .await
-        .context("Failed to retrieve channels")?;
+        .context(format!(
+            "Merchant chain watcher failed to retrieve contract state for {}",
+            channel.contract_id
+        ))?;
 
-    for channel in channels {
-        // Retrieve on-chain contract status
-        let contract_state = tezos::get_contract_state(&channel.contract_id)
-            .await
-            .context(format!(
-                "Merchant chain watcher failed to retrieve contract state for {}",
-                channel.contract_id
-            ))?;
+    // The channel has not claimed funds after the expiry timeout expired
+    // The condition is
+    // - the contract is in expiry state
+    // - the contract timeout is expired
+    // - the local channel status is still waiting for expiry
+    if contract_state.status() == ContractStatus::Expiry
+        && contract_state.timeout_expired().unwrap_or(false)
+        && channel.status == ChannelStatus::PendingExpiry
+    {
+        close::claim_expiry_funds(database, &channel.channel_id, &tezos_key_material).await?;
+    }
 
-        // The channel has not claimed funds after the expiry timeout expired
-        // The condition is
-        // - the contract is in expiry state
-        // - the contract timeout is expired
-        // - the local channel status is still waiting for expiry
-        if contract_state.status() == ContractStatus::Expiry
-            && contract_state.timeout_expired().unwrap_or(false)
-            && channel.status == ChannelStatus::PendingExpiry
-        {
-            close::claim_expiry_funds(database, &channel.channel_id, &tezos_key_material).await?;
-        }
-
-        // The channel has not reacted to a customer posting close balances on chain
-        // The condition is
-        // - the contract is in customer close state
-        // - the local channel status is either active (if the customer initiated the close flow)
-        //   or pending expiry (if the merchant initiated the close flow)
-        if contract_state.status() == ContractStatus::CustomerClose
-            && (channel.status == ChannelStatus::Active
-                || channel.status == ChannelStatus::PendingExpiry)
-        {
-            let revocation_lock = contract_state.revocation_lock().ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Failed to retrieve revocation lock from contract storage for {}",
-                    channel.channel_id
-                )
-            })?;
-            let final_balances = contract_state.final_balances().ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Failed to retrieve final balances from contract storage for {}",
-                    channel.channel_id
-                )
-            })?;
-            close::process_customer_close(
-                database,
-                &tezos_key_material,
-                &channel.channel_id,
-                revocation_lock,
+    // The channel has not reacted to a customer posting close balances on chain
+    // The condition is
+    // - the contract is in customer close state
+    // - the local channel status is either active (if the customer initiated the close flow)
+    //   or pending expiry (if the merchant initiated the close flow)
+    if contract_state.status() == ContractStatus::CustomerClose
+        && (channel.status == ChannelStatus::Active
+            || channel.status == ChannelStatus::PendingExpiry)
+    {
+        let revocation_lock = contract_state.revocation_lock().ok_or_else(|| {
+            anyhow::anyhow!(
+                "Failed to retrieve revocation lock from contract storage for {}",
+                channel.channel_id
             )
-            .await?;
-            close::finalize_customer_close(
-                database,
-                &channel.channel_id,
-                final_balances.customer_balance(),
-                final_balances.merchant_balance(),
+        })?;
+        let final_balances = contract_state.final_balances().ok_or_else(|| {
+            anyhow::anyhow!(
+                "Failed to retrieve final balances from contract storage for {}",
+                channel.channel_id
             )
-            .await?;
-        }
+        })?;
+        close::process_customer_close(
+            database,
+            &tezos_key_material,
+            &channel.channel_id,
+            revocation_lock,
+        )
+        .await?;
+        close::finalize_customer_close(
+            database,
+            &channel.channel_id,
+            final_balances.customer_balance(),
+            final_balances.merchant_balance(),
+        )
+        .await?;
     }
 
     Ok(())
