@@ -9,10 +9,7 @@ use zeekoe::{
         database::{ChannelDetails, QueryCustomer},
         Config,
     },
-    escrow::{
-        tezos,
-        types::{ContractStatus, TezosKeyMaterial},
-    },
+    escrow::{tezos, types::ContractStatus},
 };
 
 use super::{close, database, Command};
@@ -26,8 +23,8 @@ impl Command for Watch {
 
         let config = Arc::new(config);
 
-        // Retrieve Tezos keys from disk
-        let customer_key_material = config
+        // Make sure Tezos keys are accessible from disk
+        let _ = config
             .load_tezos_key_material()
             .await
             .context("Customer chain-watching daemon failed to load Tezos key material")?;
@@ -72,10 +69,6 @@ impl Command for Watch {
 
         // Run the polling service
         let polling_service_join_handle = tokio::spawn(async move {
-            // Clone resources
-            let database = database.clone();
-            let customer_key_material = customer_key_material.clone();
-
             loop {
                 // Retrieve list of channels from database
                 let channels = match database
@@ -90,21 +83,15 @@ impl Command for Watch {
                 // Query each contract ID and dispatch on the result
                 for channel in channels {
                     let database = database.clone();
-                    let customer_key_material = customer_key_material.clone();
+                    let config = config.clone();
                     let mut rng = rng.clone();
                     let off_chain = self.off_chain;
                     tokio::spawn(async move {
-                        dispatch_channel(
-                            &mut rng,
-                            database.as_ref(),
-                            &channel,
-                            &customer_key_material,
-                            off_chain,
-                        )
-                        .await
-                        .unwrap_or_else(|e| {
-                            eprintln!("Error dispatching on {}: {}", &channel.label, e)
-                        });
+                        dispatch_channel(&mut rng, &config, database.as_ref(), &channel, off_chain)
+                            .await
+                            .unwrap_or_else(|e| {
+                                eprintln!("Error dispatching on {}: {}", &channel.label, e)
+                            });
                     });
                 }
                 interval.tick().await;
@@ -128,9 +115,9 @@ impl Command for Watch {
 
 async fn dispatch_channel(
     rng: &mut StdRng,
+    config: &Config,
     database: &dyn QueryCustomer,
     channel: &ChannelDetails,
-    customer_key_material: &TezosKeyMaterial,
     off_chain: bool,
 ) -> Result<(), anyhow::Error> {
     // Retrieve on-chain contract status
@@ -144,16 +131,25 @@ async fn dispatch_channel(
     // The channel has not reacted to an expiry transaction being posted
     // The condition is
     // - the contract is in Expiry state
-    // - the local state is not PendingClose
+    // - the local state is neither PendingClose nor PendingExpiry
     if contract_state.status() == ContractStatus::Expiry
-        && !zkchannels_state::PendingClose.matches(&channel.state)
+        && !(zkchannels_state::PendingClose.matches(&channel.state)
+            || zkchannels_state::PendingExpiry.matches(&channel.state))
     {
+        // TODO: this should wait for any payments to complete.
+
+        // Load keys from disk
+        let tezos_key_material = config
+            .load_tezos_key_material()
+            .await
+            .context("Customer chain-watching daemon failed to load Tezos key material")?;
+
         close::unilateral_close(
             &channel.label,
             off_chain,
             rng,
             database,
-            customer_key_material,
+            &tezos_key_material,
         )
         .await?;
     }
@@ -162,23 +158,26 @@ async fn dispatch_channel(
     // The condition is:
     // - the contract is in the CustomerClose state
     // - the timeout has been set and expired
-    // - the local state is not PendingCustomerClaim (e.g. we did not try to
-    //   claim funds yet)
+    // - the local state is PendingClose (customer did not yet try to claim funds)
     if contract_state.status() == ContractStatus::CustomerClose
         && contract_state.timeout_expired().unwrap_or(false)
-        && !zkchannels_state::PendingCustomerClaim.matches(&channel.state)
+        && zkchannels_state::PendingClose.matches(&channel.state)
     {
-        close::claim_funds(database, &channel.label, customer_key_material).await?;
+        let tezos_key_material = config
+            .load_tezos_key_material()
+            .await
+            .context("Customer chain-watching daemon failed to load Tezos key material")?;
+
+        close::claim_funds(database, &channel.label, &tezos_key_material).await?;
+        close::finalize_customer_claim(database, &channel.label).await?;
     }
 
     // The channel has not reacted to a merchDispute transaction being posted
     // The condition is:
-    // - the contract is Closed but the local state is still PendingClose
-    // - the local merchant balance has been paid out (e.g. we are not in the
-    //   expiry flow)
+    // - the contract is Closed
+    // - the local state is PendingClose
     if contract_state.status() == ContractStatus::Closed
         && zkchannels_state::PendingClose.matches(&channel.state)
-        && channel.closing_balances.merchant_balance.is_some()
     {
         close::process_dispute(database, &channel.label).await?;
         close::finalize_dispute(database, &channel.label).await?
@@ -186,11 +185,11 @@ async fn dispatch_channel(
 
     // The channel has not reacted to a merchClaim transaction being posted
     // The condition is:
-    // - the contract is Closed but the local state is still PendingClose
-    // - the local merchant balance has not been paid out (we are in the expiry flow)
+    // - the contract is Closed
+    // - the local state is PendingExpiry (the customer did not post corrected balances after
+    //   the merchant posted expiry)
     if contract_state.status() == ContractStatus::Closed
-        && zkchannels_state::PendingClose.matches(&channel.state)
-        && channel.closing_balances.merchant_balance.is_none()
+        && zkchannels_state::PendingExpiry.matches(&channel.state)
     {
         close::finalize_expiry(database, &channel.label).await?
     }

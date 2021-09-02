@@ -99,8 +99,21 @@ pub async fn unilateral_close(
         .await
         .context("Failed to fetch closing message from database")?;
 
-    // If the customer balance is non-zero, do nothing
+    // If the customer balance is non-zero, update state to indicate the customer will not respond to expiry.
     if close_message.customer_balance().into_inner() == 0 {
+        database
+            .with_channel_state(
+                channel_name,
+                zkchannels_state::PendingClose,
+                |closing_message| -> Result<_, Infallible> {
+                    Ok((State::PendingExpiry(closing_message), ()))
+                },
+            )
+            .await
+            .context(format!(
+                "Failed to update channel status to PendingExpiry for {}",
+                channel_name
+            ))??;
         return Ok(());
     }
     if !off_chain {
@@ -196,7 +209,7 @@ pub async fn claim_funds(
                 .ok_or_else(|| anyhow::anyhow!("Failed to claim customer funds for {} because contract details were not correctly saved", channel_name))?;
 
             // Post custClaim entrypoint on chain and wait for it to be confirmed
-            let final_balances = tezos::close::cust_claim(
+            tezos::close::cust_claim(
                 &contract_id,
                 customer_key_material,
             )
@@ -206,9 +219,7 @@ pub async fn claim_funds(
                 channel_name.clone()
             ))?;
 
-            // Respond to finalized custClaim call
-            finalize_customer_claim(database, channel_name, final_balances.merchant_balance(), final_balances.customer_balance())
-                .await
+            Ok(())
         }
         // If it is Dispute, do nothing
         State::Dispute(_) => Ok(()),
@@ -290,18 +301,22 @@ pub async fn finalize_dispute(
 ///
 /// **Usage**: this function is called as response to an on-chain event:
 /// - a custClaim entrypoint call operation is confirmed on chain at the required confirmation depth
-async fn finalize_customer_claim(
+pub async fn finalize_customer_claim(
     database: &dyn QueryCustomer,
     channel_name: &ChannelName,
-    merchant_balance: MerchantBalance,
-    customer_balance: CustomerBalance,
 ) -> Result<(), anyhow::Error> {
     // Update status from PendingCustomerClaim to Closed
-    database
+    let (merchant_balance, customer_balance) = database
         .with_channel_state(
             channel_name,
             zkchannels_state::PendingCustomerClaim,
-            |closing_message| -> Result<_, Infallible> { Ok((State::Closed(closing_message), ())) },
+            |closing_message| -> Result<_, Infallible> {
+                let balances = (
+                    *closing_message.merchant_balance(),
+                    *closing_message.customer_balance(),
+                );
+                Ok((State::Closed(closing_message), balances))
+            },
         )
         .await
         .context(format!(
@@ -321,7 +336,8 @@ async fn finalize_customer_claim(
     Ok(())
 }
 
-/// Update channel state once an expiry close flow without a customer claim is complete.
+/// Update channel state after the merchant claims the full channel balances; this happens in the
+/// expiry close flow if the customer _does not_ post corrected channel balances via custCluse.
 ///
 /// **Usage**: this function is called as response to an on-chain event:
 /// - a merchClaim entrypoint call operation is confirmed on chain at the required confirmation depth
@@ -538,8 +554,13 @@ async fn get_close_message(
                 State::Started(started) => started.close(rng),
                 State::Locked(locked) => locked.close(rng),
                 State::PendingClose(close_message) => close_message,
-                // Cannot close on Disputed or Closed channels
-                _ => return Err(close::Error::UncloseableState(state.state_name())),
+                // Cannot enter PendingClose on a channel that has passed that point
+                State::PendingExpiry(_)
+                | State::PendingCustomerClaim(_)
+                | State::Dispute(_)
+                | State::Closed(_) => {
+                    return Err(close::Error::UncloseableState(state.state_name()))
+                }
             };
             Ok((State::PendingClose(close_message.clone()), close_message))
         })

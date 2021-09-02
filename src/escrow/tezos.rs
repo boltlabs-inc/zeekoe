@@ -357,7 +357,7 @@ pub mod close {
     pub async fn cust_claim(
         contract_id: &ContractId,
         customer_key_pair: &TezosKeyMaterial,
-    ) -> Result<FinalBalances, Error> {
+    ) -> Result<(), Error> {
         todo!()
     }
 
