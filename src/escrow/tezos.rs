@@ -240,23 +240,21 @@ pub mod establish {
 
         PYTHON.run(python! {
             success = True
-            // try:
-            out = originate(
-                'uri,
-                'customer_address, 'merchant_address,
-                'customer_account_key,
-                'customer_pubkey, 'merchant_pubkey,
-                'channel_id,
-                'g2, 'y2s, 'x2,
-                'customer_funding, 'merchant_funding,
-                'confirmation_depth,
-                'self_delay
-            )
-            // except Exception as e:
-            //     success = False
-            //     error = str(e)
-            //     with open("error.log", "w") as f:
-            //         f.write(error)
+            try:
+                out = originate(
+                    'uri,
+                    'customer_address, 'merchant_address,
+                    'customer_account_key,
+                    'customer_pubkey, 'merchant_pubkey,
+                    'channel_id,
+                    'g2, 'y2s, 'x2,
+                    'customer_funding, 'merchant_funding,
+                    'confirmation_depth,
+                    'self_delay
+                )
+            except Exception as e:
+                success = False
+                error = repr(e)
         });
 
         if PYTHON.get("success") {
@@ -291,7 +289,7 @@ pub mod establish {
         confirmation_depth: u64,
     ) -> Result<(OperationStatus, Level), CustomerFundError> {
         let customer_funding = customer_funding_info.balance.into_inner();
-        let customer_account_details = customer_key_pair.file_contents();
+        let customer_private_key = customer_key_pair.private_key().to_base58check();
         let customer_pubkey = customer_funding_info.public_key.to_base58check();
         let contract_id = contract_id.clone().to_originated_address().to_base58check();
         let contract_id = &contract_id;
@@ -302,14 +300,14 @@ pub mod establish {
             try:
                 out = add_customer_funding(
                     'uri,
-                    'customer_account_details,
+                    'customer_private_key,
                     'contract_id,
                     'customer_funding,
                     'confirmation_depth
                 )
             except Exception as e:
                 success = False
-                error = str(e)
+                error = repr(e)
         });
 
         if PYTHON.get("success") {
