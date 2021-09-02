@@ -7,10 +7,7 @@ use zkabacus_crypto::{
 
 use zeekoe::{
     abort,
-    escrow::{
-        notify::Level,
-        types::{ContractId, KeyHash, TezosKeyMaterial, TezosPublicKey},
-    },
+    escrow::types::{KeyHash, TezosKeyMaterial, TezosPublicKey},
     merchant::{config::Service, database::QueryMerchant, server::SessionKey, Chan},
     offer_abort, proceed,
     protocol::{self, establish, ChannelStatus, Party::Merchant},
@@ -200,9 +197,15 @@ async fn approve_and_establish(
     .await
     .context("Failed to initialize channel")?;
 
-    // TODO: receive contract id from customer (possibly also send block height, check spec)
-    let contract_id: ContractId = todo!();
-    let level: Level = todo!();
+    // Receive contract id from customer (possibly also send block height, check spec)
+    let (contract_id, chan) = chan
+        .recv()
+        .await
+        .context("Failed to receive contract ID from customer")?;
+    let (origination_level, chan) = chan
+        .recv()
+        .await
+        .context("Failed to receive contract origination level from the customer")?;
 
     // NOTE: This set of on-chain verification checks is **subtly insufficient** unless the
     // on-chain contract's state machine is acyclic, which at the time of writing of this note
@@ -227,7 +230,7 @@ async fn approve_and_establish(
         .new_channel(
             &channel_id,
             &contract_id,
-            &level,
+            &origination_level,
             &merchant_deposit,
             &customer_deposit,
         )

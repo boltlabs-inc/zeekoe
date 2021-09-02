@@ -176,7 +176,7 @@ pub mod parameters {
 
 pub mod establish {
     use super::*;
-    use crate::escrow::types::*;
+    use crate::escrow::{notify::Level, types::*};
     use zkabacus_crypto::{
         ClosingSignature, CustomerBalance, EstablishProof, MerchantBalance, PayToken,
     };
@@ -245,7 +245,8 @@ pub mod establish {
     };
 
     pub type CustomerSupplyContractInfo = Session! {
-        // TODO: send contract id
+        send ContractId;
+        send Level;
         OfferAbort<CustomerVerifyMerchantFunding, Error>;
     };
 
