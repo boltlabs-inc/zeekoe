@@ -72,10 +72,6 @@ impl Command for Run {
         // Sender and receiver to indicate graceful shutdown should occur
         let (terminate, _) = broadcast::channel(1);
 
-        // Clone resources that will be used by both the server and the polling service
-        // let polling_service_database = database.clone();
-        // let polling_service_tezos_key_material = tezos_key_material.clone();
-
         // Collect the futures for the result of running each specified server
         let mut server_futures: FuturesUnordered<_> = config
             .services
@@ -189,8 +185,6 @@ impl Command for Run {
         // Get a join handle for the polling service
         let polling_service_join_handle = async move {
             // Clone resources
-            //let database = polling_service_database;
-            //let tezos_key_material = polling_service_tezos_key_material;
             let database = database.clone();
             let tezos_key_material = tezos_key_material.clone();
 
@@ -238,7 +232,6 @@ impl Command for Run {
     }
 }
 
-#[allow(unused)]
 async fn dispatch_channel(
     database: &dyn QueryMerchant,
     channel: &ChannelDetails,

@@ -441,7 +441,7 @@ async fn mutual_close(
     // The customer has the option to retry or initiate a unilateral close.
     // We should consider having the customer automatically initiate a unilateral close after a
     // random delay.
-    let final_balances = mutual_close_result.context(format!(
+    mutual_close_result.context(format!(
         "Failed to call mutual close for {}",
         close.label.clone()
     ))?;
@@ -451,8 +451,8 @@ async fn mutual_close(
         database.as_ref(),
         &config,
         &close.label,
-        final_balances.merchant_balance(),
-        final_balances.customer_balance(),
+        *close_state.merchant_balance(),
+        *close_state.customer_balance(),
     )
     .await
 }
