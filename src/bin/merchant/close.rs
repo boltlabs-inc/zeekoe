@@ -81,8 +81,7 @@ impl Method for Close {
 ///
 /// **Usage**: this should be called after receiving a notification that a custClose entrypoint
 /// call is confirmed on chain at any depth.
-#[allow(unused)]
-async fn process_customer_close(
+pub async fn process_customer_close(
     database: &dyn QueryMerchant,
     tezos_key_material: &TezosKeyMaterial,
     channel_id: &ChannelId,
@@ -175,8 +174,7 @@ async fn process_customer_close(
 ///
 /// **Usage**: this should be called after receiving a notification that a custClose entrypoint
 /// call is confirmed on chain *at the required confirmation depth*.
-#[allow(unused)]
-async fn finalize_customer_close(
+pub async fn finalize_customer_close(
     database: &dyn QueryMerchant,
     channel_id: &ChannelId,
     customer_balance: CustomerBalance,
@@ -240,7 +238,6 @@ async fn finalize_customer_close(
 ///
 /// **Usage**: this should be called after receiving a notification that a merchDispute
 /// entrypoint call/operation is confirmed at the required confirmation depth.
-#[allow(unused)]
 async fn finalize_dispute(
     database: &dyn QueryMerchant,
     channel_id: &ChannelId,
@@ -282,8 +279,7 @@ async fn finalize_dispute(
 // **Usage**: this should be called after receiving a notification that a mutualClose entrypoint call/operation
 // is confirmed to the required depth.
 #[allow(unused)]
-async fn finalize_mutual_close(
-    merchant_config: &MerchantConfig,
+pub async fn finalize_mutual_close(
     database: &dyn QueryMerchant,
     channel_id: &ChannelId,
     customer_balance: CustomerBalance,
@@ -428,7 +424,7 @@ async fn expiry(
 
     // Update database status to PendingClose
     database
-        .compare_and_swap_channel_status(channel_id, &current_status, &ChannelStatus::PendingClose)
+        .compare_and_swap_channel_status(channel_id, &current_status, &ChannelStatus::PendingExpiry)
         .await
         .context(format!(
             "Failed to update channel to PendingClose status (id: {})",
@@ -458,25 +454,23 @@ async fn expiry(
 /// **Usage**: this is called in response to an on-chain event: when the expiry operation
 /// is confirmed on chain _and_ the timelock period has passed without
 /// any other operation to the contract (i.e., a custClose entrypoint call) confirmed on chain.
-#[allow(unused)]
-async fn claim_expiry_funds(
+pub async fn claim_expiry_funds(
     database: &dyn QueryMerchant,
     channel_id: &ChannelId,
     tezos_key_material: &TezosKeyMaterial,
 ) -> Result<(), anyhow::Error> {
-    // Assert database status is PendingClose
-    let channel_status = database
-        .get_channel_status(channel_id)
+    // Update database status to PendingMerchantClaim
+    database
+        .compare_and_swap_channel_status(
+            channel_id,
+            &ChannelStatus::PendingClose,
+            &ChannelStatus::PendingMerchantClaim,
+        )
         .await
-        .context("Failed to retrieve current channel status")?;
-    if channel_status != ChannelStatus::PendingClose {
-        return Err(Error::UnexpectedChannelStatus {
-            channel_id: *channel_id,
-            expected: vec![ChannelStatus::PendingClose],
-            found: channel_status,
-        }
-        .into());
-    }
+        .context(format!(
+            "Failed to update channel to PendingMerchantClaim status (id: {})",
+            channel_id
+        ))?;
 
     // Retrieve contract details
     let (contract_id, _) = database
@@ -511,7 +505,6 @@ async fn claim_expiry_funds(
 ///
 /// **Usage**: this is called after the merchClaim operation is confirmed on chain to an appropriate
 /// depth.
-#[allow(unused)]
 async fn finalize_expiry_close(
     database: &dyn QueryMerchant,
     channel_id: &ChannelId,

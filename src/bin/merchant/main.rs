@@ -14,7 +14,10 @@ use {
 };
 
 use zeekoe::{
-    escrow::types::TezosKeyMaterial,
+    escrow::{
+        tezos,
+        types::{ContractStatus, TezosKeyMaterial},
+    },
     merchant::{
         cli::{self, Run},
         config::{DatabaseLocation, Service},
@@ -23,7 +26,7 @@ use zeekoe::{
         server::SessionKey,
         Chan, Cli, Config, Server,
     },
-    protocol::ZkChannels,
+    protocol::{ChannelStatus, ZkChannels},
 };
 
 mod approve;
@@ -191,6 +194,78 @@ impl Command for Run {
 
         Ok(())
     }
+}
+
+#[allow(unused)]
+async fn merchant_poll(
+    database: &dyn QueryMerchant,
+    tezos_key_material: TezosKeyMaterial,
+) -> Result<(), anyhow::Error> {
+    let channels = database
+        .get_channels()
+        .await
+        .context("Failed to retrieve channels")?;
+
+    for channel in channels {
+        // Retrieve on-chain contract status
+        let contract_state = tezos::get_contract_state(&channel.contract_id)
+            .await
+            .context(format!(
+                "Merchant chain watcher failed to retrieve contract state for {}",
+                channel.contract_id
+            ))?;
+
+        // The channel has not claimed funds after the expiry timeout expired
+        // The condition is
+        // - the contract is in expiry state
+        // - the contract timeout is expired
+        // - the local channel status is still waiting for expiry
+        if contract_state.status() == ContractStatus::Expiry
+            && contract_state.timeout_expired().unwrap_or(false)
+            && channel.status == ChannelStatus::PendingExpiry
+        {
+            close::claim_expiry_funds(database, &channel.channel_id, &tezos_key_material).await?;
+        }
+
+        // The channel has not reacted to a customer posting close balances on chain
+        // The condition is
+        // - the contract is in customer close state
+        // - the local channel status is either active (if the customer initiated the close flow)
+        //   or pending expiry (if the merchant initiated the close flow)
+        if contract_state.status() == ContractStatus::CustomerClose
+            && (channel.status == ChannelStatus::Active
+                || channel.status == ChannelStatus::PendingExpiry)
+        {
+            let revocation_lock = contract_state.revocation_lock().ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Failed to retrieve revocation lock from contract storage for {}",
+                    channel.channel_id
+                )
+            })?;
+            let final_balances = contract_state.final_balances().ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Failed to retrieve final balances from contract storage for {}",
+                    channel.channel_id
+                )
+            })?;
+            close::process_customer_close(
+                database,
+                &tezos_key_material,
+                &channel.channel_id,
+                revocation_lock,
+            )
+            .await?;
+            close::finalize_customer_close(
+                database,
+                &channel.channel_id,
+                final_balances.customer_balance(),
+                final_balances.merchant_balance(),
+            )
+            .await?;
+        }
+    }
+
+    Ok(())
 }
 
 #[async_trait]

@@ -1,4 +1,8 @@
+use zkabacus_crypto::RevocationLock;
+
 use crate::escrow::types::ContractStatus;
+
+use self::close::FinalBalances;
 
 use super::types::{ContractId, Error};
 
@@ -8,6 +12,10 @@ pub struct ContractState {
     status: ContractStatus,
     /// Indicator to whether the timeout on the contract has expired, if it was set.
     timeout_expired: Option<bool>,
+    /// Revocation lock from the contract, if it was set.
+    revocation_lock: Option<RevocationLock>,
+    /// Final balances from the contract, if they have been determined.
+    final_balances: Option<FinalBalances>,
 }
 
 impl ContractState {
@@ -19,6 +27,16 @@ impl ContractState {
     /// Get the indicator to whether the timeout was set and, if so, whether it has expired.
     pub fn timeout_expired(&self) -> Option<bool> {
         self.timeout_expired
+    }
+
+    // Get the revocation lock from the contract, if it has been set.
+    pub fn revocation_lock(&self) -> Option<&RevocationLock> {
+        self.revocation_lock.as_ref()
+    }
+
+    /// Get the final balances on the contract if they are determined.
+    pub fn final_balances(&self) -> Option<&FinalBalances> {
+        self.final_balances.as_ref()
     }
 }
 
