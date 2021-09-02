@@ -415,4 +415,13 @@ pub mod close {
     ) -> Result<FinalBalances, Error> {
         todo!()
     }
+
+    /// Verify that the specified contract is closed.
+    ///
+    /// This function will wait until the contract status is CLOSED at the expected confirmation
+    /// depth and is called by the merchant.
+    #[allow(unused)]
+    pub async fn verify_contract_closed(contract_id: &ContractId) -> Result<(), Error> {
+        todo!()
+    }
 }

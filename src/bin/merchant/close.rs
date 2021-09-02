@@ -70,10 +70,25 @@ impl Method for Close {
         // Give the customer the opportunity to reject an invalid authorization signature
         offer_abort!(in chan as Merchant);
 
-        // Close the dialectic channel.
+        // Close the dialectic channel
         chan.close();
 
-        Ok(())
+        // Wait for the contract to be closed on chain
+        tezos::close::verify_contract_closed(&contract_id)
+            .await
+            .context(format!(
+                "Failed to confirm that the contract closed in mutual close protocol (id: {})",
+                contract_id
+            ))?;
+
+        // Update the database to indicate a successful mutual close
+        finalize_mutual_close(
+            database,
+            close_state.channel_id(),
+            *close_state.customer_balance(),
+            *close_state.merchant_balance(),
+        )
+        .await
     }
 }
 
@@ -278,7 +293,6 @@ async fn finalize_dispute(
 //
 // **Usage**: this should be called after receiving a notification that a mutualClose entrypoint call/operation
 // is confirmed to the required depth.
-#[allow(unused)]
 pub async fn finalize_mutual_close(
     database: &dyn QueryMerchant,
     channel_id: &ChannelId,
