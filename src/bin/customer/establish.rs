@@ -296,7 +296,14 @@ impl Command for Establish {
                 )
             })??;
 
-        // TODO: send contract id to merchant (possibly also send block height, check spec)
+        // Send the contract id and level to the merchant
+        let chan = chan
+            .send(contract_id)
+            .await
+            .context("Failed to send contract id to merchant")?
+            .send(origination_level)
+            .await
+            .context("Failed to send contract origination level to merchant")?;
 
         // Allow the merchant to indicate whether it funded the channel
         offer_abort!(in chan as Customer);
