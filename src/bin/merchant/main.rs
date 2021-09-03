@@ -183,7 +183,7 @@ impl Command for Run {
         let mut polling_interval = tokio::time::interval(Duration::from_secs(60));
 
         // Get a join handle for the polling service
-        let polling_service_join_handle = async move {
+        let polling_service_join_handle = tokio::spawn(async move {
             // Clone resources
             let database = database.clone();
             let tezos_key_material = tezos_key_material.clone();
@@ -213,7 +213,7 @@ impl Command for Run {
                 }
                 polling_interval.tick().await;
             }
-        };
+        });
 
         // Wait for either the servers or the polling service to finish
         tokio::select! {
