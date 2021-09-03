@@ -89,6 +89,9 @@ impl Method for Close {
             *close_state.merchant_balance(),
         )
         .await
+        .context(
+            "Failed to finalize mutual close - perhaps the contract was closed by a different flow",
+        )
     }
 }
 
@@ -102,12 +105,12 @@ pub async fn process_customer_close(
     channel_id: &ChannelId,
     revocation_lock: &RevocationLock,
 ) -> Result<(), anyhow::Error> {
-    // Retrieve current channel status.
-    let current_status = database
-        .get_channel_status(channel_id)
+    // Set status to PendingClose if possible
+    database
+        .update_status_to_pending_close(channel_id)
         .await
         .context(format!(
-            "Failed to check channel status (id: {})",
+            "Failed to update channel to PendingClose status (id: {})",
             channel_id
         ))?;
 
@@ -123,30 +126,15 @@ pub async fn process_customer_close(
 
     // Get the first secret, if it exists.
     match possible_secrets.iter().flatten().next() {
-        // If the lock *does not* have a revocation secret, update channel status to PendingClose.
-        None => {
-            database
-                .compare_and_swap_channel_status(
-                    channel_id,
-                    &current_status,
-                    &ChannelStatus::PendingClose,
-                )
-                .await
-                .with_context(|| {
-                    format!(
-                        "Failed to update channel to PendingClose status (id: {})",
-                        &channel_id
-                    )
-                })?;
-            Ok(())
-        }
+        // If the lock *does not* have a revocation secret, do nothing else.
+        None => Ok(()),
         // If the lock already has a revocation secret, start the dispute process.
         Some(revocation_secret) => {
             // Update channel status to Dispute
             database
                 .compare_and_swap_channel_status(
                     channel_id,
-                    &current_status,
+                    &ChannelStatus::PendingClose,
                     &ChannelStatus::Dispute,
                 )
                 .await
@@ -303,7 +291,7 @@ pub async fn finalize_mutual_close(
     database
         .compare_and_swap_channel_status(
             channel_id,
-            &ChannelStatus::PendingClose,
+            &ChannelStatus::PendingMutualClose,
             &ChannelStatus::Closed,
         )
         .await
@@ -329,7 +317,7 @@ pub async fn finalize_mutual_close(
     Ok(())
 }
 
-/// Run the zkAbacus.Close protocol, including updating the database to PendingClose and validating
+/// Run the zkAbacus.Close protocol, including updating the database to PendingMutualClose and validating
 /// customer messages.
 async fn zkabacus_close(
     merchant_config: &MerchantConfig,
@@ -344,18 +332,18 @@ async fn zkabacus_close(
 
     let (close_state, chan) = chan.recv().await.context("Failed to receive close state")?;
 
-    // Update database to indicate channel is now PendingClose.
+    // Update database to indicate channel is now PendingMutualClose.
     // Note: mutual close can only be called on an active channel. Any other state requires
     // a unilateral close.
     database
         .compare_and_swap_channel_status(
             close_state.channel_id(),
             &ChannelStatus::Active,
-            &ChannelStatus::PendingClose,
+            &ChannelStatus::PendingMutualClose,
         )
         .await
         .context(format!(
-            "Failed to update channel to PendingClose status (id: {})",
+            "Failed to update channel to PendingMutualClose status (id: {})",
             close_state.channel_id()
         ))?;
 
@@ -436,12 +424,12 @@ async fn expiry(
         .await
         .context("Failed to retrieve current channel status")?;
 
-    // Update database status to PendingClose
+    // Update database status to PendingExpiry
     database
         .compare_and_swap_channel_status(channel_id, &current_status, &ChannelStatus::PendingExpiry)
         .await
         .context(format!(
-            "Failed to update channel to PendingClose status (id: {})",
+            "Failed to update channel to PendingExpiry status (id: {})",
             &channel_id
         ))?;
 
@@ -477,7 +465,7 @@ pub async fn claim_expiry_funds(
     database
         .compare_and_swap_channel_status(
             channel_id,
-            &ChannelStatus::PendingClose,
+            &ChannelStatus::PendingExpiry,
             &ChannelStatus::PendingMerchantClaim,
         )
         .await

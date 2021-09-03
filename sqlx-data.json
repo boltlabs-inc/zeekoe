@@ -412,6 +412,24 @@
       "nullable": []
     }
   },
+  "9c580669d21d3b583f52cd7f868af30f3e30710d0620525488d162230b438816": {
+    "query": "SELECT status AS \"status: Option<ChannelStatus>\"\n            FROM merchant_channels\n            WHERE channel_id = ?",
+    "describe": {
+      "columns": [
+        {
+          "name": "status: Option<ChannelStatus>",
+          "ordinal": 0,
+          "type_info": "Text"
+        }
+      ],
+      "parameters": {
+        "Right": 1
+      },
+      "nullable": [
+        false
+      ]
+    }
+  },
   "a1e859f833672011f21d161999377cb42055261ff0a9c8592fd4610340b25d5b": {
     "query": "SELECT\n                state AS \"state: State\",\n                address AS \"address: ZkChannelAddress\",\n                customer_deposit AS \"customer_deposit: CustomerBalance\",\n                merchant_deposit AS \"merchant_deposit: MerchantBalance\",\n                closing_balances AS \"closing_balances: ClosingBalances\",\n                merchant_tezos_public_key AS \"merchant_tezos_public_key: String\",\n                contract_id AS \"contract_id: ContractId\",\n                level AS \"level: Level\"\n            FROM customer_channels \n            WHERE label = ?",
     "describe": {

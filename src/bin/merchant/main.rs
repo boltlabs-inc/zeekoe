@@ -249,7 +249,7 @@ async fn dispatch_channel(
     // The condition is
     // - the contract is in expiry state
     // - the contract timeout is expired
-    // - the local channel status is still waiting for expiry
+    // - the channel status is PendingExpiry, indicating it has not yet claimed funds
     if contract_state.status() == ContractStatus::Expiry
         && contract_state.timeout_expired().unwrap_or(false)
         && channel.status == ChannelStatus::PendingExpiry
@@ -260,8 +260,8 @@ async fn dispatch_channel(
     // The channel has not reacted to a customer posting close balances on chain
     // The condition is
     // - the contract is in customer close state
-    // - the local channel status is either active (if the customer initiated the close flow)
-    //   or pending expiry (if the merchant initiated the close flow)
+    // - the channel status is either Active (if the customer initiated the close flow)
+    //   or PendingExpiry (if the merchant initiated the close flow)
     if contract_state.status() == ContractStatus::CustomerClose
         && (channel.status == ChannelStatus::Active
             || channel.status == ChannelStatus::PendingExpiry)

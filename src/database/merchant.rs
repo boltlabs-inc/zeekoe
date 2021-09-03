@@ -57,6 +57,10 @@ pub trait QueryMerchant: Send + Sync {
         new: &ChannelStatus,
     ) -> Result<()>;
 
+    /// Update an existing merchant channel's status to PendingClose, if it is in a state that can
+    /// do so allowably (e.g. not already in a close flow).
+    async fn update_status_to_pending_close(&self, channel_id: &ChannelId) -> Result<()>;
+
     /// Update the closing balances of the channel, only if it is currently in the expected state.
     ///
     /// This should only be called once the balances are finalized on chain and maintains the
@@ -337,6 +341,57 @@ impl QueryMerchant for SqlitePool {
             Some(unexpected_status) => Err(Error::UnexpectedChannelStatus {
                 channel_id: *channel_id,
                 expected: vec![*expected],
+                found: unexpected_status,
+            }),
+        }
+    }
+
+    async fn update_status_to_pending_close(&self, channel_id: &ChannelId) -> Result<()> {
+        let mut transaction = self.begin().await?;
+
+        // Find out current status
+        let result: Option<ChannelStatus> = sqlx::query!(
+            r#"SELECT status AS "status: Option<ChannelStatus>"
+            FROM merchant_channels
+            WHERE channel_id = ?"#,
+            channel_id,
+        )
+        .fetch_one(&mut transaction)
+        .await?
+        .status;
+
+        // Only update status if it is an allowable value.
+        match result {
+            None => Err(Error::ChannelNotFound(*channel_id)),
+            Some(ChannelStatus::Originated)
+            | Some(ChannelStatus::CustomerFunded)
+            | Some(ChannelStatus::MerchantFunded)
+            | Some(ChannelStatus::Active)
+            | Some(ChannelStatus::PendingExpiry)
+            | Some(ChannelStatus::PendingMutualClose) => {
+                sqlx::query!(
+                    "UPDATE merchant_channels
+                    SET status = ?
+                    WHERE channel_id = ?",
+                    ChannelStatus::PendingClose,
+                    channel_id
+                )
+                .execute(&mut transaction)
+                .await?;
+
+                transaction.commit().await?;
+                Ok(())
+            }
+            Some(unexpected_status) => Err(Error::UnexpectedChannelStatus {
+                channel_id: *channel_id,
+                expected: vec![
+                    ChannelStatus::Originated,
+                    ChannelStatus::CustomerFunded,
+                    ChannelStatus::MerchantFunded,
+                    ChannelStatus::Active,
+                    ChannelStatus::PendingExpiry,
+                    ChannelStatus::PendingMutualClose,
+                ],
                 found: unexpected_status,
             }),
         }
