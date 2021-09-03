@@ -68,7 +68,8 @@ pub mod types {
         /// The file should use the key file json formatting that is also used by faucet:
         /// https://faucet.tzalpha.net/
         pub fn read_key_pair(path: impl AsRef<Path>) -> Result<TezosKeyMaterial, Error> {
-            let file_contents = fs::read_to_string(&path).map_err(|_| Error::KeyFileInvalid("Failed to read file".to_string()))?;
+            let file_contents = fs::read_to_string(&path)
+                .map_err(|_| Error::KeyFileInvalid("Failed to read file".to_string()))?;
 
             let path = path.as_ref().to_string_lossy();
 

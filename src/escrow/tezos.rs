@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use crate::escrow::{types::*};
+use crate::escrow::types::*;
 use inline_python::python;
 use tezedge::{OriginatedAddress, ToBase58Check};
 use zkabacus_crypto::RevocationLock;
@@ -199,7 +199,6 @@ impl FromStr for OperationStatus {
     }
 }
 
-
 /// Query the chain to retrieve the confirmed state of the contract with the given [`ContractId`].
 ///
 /// This function should query the state of the contract at the given confirmation depth -- that
@@ -211,7 +210,7 @@ pub async fn get_contract_state(_contract_id: &ContractId) -> Result<ContractSta
 
 pub mod establish {
     use super::*;
-    use crate::escrow::{notify::Level};
+    use crate::escrow::notify::Level;
     use zkabacus_crypto::{ChannelId, CustomerBalance, MerchantBalance, PublicKey};
 
     #[allow(unused)]
