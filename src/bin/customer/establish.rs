@@ -33,7 +33,7 @@ use zeekoe::{
 use tezedge::crypto::Prefix;
 use zeekoe::escrow::tezos;
 
-use super::{connect, connect_daemon, database, Command};
+use super::{connect, database, Command};
 
 #[derive(Debug, Clone, Serialize)]
 struct Establishment {
@@ -201,10 +201,7 @@ impl Command for Establish {
         let uri = "https://rpc.tzkt.io/edo2net/".parse().unwrap();
 
         // Write out establishment struct to disk if operating in off-chain mode
-        if true
-        // FIXME: restore this check after finishing all on-chain methods
-        // self.off_chain
-        {
+        if self.off_chain {
             write_establish_json(&establishment)?;
         }
 
@@ -259,8 +256,6 @@ impl Command for Establish {
                 )
             })??;
 
-        // FIXME: remove this once filled in
-        #[allow(clippy::if_same_then_else)]
         let (customer_funding_status, customer_funding_level) = if self.off_chain {
             // TODO: prompt user to fund the contract on chain
             todo!("prompt user to fund contract on chain and submit details")
