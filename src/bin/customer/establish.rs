@@ -596,14 +596,15 @@ fn write_establish_json(establishment: &Establishment) -> Result<(), anyhow::Err
 
 /// Invoke `Refresh` on the customer daemon.
 async fn refresh_daemon(config: &Config) -> anyhow::Result<()> {
-    let (_session_key, chan) = connect_daemon(config)
-        .await
-        .context("Failed to connect to daemon")?;
+    // TODO: if daemon becomes relevant as a server, uncomment this
+    // let (_session_key, chan) = connect_daemon(config)
+    //     .await
+    //     .context("Failed to connect to daemon")?;
 
-    chan.choose::<0>()
-        .await
-        .context("Failed to select daemon Refresh")?
-        .close();
+    // chan.choose::<0>()
+    //     .await
+    //     .context("Failed to select daemon Refresh")?
+    //     .close();
 
     Ok(())
 }
