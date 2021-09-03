@@ -1,9 +1,11 @@
 use std::str::FromStr;
 
-use crate::escrow::{notify::Level, types::*};
+use crate::escrow::{types::*};
 use inline_python::python;
 use tezedge::{OriginatedAddress, ToBase58Check};
-use zkabacus_crypto::{ChannelId, CustomerBalance, MerchantBalance, PublicKey};
+use zkabacus_crypto::RevocationLock;
+
+use self::close::FinalBalances;
 
 /// The Michelson contract code for the ZkChannels contract.
 static CONTRACT_CODE: &str = include_str!("zkchannel_contract.tz");
@@ -132,6 +134,40 @@ fn pointcheval_sanders_public_key_to_python_input(
     (g2, y2s, x2)
 }
 
+/// State of a zkChannels contract at a point in time.
+pub struct ContractState {
+    /// Current contract status.
+    status: ContractStatus,
+    /// Indicator to whether the timeout on the contract has expired, if it was set.
+    timeout_expired: Option<bool>,
+    /// Revocation lock from the contract, if it was set.
+    revocation_lock: Option<RevocationLock>,
+    /// Final balances from the contract, if they have been determined.
+    final_balances: Option<FinalBalances>,
+}
+
+impl ContractState {
+    /// Get the current status of the contract.
+    pub fn status(&self) -> ContractStatus {
+        self.status
+    }
+
+    /// Get the indicator to whether the timeout was set and, if so, whether it has expired.
+    pub fn timeout_expired(&self) -> Option<bool> {
+        self.timeout_expired
+    }
+
+    // Get the revocation lock from the contract, if it has been set.
+    pub fn revocation_lock(&self) -> Option<&RevocationLock> {
+        self.revocation_lock.as_ref()
+    }
+
+    /// Get the final balances on the contract if they are determined.
+    pub fn final_balances(&self) -> Option<&FinalBalances> {
+        self.final_balances.as_ref()
+    }
+}
+
 /// The result of attempting an operation.
 pub enum OperationStatus {
     /// The operation successfully was applied and included in the head block.
@@ -163,8 +199,20 @@ impl FromStr for OperationStatus {
     }
 }
 
+
+/// Query the chain to retrieve the confirmed state of the contract with the given [`ContractId`].
+///
+/// This function should query the state of the contract at the given confirmation depth -- that
+/// is, the state of the the contract, but not accounting for the latest
+/// `DEFAULT_CONFIRMATION_DEPTH` blocks.
+pub async fn get_contract_state(_contract_id: &ContractId) -> Result<ContractState, Error> {
+    todo!()
+}
+
 pub mod establish {
     use super::*;
+    use crate::escrow::{notify::Level};
+    use zkabacus_crypto::{ChannelId, CustomerBalance, MerchantBalance, PublicKey};
 
     #[allow(unused)]
     pub struct CustomerFundingInformation {
@@ -215,6 +263,7 @@ pub mod establish {
     ///
     /// By default, this uses the Tezos mainnet; however, another URI may be specified to point to a
     /// sandbox or testnet node.
+    #[allow(clippy::too_many_arguments)]
     pub async fn originate(
         uri: Option<&http::Uri>,
         merchant_funding_info: &MerchantFundingInformation,
@@ -407,16 +456,80 @@ pub mod establish {
     }
 }
 
-mod close {
+pub mod close {
+    use zkabacus_crypto::ChannelId;
+
     use crate::escrow::types::*;
 
     use {
+        serde::{Deserialize, Serialize},
         tezedge::signer::OperationSignatureInfo,
         zkabacus_crypto::{
             customer::ClosingMessage, revlock::RevocationSecret, CloseState, CustomerBalance,
             MerchantBalance,
         },
     };
+
+    /// Merchant authorization signature for a mutual close operation.
+    ///
+    /// The internals of this type are a dupe for the tezedge [`OperationSigantureInfo`] type.
+    /// We're not reusing that type because it isn't serializable, and because we may want to
+    /// change the internal storage here.
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct MutualCloseAuthorizationSignature {
+        /// base58check with prefix (`Prefix::operation`) encoded operation hash.
+        operation_hash: String,
+        /// forged operation (hex) concatenated with signature('hex').
+        operation_with_signature: String,
+        /// operation signature encoded with base58check with prefix (`Prefix::edsig`).
+        signature: String,
+    }
+
+    impl MutualCloseAuthorizationSignature {
+        pub fn from_operation_signature_info(info: OperationSignatureInfo) -> Self {
+            let OperationSignatureInfo {
+                operation_hash,
+                operation_with_signature,
+                signature,
+            } = info;
+            Self {
+                operation_hash,
+                operation_with_signature,
+                signature,
+            }
+        }
+
+        /// Get the operation hash.
+        pub fn operation_hash(&self) -> &String {
+            &self.operation_hash
+        }
+
+        /// Get the forged operation hash concatenated with the signature.
+        pub fn operation_with_signature(&self) -> &String {
+            &self.operation_with_signature
+        }
+
+        /// Get the signature by itself.
+        pub fn signature(&self) -> &String {
+            &self.signature
+        }
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    pub struct FinalBalances {
+        merchant_balance: MerchantBalance,
+        customer_balance: CustomerBalance,
+    }
+
+    impl FinalBalances {
+        pub fn merchant_balance(&self) -> MerchantBalance {
+            self.merchant_balance
+        }
+
+        pub fn customer_balance(&self) -> CustomerBalance {
+            self.customer_balance
+        }
+    }
 
     /// Initiate expiry close flow via the `expiry` entrypoint on the given [`ContractId`].
     ///
@@ -450,7 +563,7 @@ mod close {
     pub async fn merch_claim(
         contract_id: &ContractId,
         merchant_key_pair: &TezosKeyMaterial,
-    ) -> Result<(), Error> {
+    ) -> Result<FinalBalances, Error> {
         todo!()
     }
 
@@ -473,6 +586,11 @@ mod close {
         close_message: &ClosingMessage,
         customer_key_pair: &TezosKeyMaterial,
     ) -> Result<(), Error> {
+        // This function should:
+        // - Generate customer authorization EdDSA signature on the operation with the customer's
+        //   Tezos public key.
+        // - Send custClose entrypoint calling operation to blockchain. This operation results in a
+        //   timelock on the customer's balance and an immediate payout of the merchant balance
         todo!()
     }
 
@@ -491,7 +609,7 @@ mod close {
         contract_id: &ContractId,
         revocation_secret: &RevocationSecret,
         merchant_key_pair: &TezosKeyMaterial,
-    ) -> Result<(), Error> {
+    ) -> Result<(FinalBalances), Error> {
         todo!()
     }
 
@@ -523,11 +641,11 @@ mod close {
         contract_id: &ContractId,
         close_state: &CloseState,
         merchant_key_pair: &TezosKeyMaterial,
-    ) -> Result<OperationSignatureInfo, Error> {
+    ) -> Result<MutualCloseAuthorizationSignature, Error> {
         todo!()
     }
 
-    /// Execute the mutual close flow via the `mutualClose` entrypoint by paying out the specified
+    /// Execute the mutual close flow via the `mutualClose` entrypoint paying out the specified
     /// channel balances to both parties.
     ///
     /// This function will wait until the operation is confirmed at depth. It is called by the
@@ -541,11 +659,21 @@ mod close {
     #[allow(unused)]
     pub async fn mutual_close(
         contract_id: &ContractId,
+        channel_id: &ChannelId,
         customer_balance: &CustomerBalance,
         merchant_balance: &MerchantBalance,
-        authorization_signature: &OperationSignatureInfo,
-        merchant_key_pair: &TezosKeyMaterial,
+        authorization_signature: MutualCloseAuthorizationSignature,
+        customer_key_pair: &TezosKeyMaterial,
     ) -> Result<(), Error> {
+        todo!()
+    }
+
+    /// Verify that the specified contract is closed.
+    ///
+    /// This function will wait until the contract status is CLOSED at the expected confirmation
+    /// depth and is called by the merchant.
+    #[allow(unused)]
+    pub async fn verify_contract_closed(contract_id: &ContractId) -> Result<(), Error> {
         todo!()
     }
 }

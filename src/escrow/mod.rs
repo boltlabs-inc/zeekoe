@@ -3,6 +3,8 @@ pub mod tezos;
 
 pub mod types {
 
+    use std::convert::TryFrom;
+
     use super::notify::Level;
     use tezedge::{
         crypto::base58check::ToBase58Check, OriginatedAddress, PrivateKey as TezosPrivateKey,
@@ -66,10 +68,7 @@ pub mod types {
         /// The file should use the key file json formatting that is also used by faucet:
         /// https://faucet.tzalpha.net/
         pub fn read_key_pair(path: impl AsRef<Path>) -> Result<TezosKeyMaterial, Error> {
-            let file_contents = match fs::read_to_string(&path) {
-                Ok(key_file) => key_file,
-                Err(_) => return Err(Error::KeyFileInvalid),
-            };
+            let file_contents = fs::read_to_string(&path).map_err(|_| Error::KeyFileInvalid("Failed to read file".to_string()))?;
 
             let path = path.as_ref().to_string_lossy();
 
@@ -88,9 +87,9 @@ pub mod types {
             // Parse strings using tezedge-client methods
             Ok(Self {
                 public_key: TezosPublicKey::from_base58check(&public_key_string)
-                    .map_err(|_| Error::KeyFileInvalid)?,
+                    .map_err(|_| Error::KeyFileInvalid("Couldn't parse public key".to_string()))?,
                 private_key: TezosPrivateKey::from_base58check(&private_key_string)
-                    .map_err(|_| Error::KeyFileInvalid)?,
+                    .map_err(|_| Error::KeyFileInvalid("Couldn't parse private key".to_string()))?,
                 file_contents,
             })
         }
@@ -199,6 +198,44 @@ pub mod types {
         }
     }
 
+    /// The set of statuses that a zkChannels contract can enter.
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    pub enum ContractStatus {
+        AwaitingCustomerFunding = 0,
+        AwaitingMerchantFunding,
+        Open,
+        Expiry,
+        CustomerClose,
+        Closed,
+        FundingReclaimed,
+    }
+
+    impl TryFrom<i32> for ContractStatus {
+        type Error = anyhow::Error;
+
+        fn try_from(v: i32) -> Result<Self, Self::Error> {
+            match v {
+                x if x == ContractStatus::AwaitingCustomerFunding as i32 => {
+                    Ok(ContractStatus::AwaitingCustomerFunding)
+                }
+                x if x == ContractStatus::AwaitingMerchantFunding as i32 => {
+                    Ok(ContractStatus::AwaitingMerchantFunding)
+                }
+                x if x == ContractStatus::Open as i32 => Ok(ContractStatus::Open),
+                x if x == ContractStatus::Expiry as i32 => Ok(ContractStatus::Expiry),
+                x if x == ContractStatus::CustomerClose as i32 => Ok(ContractStatus::CustomerClose),
+                x if x == ContractStatus::Closed as i32 => Ok(ContractStatus::Closed),
+                x if x == ContractStatus::FundingReclaimed as i32 => {
+                    Ok(ContractStatus::FundingReclaimed)
+                }
+                _ => Err(anyhow::anyhow!(
+                    "Failed to convert value {} to ContractStatus",
+                    v
+                )),
+            }
+        }
+    }
+
     /// Set of errors that may arise while establishing a zkChannel.
     ///
     /// Note: Errors noting that an operation has failed to be confirmed on chain only arise when
@@ -206,7 +243,7 @@ pub mod types {
     /// until operations are successfully confirmed.
     ///
     /// TODO: Add additional errors if they arise (e.g. a wrapper around tezedge-client errors).
-    #[derive(Clone, Debug, Error, Serialize, Deserialize)]
+    #[derive(Debug, Error, Serialize, Deserialize)]
     pub enum Error {
         #[error("Encountered a network error while processing operation {0}")]
         NetworkFailure(Entrypoint),
@@ -218,8 +255,10 @@ pub mod types {
         InvalidZkChannelsContract(ContractId),
         #[error("Failed to produce an authorization signature for mutual close operation for contract ID {0}")]
         SigningFailed(ContractId),
-        #[error("Failed to read key from file")]
-        KeyFileInvalid,
+        #[error("Mutual close authorization signature is invalid for contract ID {0}")]
+        InvalidAuthorizationSignature(ContractId),
+        #[error("Key file was invalid: {0}")]
+        KeyFileInvalid(String),
     }
 
     #[cfg(test)]
