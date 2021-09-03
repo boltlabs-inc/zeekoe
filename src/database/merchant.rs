@@ -363,9 +363,7 @@ impl QueryMerchant for SqlitePool {
         // Only update status if it is an allowable value.
         match result {
             None => Err(Error::ChannelNotFound(*channel_id)),
-            Some(ChannelStatus::Originated)
-            | Some(ChannelStatus::CustomerFunded)
-            | Some(ChannelStatus::MerchantFunded)
+            Some(ChannelStatus::MerchantFunded)
             | Some(ChannelStatus::Active)
             | Some(ChannelStatus::PendingExpiry)
             | Some(ChannelStatus::PendingMutualClose) => {
