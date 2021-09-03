@@ -67,8 +67,6 @@ lazy_static::lazy_static! {
                 "self_delay": self_delay,
                 "status": 0}
 
-                print(initial_storage) // FIXME: delete this
-
                 // Originate main zkchannel contract
                 out = cust_py.origination(script=main_code.script(initial_storage=initial_storage)).autofill().sign().send(min_confirmations=min_confirmations)
 
@@ -105,6 +103,214 @@ lazy_static::lazy_static! {
                 status = contents["metadata"]["operation_result"]["status"]
                 block = op_info["branch"]
                 level = pytezos.using(shell=uri).shell.blocks[block].level()
+
+                return (status, level)
+
+            // Call the `addMerchFunding` endpoint of an extant contract
+            def add_merchant_funding(
+                uri,
+                merch_acc,
+                contract_id,
+                merch_funding,
+                min_confirmations
+            ):
+                // Merchant pytezos interface
+                merch_py = pytezos.using(key=merch_acc, shell=uri)
+
+                // Merchant zkchannel contract interface
+                merch_ci = merch_py.contract(contract_id)
+
+                // Call the addMerchFunding entrypoint
+                out = merch_ci.addMerchFunding().with_amount(merch_funding).send(min_confirmations=min_confirmations)
+
+                // Get status and level of the addMerchFunding operation
+                op_info = pytezos.using(shell=uri).shell.blocks[-20:].find_operation(out.hash())
+                contents = op_info["contents"][0]
+                status = contents["metadata"]["operation_result"]["status"]
+                level = 1 // TODO: get the level where the operation was confirmed
+
+                return (status, level)
+
+            def cust_close(
+                uri,
+                cust_acc,
+                contract_id,
+                customer_balance, merchant_balance,
+                sigma1, sigma2,
+                revocation_lock,
+                min_confirmations,
+            ):
+                // Customer pytezos interface
+                cust_py = pytezos.using(key=cust_acc, shell=uri)
+
+                // Customer zkchannel contract interface
+                cust_ci = cust_py.contract(contract_id)
+
+                // Set the storage for the operation
+                close_storage = {
+                    "customer_balance": int(customer_balance),
+                    "merchant_balance": int(merchant_balance),
+                    "revocation_lock": revocation_lock,
+                    "sigma1": sigma1,
+                    "sigma2": sigma2
+                }
+
+                // Call the custClose entrypoint
+                out = cust_ci.custClose(close_storage).send(min_confirmations=min_confirmations)
+
+                // Get status and level of the operation
+                op_info = pytezos.using(shell=uri).shell.blocks[-20:].find_operation(out.hash())
+                contents = op_info["contents"][0]
+                status = contents["metadata"]["operation_result"]["status"]
+                level = 1 // TODO: get the level where the operation was confirmed
+
+                return (status, level)
+
+            def cust_claim(
+                uri,
+                cust_acc,
+                contract_id,
+                min_confirmations,
+            ):
+                // Customer pytezos interface
+                cust_py = pytezos.using(key=cust_acc, shell=uri)
+
+                // Customer zkchannel contract interface
+                cust_ci = cust_py.contract(contract_id)
+
+                // Call the custClaim entrypoint
+                out = cust_ci.custClaim().send(min_confirmations=min_confirmations)
+
+                // Get status and level of the operation
+                op_info = pytezos.using(shell=uri).shell.blocks[-20:].find_operation(out.hash())
+                contents = op_info["contents"][0]
+                status = contents["metadata"]["operation_result"]["status"]
+                level = 1 // TODO: get the level where the operation was confirmed
+
+                return (status, level)
+
+            def reclaim_funding(
+                uri,
+                cust_acc,
+                contract_id,
+                min_confirmations,
+            ):
+                // Customer pytezos interface
+                cust_py = pytezos.using(key=cust_acc, shell=uri)
+
+                // Customer zkchannel contract interface
+                cust_ci = cust_py.contract(contract_id)
+
+                // Call the reclaimFunding entrypoint
+                out = cust_ci.reclaimFunding().send(min_confirmations=min_confirmations)
+
+                // Get status and level of the operation
+                op_info = pytezos.using(shell=uri).shell.blocks[-20:].find_operation(out.hash())
+                contents = op_info["contents"][0]
+                status = contents["metadata"]["operation_result"]["status"]
+                level = 1 // TODO: get the level where the operation was confirmed
+
+                return (status, level)
+
+            def expiry(
+                uri,
+                merch_acc,
+                contract_id,
+                min_confirmations,
+            ):
+                // Merchant pytezos interface
+                merch_py = pytezos.using(key=merch_acc, shell=uri)
+
+                // Merchant zkchannel contract interface
+                merch_ci = merch_py.contract(contract_id)
+
+                // Call the expiry entrypoint
+                out = merch_ci.expiry().send(min_confirmations=min_confirmations)
+
+                // Get status and level of the operation
+                op_info = pytezos.using(shell=uri).shell.blocks[-20:].find_operation(out.hash())
+                contents = op_info["contents"][0]
+                status = contents["metadata"]["operation_result"]["status"]
+                level = 1 // TODO: get the level where the operation was confirmed
+
+                return (status, level)
+
+            def merch_claim(
+                uri,
+                merch_acc,
+                contract_id,
+                min_confirmations,
+            ):
+                // Merchant pytezos interface
+                merch_py = pytezos.using(key=merch_acc, shell=uri)
+
+                // Merchant zkchannel contract interface
+                merch_ci = merch_py.contract(contract_id)
+
+                // Call the merchClaim entrypoint
+                out = merch_ci.merchClaim().send(min_confirmations=min_confirmations)
+
+                // Get status and level of the operation
+                op_info = pytezos.using(shell=uri).shell.blocks[-20:].find_operation(out.hash())
+                contents = op_info["contents"][0]
+                status = contents["metadata"]["operation_result"]["status"]
+                level = 1 // TODO: get the level where the operation was confirmed
+
+                return (status, level)
+
+            def merch_dispute(
+                uri,
+                merch_acc,
+                contract_id,
+                revocation_secret,
+                min_confirmations,
+            ):
+                // Merchant pytezos interface
+                merch_py = pytezos.using(key=merch_acc, shell=uri)
+
+                // Merchant zkchannel contract interface
+                merch_ci = merch_py.contract(contract_id)
+
+                // Call the merchDispute entrypoint
+                out = merch_ci.merchDispute(revocation_secret).send(min_confirmations=min_confirmations)
+
+                // Get status and level of the operation
+                op_info = pytezos.using(shell=uri).shell.blocks[-20:].find_operation(out.hash())
+                contents = op_info["contents"][0]
+                status = contents["metadata"]["operation_result"]["status"]
+                level = 1 // TODO: get the level where the operation was confirmed
+
+                return (status, level)
+
+            def mutual_close(
+                uri,
+                cust_acc,
+                contract_id,
+                customer_balance, merchant_balance,
+                mutual_close_signature,
+                min_confirmations,
+            ):
+                // Customer pytezos interface
+                cust_py = pytezos.using(key=cust_acc, shell=uri)
+
+                // Customer zkchannel contract interface
+                cust_ci = cust_py.contract(contract_id)
+
+                // Set the storage for the operation
+                mutual_close_storage = {
+                    "customer_balance": int(customer_balance),
+                    "merchant_balance": int(merchant_balance),
+                    "merchSig": mutual_close_signature
+                }
+
+                // Call the mutualClose entrypoint
+                out = cust_ci.mutualClose(mutual_close_storage).send(min_confirmations=min_confirmations)
+
+                // Get status and level of the operation
+                op_info = pytezos.using(shell=uri).shell.blocks[-20:].find_operation(out.hash())
+                contents = op_info["contents"][0]
+                status = contents["metadata"]["operation_result"]["status"]
+                level = 1 // TODO: get the level where the operation was confirmed
 
                 return (status, level)
         }
@@ -203,6 +409,11 @@ pub mod establish {
     #[derive(Debug, Clone, thiserror::Error)]
     #[error("Could not fund contract: {0}")]
     pub struct CustomerFundError(String);
+
+    /// An error while attempting to fund the contract.
+    #[derive(Debug, Clone, thiserror::Error)]
+    #[error("Could not reclaim funding from contract: {0}")]
+    pub struct ReclaimFundingError(String);
 
     /// Originate a contract on chain.
     ///
@@ -383,11 +594,45 @@ pub mod establish {
     /// - the contract status is not OPEN
     #[allow(unused)]
     pub async fn add_merchant_funding(
+        uri: Option<&http::Uri>,
         contract_id: &ContractId,
         merchant_funding_info: &MerchantFundingInformation,
         merchant_key_pair: &TezosKeyMaterial,
-    ) -> Result<(), Error> {
-        todo!()
+        confirmation_depth: u64,
+    ) -> Result<(OperationStatus, Level), CustomerFundError> {
+        let merchant_funding = merchant_funding_info.balance.into_inner();
+        let merchant_private_key = merchant_key_pair.private_key().to_base58check();
+        let merchant_pubkey = merchant_funding_info.public_key.to_base58check();
+        let contract_id = contract_id.clone().to_originated_address().to_base58check();
+        let contract_id = &contract_id;
+        let uri = uri.map(|uri| uri.to_string());
+
+        PYTHON.run(python! {
+            success = True
+            try:
+                out = add_merchant_funding(
+                    'uri,
+                    'merchant_private_key,
+                    'contract_id,
+                    'merchant_funding,
+                    'confirmation_depth
+                )
+            except Exception as e:
+                success = False
+                error = repr(e)
+        });
+
+        if PYTHON.get("success") {
+            let (status, level) = PYTHON.get::<(String, u32)>("out");
+            let contract_id = ContractId::new(
+                OriginatedAddress::from_base58check(contract_id)
+                    .expect("Contract id returned from pytezos must be valid base58"),
+            );
+            Ok((status.parse().unwrap(), level.into()))
+        } else {
+            let error = PYTHON.get::<String>("error");
+            Err(CustomerFundError(error))
+        }
     }
 
     /// Reclaim customer funding via the `reclaimFunding` entrypoint on the given [`ContractId`].
@@ -400,10 +645,41 @@ pub mod establish {
     /// - the `addFunding` entrypoint has not been called by the customer address
     #[allow(unused)]
     pub async fn reclaim_customer_funding(
+        uri: Option<&http::Uri>,
         contract_id: &ContractId,
         customer_key_pair: &TezosKeyMaterial,
-    ) -> Result<(), Error> {
-        todo!()
+        confirmation_depth: u64,
+    ) -> Result<(OperationStatus, Level), ReclaimFundingError> {
+        let customer_private_key = customer_key_pair.private_key().to_base58check();
+        let contract_id = contract_id.clone().to_originated_address().to_base58check();
+        let contract_id = &contract_id;
+        let uri = uri.map(|uri| uri.to_string());
+
+        PYTHON.run(python! {
+            success = True
+            try:
+                out = reclaim_funding(
+                    'uri,
+                    'customer_private_key,
+                    'contract_id,
+                    'confirmation_depth
+                )
+            except Exception as e:
+                success = False
+                error = repr(e)
+        });
+
+        if PYTHON.get("success") {
+            let (status, level) = PYTHON.get::<(String, u32)>("out");
+            let contract_id = ContractId::new(
+                OriginatedAddress::from_base58check(contract_id)
+                    .expect("Contract id returned from pytezos must be valid base58"),
+            );
+            Ok((status.parse().unwrap(), level.into()))
+        } else {
+            let error = PYTHON.get::<String>("error");
+            Err(ReclaimFundingError(error))
+        }
     }
 }
 
