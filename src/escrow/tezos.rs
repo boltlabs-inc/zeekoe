@@ -426,7 +426,7 @@ pub mod establish {
     ///
     /// By default, this uses the Tezos mainnet; however, another URI may be specified to point to a
     /// sandbox or testnet node.
-    pub async fn originate(
+    pub fn originate(
         uri: Option<&http::Uri>,
         merchant_funding_info: &MerchantFundingInformation,
         customer_funding_info: &CustomerFundingInformation,
@@ -492,7 +492,7 @@ pub mod establish {
     /// - the specified funding information does not match the `custFunding` amount in the contract
     /// - the `addFunding` entrypoint has not been called by the customer address before.
     #[allow(unused)]
-    pub async fn add_customer_funding(
+    pub fn add_customer_funding(
         uri: Option<&http::Uri>,
         contract_id: &ContractId,
         customer_funding_info: &CustomerFundingInformation,
@@ -523,10 +523,6 @@ pub mod establish {
 
         if PYTHON.get("success") {
             let (status, level) = PYTHON.get::<(String, u32)>("out");
-            let contract_id = ContractId::new(
-                OriginatedAddress::from_base58check(contract_id)
-                    .expect("Contract id returned from pytezos must be valid base58"),
-            );
             Ok((status.parse().unwrap(), level.into()))
         } else {
             let error = PYTHON.get::<String>("error");
@@ -548,7 +544,7 @@ pub mod establish {
     /// This function will return [`Error::InvalidZkChannelsContract`] if the contract is not a valid
     /// zkChannels contract or it does not have the expected storage.
     #[allow(unused)]
-    pub async fn verify_origination(
+    pub fn verify_origination(
         contract_id: &ContractId,
         merchant_funding_info: &MerchantFundingInformation,
         customer_funding_info: &CustomerFundingInformation,
@@ -568,7 +564,7 @@ pub mod establish {
     /// This function will wait until the customer's funding operation is confirmed at depth
     /// and is called by the merchant.
     #[allow(unused)]
-    pub async fn verify_customer_funding(
+    pub fn verify_customer_funding(
         contract_id: &ContractId,
         customer_funding_info: &CustomerFundingInformation,
     ) -> Result<(), Error> {
@@ -593,7 +589,7 @@ pub mod establish {
     /// If the expected merchant funding is 0, this operation is invalid if:
     /// - the contract status is not OPEN
     #[allow(unused)]
-    pub async fn add_merchant_funding(
+    pub fn add_merchant_funding(
         uri: Option<&http::Uri>,
         contract_id: &ContractId,
         merchant_funding_info: &MerchantFundingInformation,
@@ -624,10 +620,6 @@ pub mod establish {
 
         if PYTHON.get("success") {
             let (status, level) = PYTHON.get::<(String, u32)>("out");
-            let contract_id = ContractId::new(
-                OriginatedAddress::from_base58check(contract_id)
-                    .expect("Contract id returned from pytezos must be valid base58"),
-            );
             Ok((status.parse().unwrap(), level.into()))
         } else {
             let error = PYTHON.get::<String>("error");
@@ -644,7 +636,7 @@ pub mod establish {
     /// - the contract status is not AWAITING_FUNDING.
     /// - the `addFunding` entrypoint has not been called by the customer address
     #[allow(unused)]
-    pub async fn reclaim_customer_funding(
+    pub fn reclaim_customer_funding(
         uri: Option<&http::Uri>,
         contract_id: &ContractId,
         customer_key_pair: &TezosKeyMaterial,
@@ -671,10 +663,6 @@ pub mod establish {
 
         if PYTHON.get("success") {
             let (status, level) = PYTHON.get::<(String, u32)>("out");
-            let contract_id = ContractId::new(
-                OriginatedAddress::from_base58check(contract_id)
-                    .expect("Contract id returned from pytezos must be valid base58"),
-            );
             Ok((status.parse().unwrap(), level.into()))
         } else {
             let error = PYTHON.get::<String>("error");
@@ -684,15 +672,39 @@ pub mod establish {
 }
 
 mod close {
-    use crate::escrow::types::*;
-
+    use super::PYTHON;
+    use crate::escrow::{
+        tezos::{hex_string, Level, OperationStatus},
+        types::*,
+    };
+    use inline_python::python;
     use {
-        tezedge::signer::OperationSignatureInfo,
+        tezedge::{signer::OperationSignatureInfo, ToBase58Check},
         zkabacus_crypto::{
             customer::ClosingMessage, revlock::RevocationSecret, CloseState, CustomerBalance,
             MerchantBalance,
         },
     };
+
+    #[derive(Debug, Clone, thiserror::Error)]
+    #[error("Could not issue expiry: {0}")]
+    pub struct ExpiryError(String);
+
+    #[derive(Debug, Clone, thiserror::Error)]
+    #[error("Could not issue merchant claim: {0}")]
+    pub struct MerchantClaimError(String);
+
+    #[derive(Debug, Clone, thiserror::Error)]
+    #[error("Could not issue customer close: {0}")]
+    pub struct CustomerCloseError(String);
+
+    #[derive(Debug, Clone, thiserror::Error)]
+    #[error("Could not issue merchant dispute: {0}")]
+    pub struct MerchantDisputeError(String);
+
+    #[derive(Debug, Clone, thiserror::Error)]
+    #[error("Could not issue customer claim: {0}")]
+    pub struct CustomerClaimError(String);
 
     /// Initiate expiry close flow via the `expiry` entrypoint on the given [`ContractId`].
     ///
@@ -704,11 +716,38 @@ mod close {
     /// - the [`TezosFundingAddress`] specified does not match the `merch_addr` field in the
     ///   the specified contract
     #[allow(unused)]
-    pub async fn expiry(
+    pub fn expiry(
+        uri: Option<&http::Uri>,
         contract_id: &ContractId,
         merchant_key_pair: &TezosKeyMaterial,
-    ) -> Result<(), Error> {
-        todo!()
+        confirmation_depth: u64,
+    ) -> Result<(OperationStatus, Level), ExpiryError> {
+        let merchant_private_key = merchant_key_pair.private_key().to_base58check();
+        let contract_id = contract_id.clone().to_originated_address().to_base58check();
+        let contract_id = &contract_id;
+        let uri = uri.map(|uri| uri.to_string());
+
+        PYTHON.run(python! {
+            success = True
+            try:
+                out = expiry(
+                    'uri,
+                    'merchant_private_key,
+                    'contract_id,
+                    'confirmation_depth
+                )
+            except Exception as e:
+                success = False
+                error = repr(e)
+        });
+
+        if PYTHON.get("success") {
+            let (status, level) = PYTHON.get::<(String, u32)>("out");
+            Ok((status.parse().unwrap(), level.into()))
+        } else {
+            let error = PYTHON.get::<String>("error");
+            Err(ExpiryError(error))
+        }
     }
 
     /// Complete expiry close flow by claiming the entire channel balance on the [`ContractId`]
@@ -723,11 +762,38 @@ mod close {
     /// - the [`TezosKeyPair`] does not match the `merch_addr` field in the specified
     ///   contract
     #[allow(unused)]
-    pub async fn merch_claim(
+    pub fn merch_claim(
+        uri: Option<&http::Uri>,
         contract_id: &ContractId,
         merchant_key_pair: &TezosKeyMaterial,
-    ) -> Result<(), Error> {
-        todo!()
+        confirmation_depth: u64,
+    ) -> Result<(OperationStatus, Level), MerchantClaimError> {
+        let merchant_private_key = merchant_key_pair.private_key().to_base58check();
+        let contract_id = contract_id.clone().to_originated_address().to_base58check();
+        let contract_id = &contract_id;
+        let uri = uri.map(|uri| uri.to_string());
+
+        PYTHON.run(python! {
+            success = True
+            try:
+                out = merch_claim(
+                    'uri,
+                    'merchant_private_key,
+                    'contract_id,
+                    'confirmation_depth
+                )
+            except Exception as e:
+                success = False
+                error = repr(e)
+        });
+
+        if PYTHON.get("success") {
+            let (status, level) = PYTHON.get::<(String, u32)>("out");
+            Ok((status.parse().unwrap(), level.into()))
+        } else {
+            let error = PYTHON.get::<String>("error");
+            Err(MerchantClaimError(error))
+        }
     }
 
     /// Initiate unilateral customer close flow or correct balances from the expiry flow by
@@ -744,12 +810,51 @@ mod close {
     /// - the signature in the [`ClosingMessage`] is not a valid signature under the merchant
     ///   public key on the expected tuple
     #[allow(unused)]
-    pub async fn cust_close(
+    pub fn cust_close(
+        uri: Option<&http::Uri>,
         contract_id: &ContractId,
         close_message: &ClosingMessage,
         customer_key_pair: &TezosKeyMaterial,
-    ) -> Result<(), Error> {
-        todo!()
+        confirmation_depth: u64,
+    ) -> Result<(OperationStatus, Level), CustomerCloseError> {
+        let customer_balance = close_message.customer_balance().into_inner();
+        let merchant_balance = close_message.merchant_balance().into_inner();
+        let revocation_lock = hex_string(
+            close_message
+                .revocation_lock()
+                .to_scalar() // TODO: this needs to be public in zkabacus
+                .to_uncompressed(),
+        );
+        let customer_private_key = customer_key_pair.private_key().to_base58check();
+        let contract_id = contract_id.clone().to_originated_address().to_base58check();
+        let contract_id = &contract_id;
+        let uri = uri.map(|uri| uri.to_string());
+
+        PYTHON.run(python! {
+            success = True
+            try:
+                out = cust_close(
+                    'uri,
+                    'customer_private_key,
+                    'contract_id,
+                    'customer_balance,
+                    'merchant_balance,
+                    'sigma1, 'sigma2, // TODO: extract these from the closing message
+                    'revocation_lock,
+                    'confirmation_depth
+                )
+            except Exception as e:
+                success = False
+                error = repr(e)
+        });
+
+        if PYTHON.get("success") {
+            let (status, level) = PYTHON.get::<(String, u32)>("out");
+            Ok((status.parse().unwrap(), level.into()))
+        } else {
+            let error = PYTHON.get::<String>("error");
+            Err(CustomerCloseError(error))
+        }
     }
 
     /// Dispute balances posted by a customer (via [`cust_close()`]) by posting a revocation
@@ -763,12 +868,42 @@ mod close {
     /// - the [`TezosKeyPair`] does not match the `merch_addr` field in the specified contract
     /// - the [`RevocationSecret`] does not hash to the `rev_lock` field in the specified contract
     #[allow(unused)]
-    pub async fn merch_dispute(
+    pub fn merch_dispute(
+        uri: Option<&http::Uri>,
         contract_id: &ContractId,
         revocation_secret: &RevocationSecret,
         merchant_key_pair: &TezosKeyMaterial,
-    ) -> Result<(), Error> {
-        todo!()
+        confirmation_depth: u64,
+    ) -> Result<(OperationStatus, Level), MerchantDisputeError> {
+        let merchant_private_key = merchant_key_pair.private_key().to_base58check();
+        let contract_id = contract_id.clone().to_originated_address().to_base58check();
+        let contract_id = &contract_id;
+        // TODO: how to extract revocation secret's byte representation?
+        let revocation_secret = hex_string(revocation_secret.to_scalar().to_uncompressed());
+        let uri = uri.map(|uri| uri.to_string());
+
+        PYTHON.run(python! {
+            success = True
+            try:
+                out = merch_dispute(
+                    'uri,
+                    'merchant_private_key,
+                    'contract_id,
+                    'revocation_secret,
+                    'confirmation_depth
+                )
+            except Exception as e:
+                success = False
+                error = repr(e)
+        });
+
+        if PYTHON.get("success") {
+            let (status, level) = PYTHON.get::<(String, u32)>("out");
+            Ok((status.parse().unwrap(), level.into()))
+        } else {
+            let error = PYTHON.get::<String>("error");
+            Err(MerchantDisputeError(error))
+        }
     }
 
     /// Claim customer funds (posted via [`cust_close()`]) after the timeout period has elapsed
@@ -782,11 +917,38 @@ mod close {
     /// - the contract status is not CUST_CLOSE
     /// - the [`TezosKeyPair`] does not match the `cust_addr` field in the specified contract
     #[allow(unused)]
-    pub async fn cust_claim(
+    pub fn cust_claim(
+        uri: Option<&http::Uri>,
         contract_id: &ContractId,
         customer_key_pair: &TezosKeyMaterial,
-    ) -> Result<(), Error> {
-        todo!()
+        confirmation_depth: u64,
+    ) -> Result<(OperationStatus, Level), CustomerClaimError> {
+        let customer_private_key = customer_key_pair.private_key().to_base58check();
+        let contract_id = contract_id.clone().to_originated_address().to_base58check();
+        let contract_id = &contract_id;
+        let uri = uri.map(|uri| uri.to_string());
+
+        PYTHON.run(python! {
+            success = True
+            try:
+                out = cust_claim(
+                    'uri,
+                    'customer_private_key,
+                    'contract_id,
+                    'confirmation_depth
+                )
+            except Exception as e:
+                success = False
+                error = repr(e)
+        });
+
+        if PYTHON.get("success") {
+            let (status, level) = PYTHON.get::<(String, u32)>("out");
+            Ok((status.parse().unwrap(), level.into()))
+        } else {
+            let error = PYTHON.get::<String>("error");
+            Err(CustomerClaimError(error))
+        }
     }
 
     /// Authorize the close state provided in the mutual close flow by producing a valid EdDSA
@@ -795,10 +957,12 @@ mod close {
     ///
     /// This is called by the merchant.
     #[allow(unused)]
-    pub async fn authorize_mutual_close(
+    pub fn authorize_mutual_close(
+        uri: Option<&http::Uri>,
         contract_id: &ContractId,
         close_state: &CloseState,
         merchant_key_pair: &TezosKeyMaterial,
+        confirmation_depth: u64,
     ) -> Result<OperationSignatureInfo, Error> {
         todo!()
     }
@@ -815,12 +979,14 @@ mod close {
     /// - the `authorization_signature` is not a valid signature under the merchant public key
     ///   on the expected tuple
     #[allow(unused)]
-    pub async fn mutual_close(
+    pub fn mutual_close(
+        uri: Option<&http::Uri>,
         contract_id: &ContractId,
         customer_balance: &CustomerBalance,
         merchant_balance: &MerchantBalance,
         authorization_signature: &OperationSignatureInfo,
         merchant_key_pair: &TezosKeyMaterial,
+        confirmation_depth: u64,
     ) -> Result<(), Error> {
         todo!()
     }
