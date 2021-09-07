@@ -370,6 +370,9 @@ impl FromStr for OperationStatus {
 }
 
 pub mod establish {
+    use futures::Future;
+    use tokio::task::JoinError;
+
     use super::*;
 
     #[allow(unused)]
@@ -401,19 +404,19 @@ pub mod establish {
     }
 
     /// An error while attempting to originate the contract.
-    #[derive(Debug, Clone, thiserror::Error)]
+    #[derive(Debug, thiserror::Error)]
     #[error("Could not originate contract: {0}")]
-    pub struct OriginateError(String);
+    pub struct OriginateError(#[from] JoinError);
 
     /// An error while attempting to fund the contract.
-    #[derive(Debug, Clone, thiserror::Error)]
+    #[derive(Debug, thiserror::Error)]
     #[error("Could not fund contract: {0}")]
-    pub struct CustomerFundError(String);
+    pub struct CustomerFundError(#[from] JoinError);
 
     /// An error while attempting to fund the contract.
-    #[derive(Debug, Clone, thiserror::Error)]
+    #[derive(Debug, thiserror::Error)]
     #[error("Could not reclaim funding from contract: {0}")]
-    pub struct ReclaimFundingError(String);
+    pub struct ReclaimFundingError(#[from] JoinError);
 
     /// Originate a contract on chain.
     ///
@@ -435,7 +438,7 @@ pub mod establish {
         channel_id: &ChannelId,
         confirmation_depth: u64,
         self_delay: u64,
-    ) -> Result<(ContractId, OperationStatus, Level), OriginateError> {
+    ) -> impl Future<Output = Result<(ContractId, OperationStatus, Level), OriginateError>> {
         let (g2, y2s, x2) =
             super::pointcheval_sanders_public_key_to_python_input(merchant_public_key);
         let merchant_funding = merchant_funding_info.balance.into_inner();
@@ -449,35 +452,31 @@ pub mod establish {
         let channel_id = hex_string(channel_id.to_bytes().to_vec());
         let uri = uri.map(|uri| uri.to_string());
 
-        PYTHON.run(python! {
-            success = True
-            try:
-                out = originate(
-                    'uri,
-                    'customer_address, 'merchant_address,
-                    'customer_account_key,
-                    'customer_pubkey, 'merchant_pubkey,
-                    'channel_id,
-                    'g2, 'y2s, 'x2,
-                    'customer_funding, 'merchant_funding,
-                    'confirmation_depth,
-                    'self_delay
-                )
-            except Exception as e:
-                success = False
-                error = repr(e)
-        });
+        async move {
+            tokio::task::spawn_blocking(move || {
+                PYTHON.run(python! {
+                    out = originate(
+                        'uri,
+                        'customer_address, 'merchant_address,
+                        'customer_account_key,
+                        'customer_pubkey, 'merchant_pubkey,
+                        'channel_id,
+                        'g2, 'y2s, 'x2,
+                        'customer_funding, 'merchant_funding,
+                        'confirmation_depth,
+                        'self_delay
+                    )
+                });
 
-        if PYTHON.get("success") {
-            let (contract_id, status, level) = PYTHON.get::<(String, String, u32)>("out");
-            let contract_id = ContractId::new(
-                OriginatedAddress::from_base58check(&contract_id)
-                    .expect("Contract id returned from pytezos must be valid base58"),
-            );
-            Ok((contract_id, status.parse().unwrap(), level.into()))
-        } else {
-            let error = PYTHON.get::<String>("error");
-            Err(OriginateError(error))
+                let (contract_id, status, level) = PYTHON.get::<(String, String, u32)>("out");
+                let contract_id = ContractId::new(
+                    OriginatedAddress::from_base58check(&contract_id)
+                        .expect("Contract id returned from pytezos must be valid base58"),
+                );
+                (contract_id, status.parse().unwrap(), level.into())
+            })
+            .await
+            .map_err(OriginateError)
         }
     }
 
@@ -498,35 +497,30 @@ pub mod establish {
         customer_funding_info: &CustomerFundingInformation,
         customer_key_pair: &TezosKeyMaterial,
         confirmation_depth: u64,
-    ) -> Result<(OperationStatus, Level), CustomerFundError> {
+    ) -> impl Future<Output = Result<(OperationStatus, Level), CustomerFundError>> {
         let customer_funding = customer_funding_info.balance.into_inner();
         let customer_private_key = customer_key_pair.private_key().to_base58check();
         let customer_pubkey = customer_funding_info.public_key.to_base58check();
         let contract_id = contract_id.clone().to_originated_address().to_base58check();
-        let contract_id = &contract_id;
         let uri = uri.map(|uri| uri.to_string());
 
-        PYTHON.run(python! {
-            success = True
-            try:
-                out = add_customer_funding(
-                    'uri,
-                    'customer_private_key,
-                    'contract_id,
-                    'customer_funding,
-                    'confirmation_depth
-                )
-            except Exception as e:
-                success = False
-                error = repr(e)
-        });
+        async move {
+            tokio::task::spawn_blocking(move || {
+                PYTHON.run(python! {
+                    out = add_customer_funding(
+                        'uri,
+                        'customer_private_key,
+                        'contract_id,
+                        'customer_funding,
+                        'confirmation_depth
+                    )
+                });
 
-        if PYTHON.get("success") {
-            let (status, level) = PYTHON.get::<(String, u32)>("out");
-            Ok((status.parse().unwrap(), level.into()))
-        } else {
-            let error = PYTHON.get::<String>("error");
-            Err(CustomerFundError(error))
+                let (status, level) = PYTHON.get::<(String, u32)>("out");
+                (status.parse().unwrap(), level.into())
+            })
+            .await
+            .map_err(CustomerFundError)
         }
     }
 
@@ -563,8 +557,14 @@ pub mod establish {
     ///
     /// This function will wait until the customer's funding operation is confirmed at depth
     /// and is called by the merchant.
-    #[allow(unused)]
     pub fn verify_customer_funding(
+        contract_id: &ContractId,
+        customer_funding_info: &CustomerFundingInformation,
+    ) -> Result<(), Error> {
+        todo!()
+    }
+
+    pub fn verify_merchant_funding(
         contract_id: &ContractId,
         customer_funding_info: &CustomerFundingInformation,
     ) -> Result<(), Error> {
@@ -595,35 +595,35 @@ pub mod establish {
         merchant_funding_info: &MerchantFundingInformation,
         merchant_key_pair: &TezosKeyMaterial,
         confirmation_depth: u64,
-    ) -> Result<(OperationStatus, Level), CustomerFundError> {
+    ) -> impl Future<Output = Result<(OperationStatus, Level), CustomerFundError>> {
         let merchant_funding = merchant_funding_info.balance.into_inner();
         let merchant_private_key = merchant_key_pair.private_key().to_base58check();
         let merchant_pubkey = merchant_funding_info.public_key.to_base58check();
         let contract_id = contract_id.clone().to_originated_address().to_base58check();
-        let contract_id = &contract_id;
         let uri = uri.map(|uri| uri.to_string());
 
-        PYTHON.run(python! {
-            success = True
-            try:
-                out = add_merchant_funding(
-                    'uri,
-                    'merchant_private_key,
-                    'contract_id,
-                    'merchant_funding,
-                    'confirmation_depth
-                )
-            except Exception as e:
-                success = False
-                error = repr(e)
-        });
+        async move {
+            tokio::task::spawn_blocking(move || {
+                PYTHON.run(python! {
+                    success = True
+                    try:
+                        out = add_merchant_funding(
+                            'uri,
+                            'merchant_private_key,
+                            'contract_id,
+                            'merchant_funding,
+                            'confirmation_depth
+                        )
+                    except Exception as e:
+                        success = False
+                        error = repr(e)
+                });
 
-        if PYTHON.get("success") {
-            let (status, level) = PYTHON.get::<(String, u32)>("out");
-            Ok((status.parse().unwrap(), level.into()))
-        } else {
-            let error = PYTHON.get::<String>("error");
-            Err(CustomerFundError(error))
+                let (status, level) = PYTHON.get::<(String, u32)>("out");
+                (status.parse().unwrap(), level.into())
+            })
+            .await
+            .map_err(CustomerFundError)
         }
     }
 
@@ -641,33 +641,25 @@ pub mod establish {
         contract_id: &ContractId,
         customer_key_pair: &TezosKeyMaterial,
         confirmation_depth: u64,
-    ) -> Result<(OperationStatus, Level), ReclaimFundingError> {
+    ) -> impl Future<Output = Result<(OperationStatus, Level), ReclaimFundingError>> {
         let customer_private_key = customer_key_pair.private_key().to_base58check();
         let contract_id = contract_id.clone().to_originated_address().to_base58check();
-        let contract_id = &contract_id;
         let uri = uri.map(|uri| uri.to_string());
 
-        PYTHON.run(python! {
-            success = True
-            try:
-                out = reclaim_funding(
-                    'uri,
-                    'customer_private_key,
-                    'contract_id,
-                    'confirmation_depth
-                )
-            except Exception as e:
-                success = False
-                error = repr(e)
-        });
+        async move {
+            tokio::task::spawn_blocking(move || {
+                PYTHON.run(python! {
+                    out = reclaim_funding(
+                        'uri,
+                        'customer_private_key,
+                        'contract_id,
+                        'confirmation_depth
+                    )
+                });
 
-        if PYTHON.get("success") {
             let (status, level) = PYTHON.get::<(String, u32)>("out");
-            Ok((status.parse().unwrap(), level.into()))
-        } else {
-            let error = PYTHON.get::<String>("error");
-            Err(ReclaimFundingError(error))
-        }
+            (status.parse().unwrap(), level.into())
+        }).await.map_err(ReclaimFundingError)
     }
 }
 
@@ -677,7 +669,9 @@ mod close {
         tezos::{hex_string, Level, OperationStatus},
         types::*,
     };
+    use futures::Future;
     use inline_python::python;
+    use tokio::task::{JoinError};
     use {
         tezedge::{signer::OperationSignatureInfo, ToBase58Check},
         zkabacus_crypto::{
@@ -686,25 +680,25 @@ mod close {
         },
     };
 
-    #[derive(Debug, Clone, thiserror::Error)]
+    #[derive(Debug, thiserror::Error)]
     #[error("Could not issue expiry: {0}")]
-    pub struct ExpiryError(String);
+    pub struct ExpiryError(#[from] JoinError);
 
-    #[derive(Debug, Clone, thiserror::Error)]
+    #[derive(Debug, thiserror::Error)]
     #[error("Could not issue merchant claim: {0}")]
-    pub struct MerchantClaimError(String);
+    pub struct MerchantClaimError(#[from] JoinError);
 
-    #[derive(Debug, Clone, thiserror::Error)]
+    #[derive(Debug, thiserror::Error)]
     #[error("Could not issue customer close: {0}")]
-    pub struct CustomerCloseError(String);
+    pub struct CustomerCloseError(#[from] JoinError);
 
-    #[derive(Debug, Clone, thiserror::Error)]
+    #[derive(Debug, thiserror::Error)]
     #[error("Could not issue merchant dispute: {0}")]
-    pub struct MerchantDisputeError(String);
+    pub struct MerchantDisputeError(#[from] JoinError);
 
-    #[derive(Debug, Clone, thiserror::Error)]
+    #[derive(Debug, thiserror::Error)]
     #[error("Could not issue customer claim: {0}")]
-    pub struct CustomerClaimError(String);
+    pub struct CustomerClaimError(#[from] JoinError);
 
     /// Initiate expiry close flow via the `expiry` entrypoint on the given [`ContractId`].
     ///
@@ -721,32 +715,20 @@ mod close {
         contract_id: &ContractId,
         merchant_key_pair: &TezosKeyMaterial,
         confirmation_depth: u64,
-    ) -> Result<(OperationStatus, Level), ExpiryError> {
+    ) -> impl Future<Output = Result<(OperationStatus, Level), ExpiryError>> {
         let merchant_private_key = merchant_key_pair.private_key().to_base58check();
         let contract_id = contract_id.clone().to_originated_address().to_base58check();
-        let contract_id = &contract_id;
         let uri = uri.map(|uri| uri.to_string());
 
-        PYTHON.run(python! {
-            success = True
-            try:
-                out = expiry(
-                    'uri,
-                    'merchant_private_key,
-                    'contract_id,
-                    'confirmation_depth
-                )
-            except Exception as e:
-                success = False
-                error = repr(e)
-        });
+        async move {
+            tokio::task::spawn_blocking(move || {
+                PYTHON.run(python! {
+                    out = expiry('uri, 'merchant_private_key, 'contract_id, 'confirmation_depth)
+                });
 
-        if PYTHON.get("success") {
-            let (status, level) = PYTHON.get::<(String, u32)>("out");
-            Ok((status.parse().unwrap(), level.into()))
-        } else {
-            let error = PYTHON.get::<String>("error");
-            Err(ExpiryError(error))
+                let (status, level) = PYTHON.get::<(String, u32)>("out");
+                (status.parse().unwrap(), level.into())
+            }).await.map_err(ExpiryError)
         }
     }
 
@@ -767,34 +749,26 @@ mod close {
         contract_id: &ContractId,
         merchant_key_pair: &TezosKeyMaterial,
         confirmation_depth: u64,
-    ) -> Result<(OperationStatus, Level), MerchantClaimError> {
+    ) -> impl Future<Output = Result<(OperationStatus, Level), MerchantClaimError>> {
         let merchant_private_key = merchant_key_pair.private_key().to_base58check();
         let contract_id = contract_id.clone().to_originated_address().to_base58check();
-        let contract_id = &contract_id;
         let uri = uri.map(|uri| uri.to_string());
 
-        PYTHON.run(python! {
-            success = True
-            try:
-                out = merch_claim(
-                    'uri,
-                    'merchant_private_key,
-                    'contract_id,
-                    'confirmation_depth
-                )
-            except Exception as e:
-                success = False
-                error = repr(e)
-        });
+        async move {
+            tokio::task::spawn_blocking(move || {
+                PYTHON.run(python! {
+                    out = merch_claim(
+                        'uri,
+                        'merchant_private_key,
+                        'contract_id,
+                        'confirmation_depth
+                    )
+                });
 
-        if PYTHON.get("success") {
-            let (status, level) = PYTHON.get::<(String, u32)>("out");
-            Ok((status.parse().unwrap(), level.into()))
-        } else {
-            let error = PYTHON.get::<String>("error");
-            Err(MerchantClaimError(error))
+                let (status, level) = PYTHON.get::<(String, u32)>("out");
+                (status.parse().unwrap(), level.into())
+            }).await.map_err(MerchantClaimError)}
         }
-    }
 
     /// Initiate unilateral customer close flow or correct balances from the expiry flow by
     /// posting the correct channel balances for the [`ContractId`] via the `custClose` entrypoint.
