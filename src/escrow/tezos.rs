@@ -438,7 +438,9 @@ pub mod establish {
         channel_id: &ChannelId,
         confirmation_depth: u64,
         self_delay: u64,
-    ) -> impl Future<Output = Result<(ContractId, OperationStatus, Level), OriginateError>> {
+    ) -> impl Future<Output = Result<(ContractId, OperationStatus, Level), OriginateError>>
+           + Send
+           + 'static {
         let (g2, y2s, x2) =
             super::pointcheval_sanders_public_key_to_python_input(merchant_public_key);
         let merchant_funding = merchant_funding_info.balance.into_inner();
@@ -497,7 +499,8 @@ pub mod establish {
         customer_funding_info: &CustomerFundingInformation,
         customer_key_pair: &TezosKeyMaterial,
         confirmation_depth: u64,
-    ) -> impl Future<Output = Result<(OperationStatus, Level), CustomerFundError>> {
+    ) -> impl Future<Output = Result<(OperationStatus, Level), CustomerFundError>> + Send + 'static
+    {
         let customer_funding = customer_funding_info.balance.into_inner();
         let customer_private_key = customer_key_pair.private_key().to_base58check();
         let customer_pubkey = customer_funding_info.public_key.to_base58check();
@@ -595,7 +598,8 @@ pub mod establish {
         merchant_funding_info: &MerchantFundingInformation,
         merchant_key_pair: &TezosKeyMaterial,
         confirmation_depth: u64,
-    ) -> impl Future<Output = Result<(OperationStatus, Level), CustomerFundError>> {
+    ) -> impl Future<Output = Result<(OperationStatus, Level), CustomerFundError>> + Send + 'static
+    {
         let merchant_funding = merchant_funding_info.balance.into_inner();
         let merchant_private_key = merchant_key_pair.private_key().to_base58check();
         let merchant_pubkey = merchant_funding_info.public_key.to_base58check();
@@ -641,7 +645,8 @@ pub mod establish {
         contract_id: &ContractId,
         customer_key_pair: &TezosKeyMaterial,
         confirmation_depth: u64,
-    ) -> impl Future<Output = Result<(OperationStatus, Level), ReclaimFundingError>> {
+    ) -> impl Future<Output = Result<(OperationStatus, Level), ReclaimFundingError>> + Send + 'static
+    {
         let customer_private_key = customer_key_pair.private_key().to_base58check();
         let contract_id = contract_id.clone().to_originated_address().to_base58check();
         let uri = uri.map(|uri| uri.to_string());
@@ -657,9 +662,12 @@ pub mod establish {
                     )
                 });
 
-            let (status, level) = PYTHON.get::<(String, u32)>("out");
-            (status.parse().unwrap(), level.into())
-        }).await.map_err(ReclaimFundingError)
+                let (status, level) = PYTHON.get::<(String, u32)>("out");
+                (status.parse().unwrap(), level.into())
+            })
+            .await
+            .map_err(ReclaimFundingError)
+        }
     }
 }
 
@@ -671,7 +679,7 @@ mod close {
     };
     use futures::Future;
     use inline_python::python;
-    use tokio::task::{JoinError};
+    use tokio::task::JoinError;
     use {
         tezedge::{signer::OperationSignatureInfo, ToBase58Check},
         zkabacus_crypto::{
@@ -715,7 +723,7 @@ mod close {
         contract_id: &ContractId,
         merchant_key_pair: &TezosKeyMaterial,
         confirmation_depth: u64,
-    ) -> impl Future<Output = Result<(OperationStatus, Level), ExpiryError>> {
+    ) -> impl Future<Output = Result<(OperationStatus, Level), ExpiryError>> + Send + 'static {
         let merchant_private_key = merchant_key_pair.private_key().to_base58check();
         let contract_id = contract_id.clone().to_originated_address().to_base58check();
         let uri = uri.map(|uri| uri.to_string());
@@ -728,7 +736,9 @@ mod close {
 
                 let (status, level) = PYTHON.get::<(String, u32)>("out");
                 (status.parse().unwrap(), level.into())
-            }).await.map_err(ExpiryError)
+            })
+            .await
+            .map_err(ExpiryError)
         }
     }
 
@@ -749,7 +759,8 @@ mod close {
         contract_id: &ContractId,
         merchant_key_pair: &TezosKeyMaterial,
         confirmation_depth: u64,
-    ) -> impl Future<Output = Result<(OperationStatus, Level), MerchantClaimError>> {
+    ) -> impl Future<Output = Result<(OperationStatus, Level), MerchantClaimError>> + Send + 'static
+    {
         let merchant_private_key = merchant_key_pair.private_key().to_base58check();
         let contract_id = contract_id.clone().to_originated_address().to_base58check();
         let uri = uri.map(|uri| uri.to_string());
@@ -767,8 +778,11 @@ mod close {
 
                 let (status, level) = PYTHON.get::<(String, u32)>("out");
                 (status.parse().unwrap(), level.into())
-            }).await.map_err(MerchantClaimError)}
+            })
+            .await
+            .map_err(MerchantClaimError)
         }
+    }
 
     /// Initiate unilateral customer close flow or correct balances from the expiry flow by
     /// posting the correct channel balances for the [`ContractId`] via the `custClose` entrypoint.
@@ -790,44 +804,37 @@ mod close {
         close_message: &ClosingMessage,
         customer_key_pair: &TezosKeyMaterial,
         confirmation_depth: u64,
-    ) -> Result<(OperationStatus, Level), CustomerCloseError> {
+    ) -> impl Future<Output = Result<(OperationStatus, Level), CustomerCloseError>> + Send + 'static
+    {
         let customer_balance = close_message.customer_balance().into_inner();
         let merchant_balance = close_message.merchant_balance().into_inner();
-        let revocation_lock = hex_string(
-            close_message
-                .revocation_lock()
-                .to_scalar() // TODO: this needs to be public in zkabacus
-                .to_uncompressed(),
-        );
+        let revocation_lock = hex_string(close_message.revocation_lock().as_bytes());
         let customer_private_key = customer_key_pair.private_key().to_base58check();
         let contract_id = contract_id.clone().to_originated_address().to_base58check();
         let contract_id = &contract_id;
+        let (sigma1, sigma2) = close_message.closing_signature().as_bytes();
         let uri = uri.map(|uri| uri.to_string());
 
-        PYTHON.run(python! {
-            success = True
-            try:
-                out = cust_close(
-                    'uri,
-                    'customer_private_key,
-                    'contract_id,
-                    'customer_balance,
-                    'merchant_balance,
-                    'sigma1, 'sigma2, // TODO: extract these from the closing message
-                    'revocation_lock,
-                    'confirmation_depth
-                )
-            except Exception as e:
-                success = False
-                error = repr(e)
-        });
+        async move {
+            tokio::task::spawn_blocking(move || {
+                PYTHON.run(python! {
+                    out = cust_close(
+                        'uri,
+                        'customer_private_key,
+                        'contract_id,
+                        'customer_balance,
+                        'merchant_balance,
+                        'sigma1, 'sigma2,
+                        'revocation_lock,
+                        'confirmation_depth
+                    )
+                });
 
-        if PYTHON.get("success") {
-            let (status, level) = PYTHON.get::<(String, u32)>("out");
-            Ok((status.parse().unwrap(), level.into()))
-        } else {
-            let error = PYTHON.get::<String>("error");
-            Err(CustomerCloseError(error))
+                let (status, level) = PYTHON.get::<(String, u32)>("out");
+                (status.parse().unwrap(), level.into())
+            })
+            .await
+            .map_err(CustomerCloseError)
         }
     }
 
@@ -848,35 +855,31 @@ mod close {
         revocation_secret: &RevocationSecret,
         merchant_key_pair: &TezosKeyMaterial,
         confirmation_depth: u64,
-    ) -> Result<(OperationStatus, Level), MerchantDisputeError> {
+    ) -> impl Future<Output = Result<(OperationStatus, Level), MerchantDisputeError>> + Send + 'static
+    {
         let merchant_private_key = merchant_key_pair.private_key().to_base58check();
         let contract_id = contract_id.clone().to_originated_address().to_base58check();
         let contract_id = &contract_id;
-        // TODO: how to extract revocation secret's byte representation?
-        let revocation_secret = hex_string(revocation_secret.to_scalar().to_uncompressed());
+        let revocation_secret = hex_string(revocation_secret.as_bytes());
         let uri = uri.map(|uri| uri.to_string());
 
-        PYTHON.run(python! {
-            success = True
-            try:
-                out = merch_dispute(
-                    'uri,
-                    'merchant_private_key,
-                    'contract_id,
-                    'revocation_secret,
-                    'confirmation_depth
-                )
-            except Exception as e:
-                success = False
-                error = repr(e)
-        });
+        async move {
+            tokio::task::spawn_blocking(move || {
+                PYTHON.run(python! {
+                    out = merch_dispute(
+                        'uri,
+                        'merchant_private_key,
+                        'contract_id,
+                        'revocation_secret,
+                        'confirmation_depth
+                    )
+                });
 
-        if PYTHON.get("success") {
-            let (status, level) = PYTHON.get::<(String, u32)>("out");
-            Ok((status.parse().unwrap(), level.into()))
-        } else {
-            let error = PYTHON.get::<String>("error");
-            Err(MerchantDisputeError(error))
+                let (status, level) = PYTHON.get::<(String, u32)>("out");
+                (status.parse().unwrap(), level.into())
+            })
+            .await
+            .map_err(MerchantDisputeError)
         }
     }
 
@@ -896,32 +899,28 @@ mod close {
         contract_id: &ContractId,
         customer_key_pair: &TezosKeyMaterial,
         confirmation_depth: u64,
-    ) -> Result<(OperationStatus, Level), CustomerClaimError> {
+    ) -> impl Future<Output = Result<(OperationStatus, Level), CustomerClaimError>> + Send + 'static
+    {
         let customer_private_key = customer_key_pair.private_key().to_base58check();
         let contract_id = contract_id.clone().to_originated_address().to_base58check();
-        let contract_id = &contract_id;
         let uri = uri.map(|uri| uri.to_string());
 
-        PYTHON.run(python! {
-            success = True
-            try:
-                out = cust_claim(
-                    'uri,
-                    'customer_private_key,
-                    'contract_id,
-                    'confirmation_depth
-                )
-            except Exception as e:
-                success = False
-                error = repr(e)
-        });
+        async move {
+            tokio::task::spawn_blocking(move || {
+                PYTHON.run(python! {
+                    out = cust_claim(
+                        'uri,
+                        'customer_private_key,
+                        'contract_id,
+                        'confirmation_depth
+                    )
+                });
 
-        if PYTHON.get("success") {
-            let (status, level) = PYTHON.get::<(String, u32)>("out");
-            Ok((status.parse().unwrap(), level.into()))
-        } else {
-            let error = PYTHON.get::<String>("error");
-            Err(CustomerClaimError(error))
+                let (status, level) = PYTHON.get::<(String, u32)>("out");
+                (status.parse().unwrap(), level.into())
+            })
+            .await
+            .map_err(CustomerClaimError)
         }
     }
 
@@ -961,7 +960,7 @@ mod close {
         authorization_signature: &OperationSignatureInfo,
         merchant_key_pair: &TezosKeyMaterial,
         confirmation_depth: u64,
-    ) -> Result<(), Error> {
-        todo!()
+    ) -> impl Future<Output = Result<(OperationStatus, Level), Error>> + Send + 'static {
+        async move { todo!() }
     }
 }
