@@ -7,7 +7,10 @@ use zkabacus_crypto::{
 
 use zeekoe::{
     abort,
-    escrow::types::{KeyHash, TezosKeyMaterial, TezosPublicKey},
+    escrow::{
+        tezos,
+        types::{KeyHash, TezosKeyMaterial, TezosPublicKey},
+    },
     merchant::{config::Service, database::QueryMerchant, server::SessionKey, Chan},
     offer_abort, proceed,
     protocol::{self, establish, ChannelStatus, Party::Merchant},
@@ -158,6 +161,9 @@ async fn approve_and_establish(
     customer_tezos_public_key: &TezosPublicKey,
     chan: Chan<establish::MerchantApproveEstablish>,
 ) -> Result<(), anyhow::Error> {
+    // The URI of the tezos node to connect to (TODO: parameterize this)
+    let uri = "https://rpc.tzkt.io/edo2net".parse().unwrap()
+
     // The approval service has approved
     proceed!(in chan);
 
@@ -206,10 +212,6 @@ async fn approve_and_establish(
         .recv()
         .await
         .context("Failed to receive contract origination level from the customer")?;
-
-    // NOTE: This set of on-chain verification checks is **subtly insufficient** unless the
-    // on-chain contract's state machine is acyclic, which at the time of writing of this note
-    // (June 25, 2021), it is not. We anticipate fixing this soon.
 
     // TODO: check (waiting, if necessary, until a certain configurable timeout) that the
     // contract has been originated on chain and confirmed to desired block depth, and:
@@ -261,10 +263,22 @@ async fn approve_and_establish(
             )
         })?;
 
-    // TODO: If the merchant contribution was greater than zero, fund the channel on chain, and
-    // await confirmation that the funding has gone through to the required confirmation depth
-
-    // TODO: If anything goes wrong, invoke `abort!`
+    // If the merchant contribution was greater than zero, fund the channel on chain, and await
+    // confirmation that the funding has gone through to the required confirmation depth
+    if merchant_deposit.into_inner() > 0 {
+        match tezos::establish::add_merchant_funding(
+            Some(&uri),
+            &contract_id,
+            merchant_funding_info,
+            merchant_key_pair,
+            tezos::DEFAULT_CONFIRMATION_DEPTH,
+        )
+        .await
+        {
+            Ok((tezos::OperationStatus::Applied, _)) => {}
+            _ => abort!(in chan return establish::Error::FailedMerchantFunding),
+        }
+    }
 
     // Transition the contract state in the database from customer-funded to merchant-funded
     // (where merchant-funded means that the contract storage status is OPEN)
