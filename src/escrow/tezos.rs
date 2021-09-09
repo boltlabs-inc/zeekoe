@@ -109,6 +109,9 @@ lazy_static::lazy_static! {
                 level = pytezos.using(shell=uri).shell.blocks[block].level()
 
                 return (status, level)
+
+            def contract_state():
+                print("ello world")
         }
     };
 }
@@ -206,6 +209,29 @@ impl FromStr for OperationStatus {
 /// `DEFAULT_CONFIRMATION_DEPTH` blocks.
 pub async fn get_contract_state(_contract_id: &ContractId) -> Result<ContractState, Error> {
     todo!()
+}
+
+pub async fn get_contract_test() -> Result<(), ()> {
+    // let customer_account_key = originator_key_pair.private_key().to_base58check();
+    // let uri = uri.map(|uri| uri.to_string());
+
+    PYTHON.run(python! {
+        success = True
+        try:
+            print("hello worl")
+            // contract_state()
+        except Exception as e:
+            success = False
+            error = repr(e)
+    });
+
+    if PYTHON.get("success") {
+        Ok(())
+    } else {
+        // let error = PYTHON.get::<String>("error");
+        // println!("Errored with {:?}", error);
+        Err(())
+    }
 }
 
 pub mod establish {

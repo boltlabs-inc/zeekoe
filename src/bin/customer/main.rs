@@ -17,6 +17,7 @@ use zeekoe::{
         defaults::config_path,
         Chan, Cli, Client, Config,
     },
+    escrow::tezos,
     protocol,
 };
 
@@ -150,5 +151,6 @@ pub async fn database(config: &Config) -> Result<Arc<dyn QueryCustomer>, anyhow:
 #[allow(unused)]
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
+    tezos::get_contract_test().await;
     main_with_cli(Cli::from_args()).await
 }
