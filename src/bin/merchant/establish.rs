@@ -164,7 +164,7 @@ async fn approve_and_establish(
     chan: Chan<establish::MerchantApproveEstablish>,
 ) -> Result<(), anyhow::Error> {
     // The URI of the tezos node to connect to (TODO: parameterize this)
-    let uri = "https://rpc.tzkt.io/edo2net".parse().unwrap();
+    let uri: http::Uri = "https://rpc.tzkt.io/edo2net".parse().unwrap();
 
     // The approval service has approved
     proceed!(in chan);
