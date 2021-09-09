@@ -128,6 +128,7 @@ impl Method for Establish {
             customer_deposit,
             tezos_key_material.public_key(),
             &customer_tezos_public_key,
+            &tezos_key_material,
             chan,
         )
         .await;
@@ -159,10 +160,11 @@ async fn approve_and_establish(
     customer_deposit: CustomerBalance,
     merchant_tezos_public_key: &TezosPublicKey,
     customer_tezos_public_key: &TezosPublicKey,
+    merchant_key_material: &TezosKeyMaterial,
     chan: Chan<establish::MerchantApproveEstablish>,
 ) -> Result<(), anyhow::Error> {
     // The URI of the tezos node to connect to (TODO: parameterize this)
-    let uri = "https://rpc.tzkt.io/edo2net".parse().unwrap()
+    let uri = "https://rpc.tzkt.io/edo2net".parse().unwrap();
 
     // The approval service has approved
     proceed!(in chan);
@@ -266,18 +268,7 @@ async fn approve_and_establish(
     // If the merchant contribution was greater than zero, fund the channel on chain, and await
     // confirmation that the funding has gone through to the required confirmation depth
     if merchant_deposit.into_inner() > 0 {
-        match tezos::establish::add_merchant_funding(
-            Some(&uri),
-            &contract_id,
-            merchant_funding_info,
-            merchant_key_pair,
-            tezos::DEFAULT_CONFIRMATION_DEPTH,
-        )
-        .await
-        {
-            Ok((tezos::OperationStatus::Applied, _)) => {}
-            _ => abort!(in chan return establish::Error::FailedMerchantFunding),
-        }
+        // TODO: fund channel from merchant
     }
 
     // Transition the contract state in the database from customer-funded to merchant-funded
