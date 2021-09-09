@@ -809,11 +809,12 @@ mod close {
     {
         let customer_balance = close_message.customer_balance().into_inner();
         let merchant_balance = close_message.merchant_balance().into_inner();
-        let revocation_lock = hex_string(close_message.revocation_lock().as_bytes());
+        let revocation_lock = hex_string(close_message.revocation_lock().as_bytes().to_vec());
         let customer_private_key = customer_key_pair.private_key().to_base58check();
         let contract_id = contract_id.clone().to_originated_address().to_base58check();
-        let contract_id = &contract_id;
-        let (sigma1, sigma2) = close_message.closing_signature().as_bytes();
+        let (sigma1, sigma2) = close_message.closing_signature().clone().as_bytes();
+        let sigma1 = sigma1.to_vec();
+        let sigma2 = sigma2.to_vec();
         let uri = uri.map(|uri| uri.to_string());
 
         async move {
@@ -861,8 +862,7 @@ mod close {
     {
         let merchant_private_key = merchant_key_pair.private_key().to_base58check();
         let contract_id = contract_id.clone().to_originated_address().to_base58check();
-        let contract_id = &contract_id;
-        let revocation_secret = hex_string(revocation_secret.as_bytes());
+        let revocation_secret = hex_string(revocation_secret.as_bytes().to_vec());
         let uri = uri.map(|uri| uri.to_string());
 
         async move {
