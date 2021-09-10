@@ -10,6 +10,7 @@ use {
     sqlx::SqlitePool,
     std::{convert::identity, sync::Arc},
     structopt::StructOpt,
+    tokio::signal,
     tokio::sync::broadcast,
 };
 
@@ -223,6 +224,7 @@ impl Command for Run {
 
         // Wait for either the servers or the polling service to finish
         tokio::select! {
+            _ = signal::ctrl_c() => eprintln!("Terminated by user"),
             Some(Err(e)) = server_futures.next() => {
                 eprintln!("Error: {}", e);
             },
