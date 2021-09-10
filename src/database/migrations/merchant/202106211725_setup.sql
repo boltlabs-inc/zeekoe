@@ -31,7 +31,11 @@ CREATE TABLE merchant_channels (
       "customer_funded",
       "merchant_funded",
       "active",
+      "pending_expiry",
       "pending_close",
+      "pending_mutual_close",
+      "pending_merchant_claim",
+      "dispute",
       "closed"
     )),
   closing_balances BLOB NOT NULL

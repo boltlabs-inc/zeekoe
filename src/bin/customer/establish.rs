@@ -219,7 +219,7 @@ impl Command for Establish {
 
         let (contract_id, origination_status, origination_level) = if self.off_chain {
             // TODO: prompt user to submit the origination of the contract
-            todo!("prompt user to submit contract origination details")
+            todo!("prompt user to submit contract origination details");
         } else {
             // Originate the contract on-chain
             tezos::establish::originate(
