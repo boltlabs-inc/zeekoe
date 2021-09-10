@@ -1,6 +1,8 @@
 use std::time::Duration;
 
-use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng, std::sync::Arc};
+use {
+    anyhow::Context, async_trait::async_trait, rand::rngs::StdRng, std::sync::Arc, tokio::signal,
+};
 
 use zeekoe::{
     customer::database::zkchannels_state::{self, ZkChannelState},
@@ -98,6 +100,14 @@ impl Command for Watch {
             }
         });
 
+        tokio::select! {
+            _ = signal::ctrl_c() => {
+                eprintln!("Terminated by user");
+                Ok(())
+            },
+            result = polling_service_join_handle => result?,
+        }
+
         /*
         // Note: We do not run the server in the polling architecture because we do not expect any
         // incoming requests.
@@ -109,7 +119,6 @@ impl Command for Watch {
             .serve_while(address, None, initialize, interact, wait_terminate)
             .await?;
         */
-        polling_service_join_handle.await?
     }
 }
 
