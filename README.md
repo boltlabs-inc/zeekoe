@@ -48,7 +48,7 @@ To build the project, you will need:
 - A recent version of nightly Rust. We recommend the version from 2021-09-01 (some later versions
   may break our dependencies). You can set the nightly version with:
   ```
-  $ rustup override nightly-2021-09-01
+  $ rustup override set nightly-2021-09-01
   ```
 - A recent version of Python. This project has been tested with Python 3.8.10. 
 - Cryptographic and system dependencies for our Tezos clients:
