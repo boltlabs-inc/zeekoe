@@ -1,4 +1,5 @@
 use {
+    anyhow::Context,
     dialectic_reconnect::Backoff,
     serde::{Deserialize, Serialize},
     std::{
@@ -6,6 +7,8 @@ use {
         time::Duration,
     },
 };
+
+use http::Uri;
 
 pub use super::DatabaseLocation;
 
@@ -28,6 +31,7 @@ pub struct Config {
     pub max_message_length: usize,
     #[serde(default = "defaults::max_note_length")]
     pub max_note_length: u64,
+    tezos_uri: String,
     pub tezos_key_material: PathBuf,
     #[serde(default)]
     pub trust_certificate: Option<PathBuf>,
@@ -51,10 +55,20 @@ impl Config {
             .trust_certificate
             .map(|ref cert_path| config_dir.join(cert_path));
 
+        // Make sure the tezos URI is valid
+        config
+            .tezos_uri
+            .parse::<Uri>()
+            .context("Failed to parse Tezos URI")?;
+
         Ok(config)
     }
 
     pub async fn load_tezos_key_material(&self) -> anyhow::Result<TezosKeyMaterial> {
         Ok(TezosKeyMaterial::read_key_pair(&self.tezos_key_material)?)
+    }
+
+    pub fn load_tezos_uri(&self) -> anyhow::Result<Uri> {
+        Ok(self.tezos_uri.parse()?)
     }
 }
