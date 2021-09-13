@@ -785,19 +785,6 @@ pub mod close {
     }
 
     impl MutualCloseAuthorizationSignature {
-        pub fn from_operation_signature_info(info: OperationSignatureInfo) -> Self {
-            let OperationSignatureInfo {
-                operation_hash,
-                operation_with_signature,
-                signature,
-            } = info;
-            Self {
-                operation_hash,
-                operation_with_signature,
-                signature,
-            }
-        }
-
         /// Get the operation hash.
         pub fn operation_hash(&self) -> &String {
             &self.operation_hash
@@ -811,6 +798,21 @@ pub mod close {
         /// Get the signature by itself.
         pub fn signature(&self) -> &String {
             &self.signature
+        }
+    }
+
+    impl From<OperationSignatureInfo> for MutualCloseAuthorizationSignature {
+        fn from(info: OperationSignatureInfo) -> Self {
+            let OperationSignatureInfo {
+                operation_hash,
+                operation_with_signature,
+                signature,
+            } = info;
+            Self {
+                operation_hash,
+                operation_with_signature,
+                signature,
+            }
         }
     }
 
@@ -1085,7 +1087,7 @@ pub mod close {
         channel_id: &ChannelId,
         customer_balance: &CustomerBalance,
         merchant_balance: &MerchantBalance,
-        authorization_signature: &OperationSignatureInfo,
+        authorization_signature: &MutualCloseAuthorizationSignature,
         merchant_key_pair: &TezosKeyMaterial,
         confirmation_depth: u64,
     ) -> impl Future<Output = Result<(OperationStatus, Level), Error>> + Send + 'static {
