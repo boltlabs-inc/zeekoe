@@ -72,7 +72,8 @@ fn python_context() -> inline_python::Context {
             out = cust_py.origination(script=main_code.script(initial_storage=initial_storage)).autofill().sign().send(min_confirmations=min_confirmations)
 
             // Get address, status, and level of main zkchannel contract
-            op_info = pytezos.using(shell=uri).shell.blocks[-20:].find_operation(out.hash())
+            search_depth = 2 * min_confirmations
+            op_info = pytezos.using(shell=uri).shell.blocks[-search_depth:].find_operation(out.hash())
             contents = op_info["contents"][0]
             contract_id = contents["metadata"]["operation_result"]["originated_contracts"][0]
             status = contents["metadata"]["operation_result"]["status"]
@@ -99,7 +100,8 @@ fn python_context() -> inline_python::Context {
             out = cust_ci.addCustFunding().with_amount(cust_funding).send(min_confirmations=min_confirmations)
 
             // Get status and level of the addCustFunding operation
-            op_info = pytezos.using(shell=uri).shell.blocks[-20:].find_operation(out.hash())
+            search_depth = 2 * min_confirmations
+            op_info = pytezos.using(shell=uri).shell.blocks[-search_depth:].find_operation(out.hash())
             contents = op_info["contents"][0]
             status = contents["metadata"]["operation_result"]["status"]
             block = op_info["branch"]
@@ -125,7 +127,8 @@ fn python_context() -> inline_python::Context {
             out = merch_ci.addMerchFunding().with_amount(merch_funding).send(min_confirmations=min_confirmations)
 
             // Get status and level of the addMerchFunding operation
-            op_info = pytezos.using(shell=uri).shell.blocks[-20:].find_operation(out.hash())
+            search_depth = 2 * min_confirmations
+            op_info = pytezos.using(shell=uri).shell.blocks[-search_depth:].find_operation(out.hash())
             contents = op_info["contents"][0]
             status = contents["metadata"]["operation_result"]["status"]
             level = 1 // TODO: get the level where the operation was confirmed
@@ -160,7 +163,8 @@ fn python_context() -> inline_python::Context {
             out = cust_ci.custClose(close_storage).send(min_confirmations=min_confirmations)
 
             // Get status and level of the operation
-            op_info = pytezos.using(shell=uri).shell.blocks[-20:].find_operation(out.hash())
+            search_depth = 2 * min_confirmations
+            op_info = pytezos.using(shell=uri).shell.blocks[-search_depth:].find_operation(out.hash())
             contents = op_info["contents"][0]
             status = contents["metadata"]["operation_result"]["status"]
             level = 1 // TODO: get the level where the operation was confirmed
@@ -183,7 +187,8 @@ fn python_context() -> inline_python::Context {
             out = cust_ci.custClaim().send(min_confirmations=min_confirmations)
 
             // Get status and level of the operation
-            op_info = pytezos.using(shell=uri).shell.blocks[-20:].find_operation(out.hash())
+            search_depth = 2 * min_confirmations
+            op_info = pytezos.using(shell=uri).shell.blocks[-search_depth:].find_operation(out.hash())
             contents = op_info["contents"][0]
             status = contents["metadata"]["operation_result"]["status"]
             level = 1 // TODO: get the level where the operation was confirmed
@@ -206,7 +211,8 @@ fn python_context() -> inline_python::Context {
             out = cust_ci.reclaimFunding().send(min_confirmations=min_confirmations)
 
             // Get status and level of the operation
-            op_info = pytezos.using(shell=uri).shell.blocks[-20:].find_operation(out.hash())
+            search_depth = 2 * min_confirmations
+            op_info = pytezos.using(shell=uri).shell.blocks[-search_depth:].find_operation(out.hash())
             contents = op_info["contents"][0]
             status = contents["metadata"]["operation_result"]["status"]
             level = 1 // TODO: get the level where the operation was confirmed
@@ -229,7 +235,8 @@ fn python_context() -> inline_python::Context {
             out = merch_ci.expiry().send(min_confirmations=min_confirmations)
 
             // Get status and level of the operation
-            op_info = pytezos.using(shell=uri).shell.blocks[-20:].find_operation(out.hash())
+            search_depth = 2 * min_confirmations
+            op_info = pytezos.using(shell=uri).shell.blocks[-search_depth:].find_operation(out.hash())
             contents = op_info["contents"][0]
             status = contents["metadata"]["operation_result"]["status"]
             level = 1 // TODO: get the level where the operation was confirmed
@@ -252,7 +259,8 @@ fn python_context() -> inline_python::Context {
             out = merch_ci.merchClaim().send(min_confirmations=min_confirmations)
 
             // Get status and level of the operation
-            op_info = pytezos.using(shell=uri).shell.blocks[-20:].find_operation(out.hash())
+            search_depth = 2 * min_confirmations
+            op_info = pytezos.using(shell=uri).shell.blocks[-search_depth:].find_operation(out.hash())
             contents = op_info["contents"][0]
             status = contents["metadata"]["operation_result"]["status"]
             level = 1 // TODO: get the level where the operation was confirmed
@@ -276,7 +284,8 @@ fn python_context() -> inline_python::Context {
             out = merch_ci.merchDispute(revocation_secret).send(min_confirmations=min_confirmations)
 
             // Get status and level of the operation
-            op_info = pytezos.using(shell=uri).shell.blocks[-20:].find_operation(out.hash())
+            search_depth = 2 * min_confirmations
+            op_info = pytezos.using(shell=uri).shell.blocks[-search_depth:].find_operation(out.hash())
             contents = op_info["contents"][0]
             status = contents["metadata"]["operation_result"]["status"]
             level = 1 // TODO: get the level where the operation was confirmed
@@ -308,7 +317,8 @@ fn python_context() -> inline_python::Context {
             out = cust_ci.mutualClose(mutual_close_storage).send(min_confirmations=min_confirmations)
 
             // Get status and level of the operation
-            op_info = pytezos.using(shell=uri).shell.blocks[-20:].find_operation(out.hash())
+            search_depth = 2 * min_confirmations
+            op_info = pytezos.using(shell=uri).shell.blocks[-search_depth:].find_operation(out.hash())
             contents = op_info["contents"][0]
             status = contents["metadata"]["operation_result"]["status"]
             level = 1 // TODO: get the level where the operation was confirmed
