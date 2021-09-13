@@ -702,10 +702,14 @@ mod tests {
 
         // Create channel and set its initial status.
         let channel_id = insert_new_channel(&conn).await?;
-        let mut current_status = ChannelStatus::Originated;
+
+        // Get a list of every possible status, assuming that the first one is what channels
+        // are inserted with
+        let mut statuses = ChannelStatus::iter();
+        let mut current_status = statuses.next().unwrap();
 
         // Make sure that every legal channel status can be inserted into the db.
-        for next_status in ChannelStatus::iter() {
+        for next_status in statuses {
             conn.compare_and_swap_channel_status(&channel_id, &current_status, &next_status)
                 .await?;
 
