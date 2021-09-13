@@ -25,8 +25,11 @@ impl Command for List {
         table.load_preset(comfy_table::presets::UTF8_FULL);
         table.set_header(vec!["Channel ID", "Status"]);
 
-        for (channel_id, channel_status) in channels {
-            table.add_row(vec![Cell::new(channel_id), Cell::new(channel_status)]);
+        for channel in channels {
+            table.add_row(vec![
+                Cell::new(channel.channel_id),
+                Cell::new(channel.status),
+            ]);
         }
 
         println!("{}", table);

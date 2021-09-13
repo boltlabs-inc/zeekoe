@@ -43,14 +43,38 @@ Tezos blockchain. Future work will generalize to other escrow arbiters.
 
 ## Setting up the project
 
-To build the project, you will need a recent version of stable Rust. This project has been tested on
-Rust version 1.52.1.
+To build the project, you will need: 
+
+- A recent version of nightly Rust. We recommend the version from 2021-09-01 (some later versions
+  may break our dependencies). You can set the nightly version with:
+  ```
+  $ rustup override set nightly-2021-09-01
+  ```
+- A recent version of Python. This project has been tested with Python 3.8.10. 
+- Cryptographic and system dependencies for our Tezos clients:
+  ```
+  $ sudo apt install libsodium-dev libsecp256k1-dev libgmp-dev libudev-dev
+  ```
+  If you are using a non-Linux machine, please see the installation guides for 
+  [PyTezos](https://pytezos.org/quick_start.html) and 
+  [tezedge-client](https://github.com/boltlabs-inc/tezedge-client/tree/develop)
+  for further details.
+- The PyTezos library:
+  ```
+  $ pip install pytezos
+  ```
+- This repository, installed with submodules:
+  ```
+  $ git clone git@github.com:boltlabs-inc/zeekoe.git --recurse-submodules
+  ```
+
+Build a test version of the project with:
 
 ```bash
 CARGO_NET_GIT_FETCH_WITH_CLI=true cargo build --features "allow_explicit_certificate_trust"
 ```
 
-Notice also that we specify the build option `allow_explicit_certificate_trust`. Without this
+We specify the build option `allow_explicit_certificate_trust`. Without this
 option, only certificates rooted at the webpki roots of trust would be trusted, and the customer
 would reject the connection to the merchant due to the bad certificate. Because this decreases the
 trustworthiness of the authentication between the merchant and customer, this is only intended for
@@ -89,14 +113,17 @@ $ ./target/debug/zkchannel customer --config "./dev/Customer.toml" \
     establish "zkchannel://localhost" \
     --label "my-first-zkchannel" \
     --deposit "5 XTZ"
+<output omitted>
 Successfully established new channel with label "my-first-zkchannel"
-Establishment data written to "6827e5ed90227b0f7afca7be8a8f756ce83275ed1b43744a0bcec695b43526db.establish.json"
+
 ```
 
-The establishment data written to the file listed above can be used by an external tool in this
-repository to originate and fund the contract on-chain. This is a temporary stop-gap until we very
-shortly integrate with the `tezedge-client` project to originate and fund the contract from within
-the `zkchannel customer establish` call itself.
+The default behavior of the repository sends the establish operations to testnet. The `<output 
+omitted>` text above will print out the block hash for the block containing the establish 
+operations. You can examine the block online at
+```
+https://rpc.tzkt.io/edo2net/chains/main/blocks/<block hash>
+```
 
 Now, when we list our channels, we can see that we have an open channel with 5 XTZ available to spend.
 
