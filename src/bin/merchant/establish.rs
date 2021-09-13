@@ -268,7 +268,22 @@ async fn approve_and_establish(
     // If the merchant contribution was greater than zero, fund the channel on chain, and await
     // confirmation that the funding has gone through to the required confirmation depth
     if merchant_deposit.into_inner() > 0 {
-        // TODO: fund channel from merchant
+        match tezos::establish::add_merchant_funding(
+            Some(&uri),
+            &contract_id,
+            &tezos::establish::MerchantFundingInformation {
+                balance: merchant_deposit,
+                public_key: merchant_key_material.public_key().clone(),
+                address: todo!("Fill in merchant funding address here"),
+            },
+            merchant_key_material,
+            tezos::DEFAULT_CONFIRMATION_DEPTH,
+        )
+        .await
+        {
+            Ok((tezos::OperationStatus::Applied, _)) => {}
+            _ => abort!(in chan return establish::Error::FailedMerchantFunding),
+        }
     }
 
     // Transition the contract state in the database from customer-funded to merchant-funded
