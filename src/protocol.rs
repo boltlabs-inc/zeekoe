@@ -8,6 +8,9 @@ use {
     thiserror::Error,
 };
 
+#[cfg(test)]
+use strum_macros::EnumIter;
+
 type OfferAbort<Next, Err> = Session! {
     offer {
         0 => recv Err,
@@ -93,6 +96,7 @@ impl Display for Party {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, sqlx::Type)]
+#[cfg_attr(test, derive(EnumIter))]
 #[sqlx(rename_all = "snake_case", type_name = "text")]
 pub enum ChannelStatus {
     Originated,

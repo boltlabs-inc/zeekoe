@@ -621,13 +621,15 @@ impl QueryMerchant for SqlitePool {
 mod tests {
     use super::*;
     use crate::database::SqlitePoolOptions;
-    use rand::SeedableRng;
+    use {rand::SeedableRng, strum::IntoEnumIterator, tezedge::OriginatedAddress};
 
-    use tezedge::OriginatedAddress;
     use zkabacus_crypto::internal::{
         test_new_nonce, test_new_revocation_lock, test_new_revocation_secret, test_verify_pair,
     };
     use zkabacus_crypto::{CustomerRandomness, MerchantRandomness, Verification};
+
+    // The default dummy originated contract address, per https://tezos.stackexchange.com/a/2270
+    const DEFAULT_ADDR: &str = "KT1Mjjcb6tmSsLm7Cb3DSQszePjfchPM4Uxm";
 
     fn assert_valid_pair(lock: &RevocationLock, secret: &RevocationSecret) {
         assert!(
@@ -644,13 +646,13 @@ mod tests {
         Ok(conn)
     }
 
-    #[tokio::test(flavor = "multi_thread")]
+    #[tokio::test]
     async fn test_migrate() -> Result<()> {
         create_migrated_db().await?;
         Ok(())
     }
 
-    #[tokio::test(flavor = "multi_thread")]
+    #[tokio::test]
     async fn test_insert_nonce() -> Result<()> {
         let conn = create_migrated_db().await?;
         let mut rng = rand::thread_rng();
@@ -664,7 +666,7 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test(flavor = "multi_thread")]
+    #[tokio::test]
     async fn test_insert_revocation() -> Result<()> {
         let conn = create_migrated_db().await?;
         let mut rng = rand::thread_rng();
@@ -694,79 +696,26 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test(flavor = "multi_thread")]
+    #[tokio::test]
     async fn test_merchant_statuses() -> Result<()> {
         let conn = create_migrated_db().await?;
+
+        // Create channel and set its initial status.
         let channel_id = insert_new_channel(&conn).await?;
+        let mut current_status = ChannelStatus::Originated;
 
         // Make sure that every legal channel status can be inserted into the db.
-        conn.compare_and_swap_channel_status(
-            &channel_id,
-            &ChannelStatus::Originated,
-            &ChannelStatus::CustomerFunded,
-        )
-        .await?;
+        for next_status in ChannelStatus::iter() {
+            conn.compare_and_swap_channel_status(&channel_id, &current_status, &next_status)
+                .await?;
 
-        conn.compare_and_swap_channel_status(
-            &channel_id,
-            &ChannelStatus::CustomerFunded,
-            &ChannelStatus::MerchantFunded,
-        )
-        .await?;
-
-        conn.compare_and_swap_channel_status(
-            &channel_id,
-            &ChannelStatus::MerchantFunded,
-            &ChannelStatus::Active,
-        )
-        .await?;
-
-        conn.compare_and_swap_channel_status(
-            &channel_id,
-            &ChannelStatus::Active,
-            &ChannelStatus::PendingExpiry,
-        )
-        .await?;
-
-        conn.compare_and_swap_channel_status(
-            &channel_id,
-            &ChannelStatus::PendingExpiry,
-            &ChannelStatus::PendingClose,
-        )
-        .await?;
-
-        conn.compare_and_swap_channel_status(
-            &channel_id,
-            &ChannelStatus::PendingClose,
-            &ChannelStatus::PendingMutualClose,
-        )
-        .await?;
-
-        conn.compare_and_swap_channel_status(
-            &channel_id,
-            &ChannelStatus::PendingMutualClose,
-            &ChannelStatus::PendingMerchantClaim,
-        )
-        .await?;
-
-        conn.compare_and_swap_channel_status(
-            &channel_id,
-            &ChannelStatus::PendingMerchantClaim,
-            &ChannelStatus::Dispute,
-        )
-        .await?;
-
-        conn.compare_and_swap_channel_status(
-            &channel_id,
-            &ChannelStatus::Dispute,
-            &ChannelStatus::Closed,
-        )
-        .await?;
+            current_status = next_status;
+        }
 
         Ok(())
     }
 
-    #[tokio::test(flavor = "multi_thread")]
+    #[tokio::test]
     async fn test_merchant_config() -> Result<()> {
         let conn = create_migrated_db().await?;
         let mut rng = StdRng::from_entropy();
@@ -798,9 +747,8 @@ mod tests {
         let cid_c = CustomerRandomness::new(&mut rng);
         let pk = KeyPair::new(&mut rng).public_key().clone();
         let channel_id = ChannelId::new(cid_m, cid_c, &pk, &[], &[]);
-        let contract_id = ContractId::new(
-            OriginatedAddress::from_base58check("KT1Mjjcb6tmSsLm7Cb3DSQszePjfchPM4Uxm").unwrap(),
-        );
+        let contract_id =
+            ContractId::new(OriginatedAddress::from_base58check(DEFAULT_ADDR).unwrap());
 
         let merchant_deposit = MerchantBalance::try_new(5).unwrap();
         let customer_deposit = CustomerBalance::try_new(5).unwrap();
@@ -817,7 +765,7 @@ mod tests {
         Ok(channel_id)
     }
 
-    #[tokio::test(flavor = "multi_thread")]
+    #[tokio::test]
     async fn test_merchant_channels() -> Result<()> {
         let conn = create_migrated_db().await?;
         let channel_id = insert_new_channel(&conn).await?;
@@ -831,7 +779,7 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test(flavor = "multi_thread")]
+    #[tokio::test]
     async fn test_closing_balance_update() -> Result<()> {
         // set up new db
         let conn = create_migrated_db().await?;

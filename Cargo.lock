@@ -3004,6 +3004,8 @@ dependencies = [
  "skiplist",
  "sqlx",
  "structopt",
+ "strum",
+ "strum_macros",
  "thiserror",
  "tokio",
  "tokio-rustls",
