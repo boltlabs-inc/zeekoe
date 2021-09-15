@@ -16,25 +16,15 @@ pub const DEFAULT_CONFIRMATION_DEPTH: u64 = 1; // FIXME: put this back to 20 aft
 /// The default `self_delay` parameter: 2 days, in seconds.
 pub const DEFAULT_SELF_DELAY: u64 = 2 * 24 * 60 * 60;
 
-lazy_static::lazy_static! {
-    /// The ZkChannels close scalar as bytes
-    static ref CLOSE_SCALAR_HEX_STRING: String =
-        hex_string(zkabacus_crypto::CLOSE_SCALAR.to_bytes().to_vec());
-}
-
 /// Create a fresh python execution context to be used for a single python operation, then thrown
 /// away. This ensures we don't carry over global state, and we can concurrently use python-based
 /// functions without the Global Interpreter Lock.
 fn python_context() -> inline_python::Context {
-    let close_scalar = &*CLOSE_SCALAR_HEX_STRING;
-
     python! {
         from pytezos import pytezos, Contract, ContractInterface
         import json
 
         main_code = ContractInterface.from_michelson('CONTRACT_CODE)
-
-        close_scalar_bytes = 'close_scalar
 
         // Originate a contract on chain
         def originate(
@@ -52,16 +42,13 @@ fn python_context() -> inline_python::Context {
             cust_py = pytezos.using(key=cust_acc, shell=uri)
 
             initial_storage = {"cid": channel_id,
-            "close_scalar": close_scalar_bytes,
-            "context_string": "zkChannels mutual close",
             "customer_address": cust_addr,
             "customer_balance": cust_funding,
-            "customer_public_key": cust_pubkey,
             "delay_expiry": "1970-01-01T00:00:00Z",
-            "g2": merch_g2,
             "merchant_address": merch_addr,
             "merchant_balance": merch_funding,
             "merchant_public_key": merch_pubkey,
+            "g2": merch_g2,
             "y2s_0": merch_y2s[0],
             "y2s_1": merch_y2s[1],
             "y2s_2": merch_y2s[2],
