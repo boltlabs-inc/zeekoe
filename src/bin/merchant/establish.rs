@@ -123,7 +123,6 @@ impl Method for Establish {
             session_key,
             merchant_deposit,
             customer_deposit,
-            tezos_key_material.public_key(),
             &customer_tezos_public_key,
             &tezos_key_material,
             chan,
