@@ -574,24 +574,13 @@ async fn merchant_take_all_balances(
     database: &dyn QueryMerchant,
     channel_id: &ChannelId,
 ) -> Result<(MerchantBalance, CustomerBalance), anyhow::Error> {
-    // Get the current closing balances
-    let closing_balances = database.get_closing_balances(channel_id).await?;
-    let starting_merchant_balance = closing_balances.merchant_balance.ok_or_else(|| {
-        anyhow::anyhow!(
-            "Channel {} has not yet been originated on chain",
-            channel_id
-        )
-    })?;
-    let starting_customer_balance = closing_balances.customer_balance.ok_or_else(|| {
-        anyhow::anyhow!(
-            "Channel {} has not yet been originated on chain",
-            channel_id
-        )
-    })?;
+    // Get the initial deposits
+    let initial_customer_deposit: CustomerBalance = todo!("Get customer initial deposit");
+    let initial_merchant_deposit: MerchantBalance = todo!("Get merchant initial deposit");
 
     // Compute fund transfer to the merchant
     let merchant_balance = MerchantBalance::try_new(
-        starting_merchant_balance.into_inner() + starting_customer_balance.into_inner(),
+        initial_merchant_deposit.into_inner() + initial_customer_deposit.into_inner(),
     )?;
     let customer_balance = CustomerBalance::try_new(0)?;
 
