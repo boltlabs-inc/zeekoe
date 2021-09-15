@@ -82,7 +82,7 @@ fn python_context() -> inline_python::Context {
             contract_id = contents["metadata"]["operation_result"]["originated_contracts"][0]
             status = contents["metadata"]["operation_result"]["status"]
             block = op_info["branch"]
-            level = pytezos.using(shell=uri).shell.blocks[block].level()
+            level = 1 // TODO: get the level where the operation was confirmed
 
             return (contract_id, status, level)
 
@@ -109,7 +109,7 @@ fn python_context() -> inline_python::Context {
             contents = op_info["contents"][0]
             status = contents["metadata"]["operation_result"]["status"]
             block = op_info["branch"]
-            level = pytezos.using(shell=uri).shell.blocks[block].level()
+            level = 1 // TODO: get the level where the operation was confirmed
 
             return (status, level)
 
