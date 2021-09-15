@@ -155,7 +155,6 @@ async fn approve_and_establish(
     session_key: SessionKey,
     merchant_deposit: MerchantBalance,
     customer_deposit: CustomerBalance,
-    merchant_tezos_public_key: &TezosPublicKey,
     customer_tezos_public_key: &TezosPublicKey,
     merchant_key_material: &TezosKeyMaterial,
     chan: Chan<establish::MerchantApproveEstablish>,
@@ -181,7 +180,7 @@ async fn approve_and_establish(
         customer_randomness,
         // Merchant's Pointcheval-Sanders public key:
         zkabacus_merchant_config.signing_keypair().public_key(),
-        merchant_tezos_public_key.as_ref(),
+        merchant_key_material.public_key().as_ref(),
         customer_tezos_public_key.as_ref(),
     );
 
