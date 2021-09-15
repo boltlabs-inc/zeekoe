@@ -177,14 +177,9 @@ pub async fn process_customer_close(
             ))?;
 
             // React to successfully confirmed dispute
-            finalize_dispute(
-                database,
-                channel_id,
-                final_balances.customer_balance(),
-                final_balances.merchant_balance(),
-            )
-            .await
-            .context(format!("Failed to finalize dispute (id: {})", channel_id))
+            finalize_dispute(database, channel_id)
+                .await
+                .context(format!("Failed to finalize dispute (id: {})", channel_id))
         }
     }
 }
@@ -260,8 +255,6 @@ pub async fn finalize_customer_close(
 async fn finalize_dispute(
     database: &dyn QueryMerchant,
     channel_id: &ChannelId,
-    customer_balance: CustomerBalance,
-    merchant_balance: MerchantBalance,
 ) -> Result<(), anyhow::Error> {
     // Update channel status from Dispute to Closed.
     database
@@ -275,6 +268,10 @@ async fn finalize_dispute(
             "Failed to update channel to Closed status (id: {})",
             &channel_id
         ))?;
+
+    // Get the new balances to update the database, to reflect merchant has claimed all
+    let (merchant_balance, customer_balance) =
+        merchant_take_all_balances(database, channel_id).await?;
 
     // Update final balances to indicate successful dispute (i.e., that the transfer of the
     // customer's balance to merchant is confirmed).
@@ -526,13 +523,7 @@ pub async fn claim_expiry_funds(
     ))?;
 
     // React to successfully confirmed merchClaim
-    finalize_expiry_close(
-        database,
-        channel_id,
-        final_balances.merchant_balance(),
-        final_balances.customer_balance(),
-    )
-    .await
+    finalize_expiry_close(database, channel_id).await
 }
 
 /// Finalize the channel balances. This is called during a unilateral merchant close flow if the
@@ -544,8 +535,6 @@ pub async fn claim_expiry_funds(
 async fn finalize_expiry_close(
     database: &dyn QueryMerchant,
     channel_id: &ChannelId,
-    merchant_balance: MerchantBalance,
-    customer_balance: CustomerBalance,
 ) -> Result<(), anyhow::Error> {
     // Update channel status to Closed
     database
@@ -560,6 +549,10 @@ async fn finalize_expiry_close(
             channel_id
         ))?;
 
+    // Get the new balances to update the database, to reflect merchant has claimed all
+    let (merchant_balance, customer_balance) =
+        merchant_take_all_balances(database, channel_id).await?;
+
     // Indicate that all balances are paid out to the merchant
     Ok(database
         .update_closing_balances(
@@ -573,4 +566,34 @@ async fn finalize_expiry_close(
             "Failed to save final balances after successful close (id = {})",
             channel_id
         ))?)
+}
+
+/// Compute the new balances if the merchant is called upon to claim all (in case of dispute or
+/// expiry without a close in time).
+async fn merchant_take_all_balances(
+    database: &dyn QueryMerchant,
+    channel_id: &ChannelId,
+) -> Result<(MerchantBalance, CustomerBalance), anyhow::Error> {
+    // Get the current closing balances
+    let closing_balances = database.get_closing_balances(channel_id).await?;
+    let starting_merchant_balance = closing_balances.merchant_balance.ok_or_else(|| {
+        anyhow::anyhow!(
+            "Channel {} has not yet been originated on chain",
+            channel_id
+        )
+    })?;
+    let starting_customer_balance = closing_balances.customer_balance.ok_or_else(|| {
+        anyhow::anyhow!(
+            "Channel {} has not yet been originated on chain",
+            channel_id
+        )
+    })?;
+
+    // Compute fund transfer to the merchant
+    let merchant_balance = MerchantBalance::try_new(
+        starting_merchant_balance.into_inner() + starting_customer_balance.into_inner(),
+    )?;
+    let customer_balance = CustomerBalance::try_new(0)?;
+
+    Ok((merchant_balance, customer_balance))
 }
