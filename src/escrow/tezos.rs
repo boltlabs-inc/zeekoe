@@ -31,7 +31,7 @@ fn python_context() -> inline_python::Context {
             uri,
             cust_addr, merch_addr,
             cust_acc,
-            cust_pubkey, merch_pubkey,
+            merch_pubkey,
             channel_id,
             merch_g2, merch_y2s, merch_x2,
             cust_funding, merch_funding,
@@ -497,7 +497,6 @@ pub mod establish {
         let customer_account_key = originator_key_pair.private_key().to_base58check();
         let customer_funding = customer_funding_info.balance.into_inner();
         let customer_address = customer_funding_info.address.to_base58check();
-        let customer_pubkey = customer_funding_info.public_key.to_base58check();
         let channel_id = hex_string(channel_id.to_bytes().to_vec());
         let uri = uri.map(|uri| uri.to_string());
 
@@ -509,7 +508,7 @@ pub mod establish {
                         'uri,
                         'customer_address, 'merchant_address,
                         'customer_account_key,
-                        'customer_pubkey, 'merchant_pubkey,
+                        'merchant_pubkey,
                         'channel_id,
                         'g2, 'y2s, 'x2,
                         'customer_funding, 'merchant_funding,
