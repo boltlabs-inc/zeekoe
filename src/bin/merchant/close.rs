@@ -163,7 +163,7 @@ pub async fn process_customer_close(
                 .context("Failed to retrieve contract details")?;
 
             // Call the merchDispute entrypoint and wait for it to be confirmed
-            let (status, dispute_level) = tezos::close::merch_dispute(
+            let (_status, _dispute_level) = tezos::close::merch_dispute(
                 Some(&uri),
                 &contract_id,
                 revocation_secret,
@@ -510,7 +510,7 @@ pub async fn claim_expiry_funds(
         ))?;
 
     // Call merchClaim entrypoint and retrieve final channel balances
-    let (status, claim_level) = tezos::close::merch_claim(
+    let (_status, _claim_level) = tezos::close::merch_claim(
         Some(&uri),
         &contract_id,
         tezos_key_material,

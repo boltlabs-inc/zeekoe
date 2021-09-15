@@ -488,6 +488,7 @@ pub mod establish {
     ///
     /// By default, this uses the Tezos mainnet; however, another URI may be specified to point to a
     /// sandbox or testnet node.
+    #[allow(clippy::too_many_arguments)]
     pub fn originate(
         uri: Option<&http::Uri>,
         merchant_funding_info: &MerchantFundingInformation,
@@ -622,15 +623,15 @@ pub mod establish {
     /// This function will wait until the customer's funding operation is confirmed at depth
     /// and is called by the merchant.
     pub fn verify_customer_funding(
-        contract_id: &ContractId,
-        customer_funding_info: &CustomerFundingInformation,
+        _contract_id: &ContractId,
+        _customer_funding_info: &CustomerFundingInformation,
     ) -> Result<(), Error> {
         todo!()
     }
 
     pub fn verify_merchant_funding(
-        contract_id: &ContractId,
-        customer_funding_info: &CustomerFundingInformation,
+        _contract_id: &ContractId,
+        _customer_funding_info: &CustomerFundingInformation,
     ) -> Result<(), Error> {
         todo!()
     }
@@ -1081,6 +1082,7 @@ pub mod close {
     /// - the `authorization_signature` is not a valid signature under the merchant public key
     ///   on the expected tuple
     #[allow(unused)]
+    #[allow(clippy::too_many_arguments)]
     pub fn mutual_close(
         uri: Option<&http::Uri>,
         contract_id: &ContractId,

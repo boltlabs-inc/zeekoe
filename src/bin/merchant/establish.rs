@@ -7,10 +7,7 @@ use zkabacus_crypto::{
 
 use zeekoe::{
     abort,
-    escrow::{
-        tezos,
-        types::{KeyHash, TezosKeyMaterial, TezosPublicKey},
-    },
+    escrow::types::{KeyHash, TezosKeyMaterial, TezosPublicKey},
     merchant::{config::Service, database::QueryMerchant, server::SessionKey, Chan},
     offer_abort, proceed,
     protocol::{self, establish, ChannelStatus, Party::Merchant},
