@@ -1,11 +1,13 @@
+use std::convert::TryFrom;
 use std::str::FromStr;
+use std::time::{Duration, SystemTime};
 
 use crate::escrow::types::*;
+use futures::Future;
 use inline_python::python;
 use tezedge::{OriginatedAddress, ToBase58Check};
-use zkabacus_crypto::RevocationLock;
-
-use self::close::FinalBalances;
+use tokio::task::JoinError;
+use zkabacus_crypto::{CustomerBalance, MerchantBalance, RevocationLock};
 
 /// The Michelson contract code for the ZkChannels contract.
 static CONTRACT_CODE: &str = include_str!("zkchannel_contract.tz");
@@ -99,6 +101,23 @@ fn python_context() -> inline_python::Context {
             level = 1 // TODO: get the level where the operation was confirmed
 
             return (status, level)
+
+
+        def contract_state(
+            uri,
+            cust_acc,
+            contract_id
+        ):
+            cust_py = pytezos.using(key=cust_acc, shell=uri)
+            cust_ci = cust_py.contract(contract_id)
+
+            return (
+                cust_ci.storage["status"](),
+                cust_ci.storage["delay_expiry"](),
+                cust_ci.storage["revocation_lock"](),
+                cust_ci.storage["customer_balance"](),
+                cust_ci.storage["merchant_balance"]()
+            )
 
         // Call the `addMerchFunding` endpoint of an extant contract
         def add_merchant_funding(
@@ -318,6 +337,22 @@ fn python_context() -> inline_python::Context {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct FinalBalances {
+    merchant_balance: MerchantBalance,
+    customer_balance: CustomerBalance,
+}
+
+impl FinalBalances {
+    pub fn merchant_balance(&self) -> MerchantBalance {
+        self.merchant_balance
+    }
+
+    pub fn customer_balance(&self) -> CustomerBalance {
+        self.customer_balance
+    }
+}
+
 /// Convert a byte vector into a string like "0xABC123".
 fn hex_string(bytes: Vec<u8>) -> String {
     format!("0x{}", hex::encode(bytes))
@@ -340,6 +375,7 @@ fn pointcheval_sanders_public_key_to_python_input(
 }
 
 /// State of a zkChannels contract at a point in time.
+#[derive(Debug)]
 pub struct ContractState {
     /// Current contract status.
     status: ContractStatus,
@@ -389,6 +425,10 @@ pub enum OperationStatus {
 #[error("Could not parse `OperationStatus` {0}")]
 pub struct OperationStatusParseError(String);
 
+#[derive(Debug, thiserror::Error)]
+#[error("Could not get contract status: {0}")]
+pub struct GetContractStateError(#[from] JoinError);
+
 impl FromStr for OperationStatus {
     type Err = OperationStatusParseError;
 
@@ -409,8 +449,63 @@ impl FromStr for OperationStatus {
 /// This function should query the state of the contract at the given confirmation depth -- that
 /// is, the state of the the contract, but not accounting for the latest
 /// `DEFAULT_CONFIRMATION_DEPTH` blocks.
-pub async fn get_contract_state(_contract_id: &ContractId) -> Result<ContractState, Error> {
-    todo!()
+pub fn get_contract_state(
+    uri: Option<&http::Uri>,
+    originator_key_pair: &TezosKeyMaterial,
+    contract_id: &ContractId,
+) -> impl Future<Output = Result<ContractState, GetContractStateError>> + Send + 'static {
+    let uri = uri.map(|uri| uri.to_string());
+    let customer_account_key = originator_key_pair.private_key().to_base58check();
+    let contract_id = contract_id.clone().to_originated_address().to_base58check();
+
+    async move {
+        tokio::task::spawn_blocking(move || {
+            let context = python_context();
+            context.run(python! {
+                        out = contract_state(
+                            'uri,
+                            'customer_account_key,
+                            'contract_id
+                        )
+            });
+
+            let (status, delay_expiry, revocation_lock_bytes, customer_amount, merchant_amount) =
+                context.get::<(i32, u32, Vec<u8>, u64, u64)>("out");
+
+            let status = ContractStatus::try_from(status).unwrap();
+
+            let timeout_expired = if delay_expiry == 0 {
+                None
+            } else {
+                let delay_expiry =
+                    SystemTime::UNIX_EPOCH + Duration::from_secs(delay_expiry.into());
+                Some(delay_expiry < SystemTime::now())
+            };
+
+            let (revocation_lock, final_balances) = if status == ContractStatus::CustomerClose {
+                let revocation_lock_bytes = <[u8; 32]>::try_from(revocation_lock_bytes).unwrap();
+                let revocation_lock = RevocationLock::from_bytes(&revocation_lock_bytes).unwrap();
+
+                let final_balances = FinalBalances {
+                    merchant_balance: MerchantBalance::try_new(merchant_amount).unwrap(),
+                    customer_balance: CustomerBalance::try_new(customer_amount).unwrap(),
+                };
+
+                (Some(revocation_lock), Some(final_balances))
+            } else {
+                (None, None)
+            };
+
+            ContractState {
+                status,
+                timeout_expired,
+                revocation_lock,
+                final_balances,
+            }
+        })
+        .await
+        .map_err(GetContractStateError)
+    }
 }
 
 pub mod establish {
@@ -419,7 +514,7 @@ pub mod establish {
 
     use super::*;
     use crate::escrow::notify::Level;
-    use zkabacus_crypto::{ChannelId, CustomerBalance, MerchantBalance, PublicKey};
+    use zkabacus_crypto::{ChannelId, PublicKey};
 
     #[allow(unused)]
     pub struct CustomerFundingInformation {
@@ -727,6 +822,7 @@ pub mod close {
     use inline_python::python;
     use tokio::task::JoinError;
     use zkabacus_crypto::ChannelId;
+
     use {
         serde::{Deserialize, Serialize},
         tezedge::signer::OperationSignatureInfo,
@@ -800,22 +896,6 @@ pub mod close {
                 operation_with_signature,
                 signature,
             }
-        }
-    }
-
-    #[derive(Debug, Clone, Copy)]
-    pub struct FinalBalances {
-        merchant_balance: MerchantBalance,
-        customer_balance: CustomerBalance,
-    }
-
-    impl FinalBalances {
-        pub fn merchant_balance(&self) -> MerchantBalance {
-            self.merchant_balance
-        }
-
-        pub fn customer_balance(&self) -> CustomerBalance {
-            self.customer_balance
         }
     }
 

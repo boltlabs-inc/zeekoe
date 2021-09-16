@@ -129,11 +129,22 @@ async fn dispatch_channel(
     channel: &ChannelDetails,
     off_chain: bool,
 ) -> Result<(), anyhow::Error> {
+    // TODO: parameterize these hard-coded defaults
+    let uri = "https://rpc.tzkt.io/edo2net/".parse().unwrap();
+
+    // Load keys from disk
+    let tezos_key_material = config
+        .load_tezos_key_material()
+        .await
+        .context("Customer chain-watching daemon failed to load Tezos key material")?;
+
     // Retrieve on-chain contract status
     let contract_state = match &channel.contract_details.contract_id {
-        Some(contract_id) => tezos::get_contract_state(contract_id)
-            .await
-            .context("Failed to retrieve contract state")?,
+        Some(contract_id) => {
+            tezos::get_contract_state(Some(&uri), &tezos_key_material, contract_id)
+                .await
+                .context("Failed to retrieve contract state")?
+        }
         None => return Ok(()),
     };
 
@@ -146,12 +157,6 @@ async fn dispatch_channel(
             || zkchannels_state::PendingExpiry.matches(&channel.state))
     {
         // TODO: this should wait for any payments to complete.
-
-        // Load keys from disk
-        let tezos_key_material = config
-            .load_tezos_key_material()
-            .await
-            .context("Customer chain-watching daemon failed to load Tezos key material")?;
 
         close::unilateral_close(
             &channel.label,
