@@ -196,7 +196,7 @@ pub async fn finalize_customer_close(
 ) -> Result<(), anyhow::Error> {
     // Retrieve current channel status.
     let current_status = database
-        .get_channel_status(channel_id)
+        .channel_status(channel_id)
         .await
         .context("Failed to check channel status")?;
 
@@ -436,7 +436,7 @@ async fn expiry(
 
     // Retrieve current channel status
     let current_status = database
-        .get_channel_status(channel_id)
+        .channel_status(channel_id)
         .await
         .context("Failed to retrieve current channel status")?;
 
@@ -576,8 +576,10 @@ async fn merchant_take_all_balances(
     channel_id: &ChannelId,
 ) -> Result<(MerchantBalance, CustomerBalance), anyhow::Error> {
     // Get the initial deposits
-    let initial_customer_deposit: CustomerBalance = todo!("Get customer initial deposit");
-    let initial_merchant_deposit: MerchantBalance = todo!("Get merchant initial deposit");
+    let (initial_merchant_deposit, initial_customer_deposit) = database
+        .initial_balances(channel_id)
+        .await
+        .context("Failed to fetch initial channel balances")?;
 
     // Compute fund transfer to the merchant
     let merchant_balance = MerchantBalance::try_new(

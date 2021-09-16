@@ -262,6 +262,30 @@
       ]
     }
   },
+  "68ec99a418e4cbc29bf83450111ef0fb272112224804753784d28167b7b22d18": {
+    "query": "SELECT merchant_deposit as \"merchant_balance: MerchantBalance\",\n                customer_deposit as \"customer_balance: CustomerBalance\"\n            FROM merchant_channels\n            WHERE channel_id = ?\n            LIMIT 2",
+    "describe": {
+      "columns": [
+        {
+          "name": "merchant_balance: MerchantBalance",
+          "ordinal": 0,
+          "type_info": "Blob"
+        },
+        {
+          "name": "customer_balance: CustomerBalance",
+          "ordinal": 1,
+          "type_info": "Blob"
+        }
+      ],
+      "parameters": {
+        "Right": 1
+      },
+      "nullable": [
+        false,
+        false
+      ]
+    }
+  },
   "69377cabe38e67da48503697a4f862521c02db27307026e082bfcc042a57f092": {
     "query": "SELECT state AS \"state: State\" FROM customer_channels WHERE label = ?",
     "describe": {
