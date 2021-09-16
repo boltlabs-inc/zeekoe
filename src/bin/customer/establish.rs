@@ -249,12 +249,18 @@ impl Command for Establish {
                 |inactive| -> Result<_, Infallible> { Ok((State::Originated(inactive), ())) },
             )
             .await
-            .with_context(|| {
-                format!(
-                    "Failed to update channel {} to Originated status",
-                    &actual_label
-                )
-            })??;
+            .context(format!(
+                "Failed to update channel {} to Originated status",
+                &actual_label
+            ))??;
+
+        database
+            .initialize_contract_details(&actual_label, &contract_id, origination_level)
+            .await
+            .context(format!(
+                "Failed to store contract details for {}",
+                &actual_label
+            ))?;
 
         let (customer_funding_status, _customer_funding_level) = if self.off_chain {
             // TODO: prompt user to fund the contract on chain

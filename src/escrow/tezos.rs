@@ -1005,8 +1005,8 @@ pub mod close {
         let customer_private_key = customer_key_pair.private_key().to_base58check();
         let contract_id = contract_id.clone().to_originated_address().to_base58check();
         let (sigma1, sigma2) = close_message.closing_signature().clone().as_bytes();
-        let sigma1 = sigma1.to_vec();
-        let sigma2 = sigma2.to_vec();
+        let sigma1 = hex_string(sigma1.to_vec());
+        let sigma2 = hex_string(sigma2.to_vec());
         let uri = uri.map(|uri| uri.to_string());
 
         async move {
