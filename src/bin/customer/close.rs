@@ -54,6 +54,7 @@ impl Command for Close {
         if self.force {
             unilateral_close(
                 &self.label,
+                &config,
                 self.off_chain,
                 &mut rng,
                 database.as_ref(),
@@ -89,13 +90,14 @@ struct Closing {
 /// operation calling the expiry entrypoint is confirmed on chain at any depth.
 pub async fn unilateral_close(
     channel_name: &ChannelName,
+    config: &Config,
     off_chain: bool,
     rng: &mut StdRng,
     database: &dyn QueryCustomer,
     tezos_key_material: &TezosKeyMaterial,
 ) -> Result<(), anyhow::Error> {
-    // TODO: parameterize these hard-coded defaults
-    let uri = "https://rpc.tzkt.io/edo2net/".parse().unwrap();
+    // Load URI for Tezos network
+    let uri = config.load_tezos_uri()?;
 
     // Read the closing message and set the channel state to PendingClose
     let close_message = get_close_message(rng, database, channel_name)
@@ -191,11 +193,12 @@ async fn finalize_customer_close(
 /// is confirmed on chain at any depth.
 pub async fn claim_funds(
     database: &dyn QueryCustomer,
+    config: &Config,
     channel_name: &ChannelName,
     customer_key_material: &TezosKeyMaterial,
 ) -> Result<(), anyhow::Error> {
-    // TODO: parameterize these hard-coded defaults
-    let uri = "https://rpc.tzkt.io/edo2net/".parse().unwrap();
+    // Load URI for Tezos network
+    let uri = config.load_tezos_uri()?;
 
     // Retrieve channel information
     let channel_details = database.get_channel(channel_name).await.context(format!(
@@ -396,8 +399,8 @@ async fn mutual_close(
     config: self::Config,
     tezos_key_material: TezosKeyMaterial,
 ) -> Result<(), anyhow::Error> {
-    // TODO: parameterize these hard-coded defaults
-    let uri = "https://rpc.tzkt.io/edo2net/".parse().unwrap();
+    // Load URI for Tezos network
+    let uri = config.load_tezos_uri()?;
 
     let database = database(&config)
         .await

@@ -129,8 +129,8 @@ async fn dispatch_channel(
     channel: &ChannelDetails,
     off_chain: bool,
 ) -> Result<(), anyhow::Error> {
-    // TODO: parameterize these hard-coded defaults
-    let uri = "https://rpc.tzkt.io/edo2net/".parse().unwrap();
+    // Load URI for Tezos network
+    let uri = config.load_tezos_uri()?;
 
     // Load keys from disk
     let tezos_key_material = config
@@ -160,12 +160,14 @@ async fn dispatch_channel(
 
         close::unilateral_close(
             &channel.label,
+            config,
             off_chain,
             rng,
             database,
             &tezos_key_material,
         )
-        .await?;
+        .await
+        .context("Failed to process contract in expiry state")?;
     }
 
     // The channel has not claimed funds after custClose timeout expired
@@ -182,8 +184,12 @@ async fn dispatch_channel(
             .await
             .context("Customer chain-watching daemon failed to load Tezos key material")?;
 
-        close::claim_funds(database, &channel.label, &tezos_key_material).await?;
-        close::finalize_customer_claim(database, &channel.label).await?;
+        close::claim_funds(database, config, &channel.label, &tezos_key_material)
+            .await
+            .context("Failed to claim funds")?;
+        close::finalize_customer_claim(database, &channel.label)
+            .await
+            .context("Failed to finalized claimed funds")?;
     }
 
     // The channel has not reacted to a merchDispute transaction being posted
@@ -193,8 +199,12 @@ async fn dispatch_channel(
     if contract_state.status() == ContractStatus::Closed
         && zkchannels_state::PendingClose.matches(&channel.state)
     {
-        close::process_dispute(database, &channel.label).await?;
-        close::finalize_dispute(database, &channel.label).await?
+        close::process_dispute(database, &channel.label)
+            .await
+            .context("Failed to process disputed contract")?;
+        close::finalize_dispute(database, &channel.label)
+            .await
+            .context("Failed to process finalized disputed contract")?;
     }
 
     // The channel has not reacted to a merchClaim transaction being posted
@@ -205,7 +215,9 @@ async fn dispatch_channel(
     if contract_state.status() == ContractStatus::Closed
         && zkchannels_state::PendingExpiry.matches(&channel.state)
     {
-        close::finalize_expiry(database, &channel.label).await?
+        close::finalize_expiry(database, &channel.label)
+            .await
+            .context("Failed to process expired contract")?;
     }
 
     Ok(())
