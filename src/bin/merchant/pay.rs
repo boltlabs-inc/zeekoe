@@ -1,4 +1,4 @@
-use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng};
+use {anyhow::Context, async_trait::async_trait, http::Uri, rand::rngs::StdRng};
 
 use zeekoe::{
     abort,
@@ -23,6 +23,7 @@ impl Method for Pay {
         rng: StdRng,
         client: &reqwest::Client,
         _tezos_key_material: TezosKeyMaterial,
+        _tezos_uri: Uri,
         service: &Service,
         merchant_config: &MerchantConfig,
         database: &dyn QueryMerchant,

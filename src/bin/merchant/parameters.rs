@@ -1,4 +1,4 @@
-use {async_trait::async_trait, rand::rngs::StdRng};
+use {async_trait::async_trait, http::Uri, rand::rngs::StdRng};
 
 use zeekoe::{
     escrow::types::TezosKeyMaterial,
@@ -14,16 +14,16 @@ pub struct Parameters;
 impl Method for Parameters {
     type Protocol = protocol::Parameters;
 
-    #[allow(unused)]
     async fn run(
         &self,
         _rng: StdRng,
         _client: &reqwest::Client,
         tezos_key_material: TezosKeyMaterial,
-        config: &Service,
+        _tezos_uri: Uri,
+        _config: &Service,
         merchant_config: &zkabacus_crypto::merchant::Config,
-        database: &dyn QueryMerchant,
-        session_key: SessionKey,
+        _database: &dyn QueryMerchant,
+        _session_key: SessionKey,
         chan: Chan<Self::Protocol>,
     ) -> Result<(), anyhow::Error> {
         // Extract the components of the merchant's public zkAbacus parameters

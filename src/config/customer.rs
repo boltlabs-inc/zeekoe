@@ -57,8 +57,7 @@ impl Config {
 
         // Make sure the tezos URI is valid
         config
-            .tezos_uri
-            .parse::<Uri>()
+            .load_tezos_uri()
             .context("Failed to parse Tezos URI")?;
 
         Ok(config)
