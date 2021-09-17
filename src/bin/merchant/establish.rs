@@ -274,7 +274,7 @@ async fn approve_and_establish(
             &tezos::establish::MerchantFundingInformation {
                 balance: merchant_deposit,
                 public_key: merchant_key_material.public_key().clone(),
-                address: todo!("Fill in merchant funding address here"),
+                address: merchant_key_material.public_key().hash(),
             },
             merchant_key_material,
             tezos::DEFAULT_CONFIRMATION_DEPTH,
