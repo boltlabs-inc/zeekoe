@@ -129,21 +129,18 @@ async fn dispatch_channel(
     channel: &ChannelDetails,
     off_chain: bool,
 ) -> Result<(), anyhow::Error> {
-    // Load URI for Tezos network
-    let uri = config.load_tezos_uri()?;
-
     // Load keys from disk
     let tezos_key_material = config
         .load_tezos_key_material()
         .await
-        .context("Customer chain-watching daemon failed to load Tezos key material")?;
+        .context("Chain watcher failed to load Tezos key material")?;
 
     // Retrieve on-chain contract status
     let contract_state = match &channel.contract_details.contract_id {
         Some(contract_id) => {
-            tezos::get_contract_state(Some(&uri), &tezos_key_material, contract_id)
+            tezos::get_contract_state(Some(&config.tezos_uri), &tezos_key_material, contract_id)
                 .await
-                .context("Failed to retrieve contract state")?
+                .context("Chain watcher failed to retrieve contract state")?
         }
         None => return Ok(()),
     };
@@ -167,7 +164,7 @@ async fn dispatch_channel(
             &tezos_key_material,
         )
         .await
-        .context("Failed to process contract in expiry state")?;
+        .context("Chain watcher failed to process contract in expiry state")?;
     }
 
     // The channel has not claimed funds after custClose timeout expired
@@ -182,14 +179,14 @@ async fn dispatch_channel(
         let tezos_key_material = config
             .load_tezos_key_material()
             .await
-            .context("Customer chain-watching daemon failed to load Tezos key material")?;
+            .context("Chain watcher failed to load Tezos key material")?;
 
         close::claim_funds(database, config, &channel.label, &tezos_key_material)
             .await
-            .context("Failed to claim funds")?;
+            .context("Chain watcher failed to claim funds")?;
         close::finalize_customer_claim(database, &channel.label)
             .await
-            .context("Failed to finalized claimed funds")?;
+            .context("Chain watcher failed to finalized claimed funds")?;
     }
 
     // The channel has not reacted to a merchDispute transaction being posted
@@ -201,10 +198,10 @@ async fn dispatch_channel(
     {
         close::process_dispute(database, &channel.label)
             .await
-            .context("Failed to process disputed contract")?;
+            .context("Chain watcher failed to process disputed contract")?;
         close::finalize_dispute(database, &channel.label)
             .await
-            .context("Failed to process finalized disputed contract")?;
+            .context("Chain watcher failed to process finalized disputed contract")?;
     }
 
     // The channel has not reacted to a merchClaim transaction being posted
@@ -217,7 +214,7 @@ async fn dispatch_channel(
     {
         close::finalize_expiry(database, &channel.label)
             .await
-            .context("Failed to process expired contract")?;
+            .context("Chain watcher failed to process expired contract")?;
     }
 
     Ok(())

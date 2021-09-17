@@ -197,9 +197,6 @@ impl Command for Establish {
         .await
         .context("Failed to initialize the channel")?;
 
-        // Load URI for the tezos node
-        let uri = config.load_tezos_uri()?;
-
         // Write out establishment struct to disk if operating in off-chain mode
         if self.off_chain {
             write_establish_json(&establishment)?;
@@ -223,7 +220,7 @@ impl Command for Establish {
         } else {
             // Originate the contract on-chain
             tezos::establish::originate(
-                Some(&uri),
+                Some(&config.tezos_uri),
                 &merchant_funding_info,
                 &customer_funding_info,
                 &establishment.merchant_ps_public_key,
@@ -267,7 +264,7 @@ impl Command for Establish {
             todo!("prompt user to fund contract on chain and submit details")
         } else {
             tezos::establish::add_customer_funding(
-                Some(&uri),
+                Some(&config.tezos_uri),
                 &contract_id,
                 &customer_funding_info,
                 &tezos_key_material,

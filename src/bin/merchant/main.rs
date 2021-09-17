@@ -76,10 +76,6 @@ impl Command for Run {
                     config.tezos_account
                 )
             })?;
-        let tezos_uri = config
-            .load_tezos_uri()
-            .context("Failed to parse Tezos URI")?;
-        let polling_service_tezos_uri = tezos_uri.clone();
 
         // Sender and receiver to indicate graceful shutdown should occur
         let (terminate, _) = broadcast::channel(1);
@@ -96,7 +92,7 @@ impl Command for Run {
                 let service = Arc::new(service.clone());
                 let mut wait_terminate = terminate.subscribe();
                 let tezos_key_material = tezos_key_material.clone();
-                let tezos_uri = tezos_uri.clone();
+                let tezos_uri = config.tezos_uri.clone();
 
                 async move {
                     // Initialize a new `Server` with parameters taken from the configuration
@@ -205,7 +201,6 @@ impl Command for Run {
             // Clone resources
             let database = database.clone();
             let tezos_key_material = tezos_key_material.clone();
-            //let tezos_uri = tezos_uri.clone();
 
             loop {
                 // Retrieve list of channels from database
@@ -222,7 +217,7 @@ impl Command for Run {
                 for channel in channels {
                     let database = database.clone();
                     let tezos_key_material = tezos_key_material.clone();
-                    let tezos_uri = polling_service_tezos_uri.clone();
+                    let tezos_uri = config.tezos_uri.clone();
                     tokio::spawn(async move {
                         dispatch_channel(
                             database.as_ref(),

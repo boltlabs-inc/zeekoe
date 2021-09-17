@@ -391,7 +391,6 @@ impl Command for cli::Close {
 
         // Load Tezos key and URI from file
         let tezos_key_material = TezosKeyMaterial::read_key_pair(config.tezos_account.clone())?;
-        let tezos_uri = config.load_tezos_uri()?;
 
         // Either initialize the merchant's config afresh, or get existing config if it exists
         // (it should already exist)
@@ -407,7 +406,7 @@ impl Command for cli::Close {
                     database.as_ref(),
                     &channel_id,
                     &tezos_key_material,
-                    &tezos_uri,
+                    &config.tezos_uri,
                 )
                 .await
             }

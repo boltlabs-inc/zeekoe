@@ -96,9 +96,6 @@ pub async fn unilateral_close(
     database: &dyn QueryCustomer,
     tezos_key_material: &TezosKeyMaterial,
 ) -> Result<(), anyhow::Error> {
-    // Load URI for Tezos network
-    let uri = config.load_tezos_uri()?;
-
     // Read the closing message and set the channel state to PendingClose
     let close_message = get_close_message(rng, database, channel_name)
         .await
@@ -134,7 +131,7 @@ pub async fn unilateral_close(
 
         // Call the custClose entrypoint and wait for it to be confirmed on chain
         tezos::close::cust_close(
-            Some(&uri),
+            Some(&config.tezos_uri),
             &contract_id,
             &close_message,
             tezos_key_material,
@@ -197,9 +194,6 @@ pub async fn claim_funds(
     channel_name: &ChannelName,
     customer_key_material: &TezosKeyMaterial,
 ) -> Result<(), anyhow::Error> {
-    // Load URI for Tezos network
-    let uri = config.load_tezos_uri()?;
-
     // Retrieve channel information
     let channel_details = database.get_channel(channel_name).await.context(format!(
         "Failed to retrieve channel details to claim funds for {}",
@@ -225,7 +219,7 @@ pub async fn claim_funds(
 
             // Post custClaim entrypoint on chain and wait for it to be confirmed
             tezos::close::cust_claim(
-                Some(&uri),
+                Some(&config.tezos_uri),
                 &contract_id,
                 customer_key_material,
                 tezos::DEFAULT_CONFIRMATION_DEPTH,
@@ -399,9 +393,6 @@ async fn mutual_close(
     config: self::Config,
     tezos_key_material: TezosKeyMaterial,
 ) -> Result<(), anyhow::Error> {
-    // Load URI for Tezos network
-    let uri = config.load_tezos_uri()?;
-
     let database = database(&config)
         .await
         .context("Failed to connect to local database")?;
@@ -439,7 +430,7 @@ async fn mutual_close(
 
     // Call the mutual close entrypoint
     let mutual_close_result = tezos::close::mutual_close(
-        Some(&uri),
+        Some(&config.tezos_uri),
         &contract_id,
         close_state.channel_id(),
         close_state.customer_balance(),

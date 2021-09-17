@@ -1,5 +1,4 @@
 use {
-    anyhow::Context,
     http::Uri,
     serde::{Deserialize, Serialize},
     std::{net::IpAddr, path::Path, path::PathBuf, time::Duration},
@@ -16,7 +15,8 @@ use crate::merchant::defaults;
 pub struct Config {
     pub database: DatabaseLocation,
     pub tezos_account: PathBuf,
-    tezos_uri: String,
+    #[serde(with = "http_serde::uri")]
+    pub tezos_uri: Uri,
     #[serde(rename = "service")]
     pub services: Vec<Service>,
 }
@@ -59,16 +59,7 @@ impl Config {
             service.certificate = config_dir.join(&service.certificate);
         }
 
-        // Make sure the tezos URI is valid
-        config
-            .load_tezos_uri()
-            .context("Failed to parse Tezos URI")?;
-
         Ok(config)
-    }
-
-    pub fn load_tezos_uri(&self) -> anyhow::Result<Uri> {
-        Ok(self.tezos_uri.parse()?)
     }
 }
 
