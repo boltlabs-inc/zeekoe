@@ -579,6 +579,14 @@ pub mod establish {
     #[error("Could not reclaim funding from contract: {0}")]
     pub struct ReclaimFundingError(#[from] JoinError);
 
+    #[derive(Debug, thiserror::Error)]
+    pub enum VerifyMerchantFundingError {
+        #[error("Expected contract to be 'open', but was {actual:?}")]
+        ContractNotOpen { actual: ContractStatus },
+        #[error(transparent)]
+        GetContractState(#[from] GetContractStateError),
+    }
+
     /// Originate a contract on chain.
     ///
     /// This call will wait until the contract is confirmed at depth. It returns the new
@@ -730,11 +738,20 @@ pub mod establish {
         todo!()
     }
 
-    pub fn verify_merchant_funding(
-        _contract_id: &ContractId,
-        _customer_funding_info: &CustomerFundingInformation,
-    ) -> Result<(), Error> {
-        todo!()
+    /// Verify that the contract storage status has been open for ``required_confirmations`.
+    pub async fn verify_merchant_funding(
+        uri: Option<&http::Uri>,
+        tezos_key_material: &TezosKeyMaterial,
+        contract_id: &ContractId,
+        confirmation_depth: u64,
+    ) -> Result<(), VerifyMerchantFundingError> {
+        let contract_state =
+            get_contract_state(uri, tezos_key_material, contract_id, confirmation_depth).await?;
+
+        match contract_state.status {
+            ContractStatus::Open => Ok(()),
+            actual => Err(VerifyMerchantFundingError::ContractNotOpen { actual }),
+        }
     }
 
     /// Add merchant funding via the `addFunding` entrypoint to the given [`ContractId`],

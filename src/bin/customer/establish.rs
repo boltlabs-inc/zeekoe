@@ -296,7 +296,7 @@ impl Command for Establish {
 
         // Send the contract id and level to the merchant
         let chan = chan
-            .send(contract_id)
+            .send(contract_id.clone())
             .await
             .context("Failed to send contract id to merchant")?
             .send(origination_level)
@@ -306,18 +306,24 @@ impl Command for Establish {
         // Allow the merchant to indicate whether it funded the channel
         offer_abort!(in chan as Customer);
 
-        // FIXME: remove this once filled in
-        #[allow(clippy::if_same_then_else, clippy::needless_bool)]
         let merchant_funding_successful: bool = if self.off_chain {
             // TODO: prompt user to check that the merchant funding was provided
             true
         } else {
-            // TODO: if merchant contribution was non-zero, check that merchant funding was provided
-            // within a configurable timeout and to the desired block depth and that the status of
-            // the contract is locked. if not, recommend unilateral close
-            // Note: the following database update may be moved around once the merchant funding
-            // check is added.
-            true // FIXME: check this!
+            tezos::establish::verify_merchant_funding(
+                Some(&config.tezos_uri),
+                &tezos_key_material,
+                &contract_id,
+                tezos::DEFAULT_CONFIRMATION_DEPTH,
+            )
+            .await
+            .map_or_else(
+                |err| {
+                    eprintln!("Could not verify merchant funding: {}", err);
+                    false
+                },
+                |_| true,
+            )
         };
 
         // Abort if merchant funding was not successful
