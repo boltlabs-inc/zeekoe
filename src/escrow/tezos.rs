@@ -114,17 +114,24 @@ fn python_context() -> inline_python::Context {
         def contract_state(
             uri,
             cust_acc,
-            contract_id
+            contract_id,
+            min_confirmations
         ):
             cust_py = pytezos.using(key=cust_acc, shell=uri)
             cust_ci = cust_py.contract(contract_id)
 
+            if min_confirmations > 0:
+                block_id = "head~{}".format(min_confirmations)
+                storage = cust_ci.using(block_id=block_id).storage()
+            else:
+                storage = cust_ci.storage
+
             return (
-                cust_ci.storage["status"](),
-                cust_ci.storage["delay_expiry"](),
-                cust_ci.storage["revocation_lock"]().to_bytes(32, byteorder="little"),
-                cust_ci.storage["customer_balance"](),
-                cust_ci.storage["merchant_balance"]()
+                storage["status"](),
+                storage["delay_expiry"](),
+                storage["revocation_lock"]().to_bytes(32, byteorder="little"),
+                storage["customer_balance"](),
+                storage["merchant_balance"]()
             )
 
         // Call the `addMerchFunding` endpoint of an extant contract
@@ -463,6 +470,7 @@ pub fn get_contract_state(
     uri: Option<&http::Uri>,
     originator_key_pair: &TezosKeyMaterial,
     contract_id: &ContractId,
+    confirmation_depth: u64,
 ) -> impl Future<Output = Result<ContractState, GetContractStateError>> + Send + 'static {
     let uri = uri.map(|uri| uri.to_string());
     let customer_account_key = originator_key_pair.private_key().to_base58check();
@@ -476,7 +484,8 @@ pub fn get_contract_state(
                         out = contract_state(
                             'uri,
                             'customer_account_key,
-                            'contract_id
+                            'contract_id,
+                            'confirmation_depth
                         )
             });
 

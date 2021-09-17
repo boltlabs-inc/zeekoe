@@ -263,13 +263,17 @@ async fn dispatch_channel(
     tezos_uri: Uri,
 ) -> Result<(), anyhow::Error> {
     // Retrieve on-chain contract status
-    let contract_state =
-        tezos::get_contract_state(Some(&tezos_uri), &tezos_key_material, &channel.contract_id)
-            .await
-            .context(format!(
-                "Merchant chain watcher failed to retrieve contract state for {}",
-                channel.contract_id
-            ))?;
+    let contract_state = tezos::get_contract_state(
+        Some(&tezos_uri),
+        &tezos_key_material,
+        &channel.contract_id,
+        tezos::DEFAULT_CONFIRMATION_DEPTH,
+    )
+    .await
+    .context(format!(
+        "Merchant chain watcher failed to retrieve contract state for {}",
+        channel.contract_id
+    ))?;
 
     // The channel has not claimed funds after the expiry timeout expired
     // The condition is

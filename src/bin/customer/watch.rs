@@ -144,14 +144,19 @@ async fn dispatch_channel(
 
     // Retrieve on-chain contract status
     let contract_state = match &channel.contract_details.contract_id {
-        Some(contract_id) => {
-            tezos::get_contract_state(Some(&config.tezos_uri), &tezos_key_material, contract_id)
-                .await
-                .context(format!(
-                    "Chain watcher failed to retrieve contract state for {}",
-                    &channel.label
-                ))?
-        }
+        Some(contract_id) => tezos::get_contract_state(
+            Some(&config.tezos_uri),
+            &tezos_key_material,
+            contract_id,
+            tezos::DEFAULT_CONFIRMATION_DEPTH,
+        )
+        .await
+        .with_context(|| {
+            format!(
+                "Chain watcher failed to retrieve contract state for {}",
+                &channel.label
+            )
+        })?,
         None => return Ok(()),
     };
 
