@@ -256,7 +256,7 @@ impl Command for Establish {
                 )
             })??;
 
-        let (customer_funding_status, customer_funding_level) = if self.off_chain {
+        let (customer_funding_status, _customer_funding_level) = if self.off_chain {
             // TODO: prompt user to fund the contract on chain
             todo!("prompt user to fund contract on chain and submit details")
         } else {
@@ -590,7 +590,7 @@ fn write_establish_json(establishment: &Establishment) -> Result<(), anyhow::Err
 }
 
 /// Invoke `Refresh` on the customer daemon.
-async fn refresh_daemon(config: &Config) -> anyhow::Result<()> {
+async fn refresh_daemon(_config: &Config) -> anyhow::Result<()> {
     // TODO: if daemon becomes relevant as a server, uncomment this
     // let (_session_key, chan) = connect_daemon(config)
     //     .await

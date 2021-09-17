@@ -33,7 +33,7 @@ pub enum Customer {
     Pay(Pay),
     Refund(Refund),
     Close(Close),
-    Run(Run),
+    Run(Watch),
 }
 
 /// List all the zkChannels you've established with merchants.
@@ -172,9 +172,14 @@ pub struct Close {
     pub off_chain: bool,
 }
 
+/// Run the chain-watching server
 #[derive(Debug, StructOpt)]
 #[non_exhaustive]
-pub struct Run {}
+pub struct Watch {
+    /// Enable off-chain transactions.
+    #[structopt(long)]
+    pub off_chain: bool,
+}
 
 /// An argument specified on the command line which may be a string literal, or the special string
 /// `-`, which indicates that the value should be read from standard input.

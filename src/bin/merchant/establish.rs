@@ -7,10 +7,7 @@ use zkabacus_crypto::{
 
 use zeekoe::{
     abort,
-    escrow::{
-        tezos,
-        types::{KeyHash, TezosKeyMaterial, TezosPublicKey},
-    },
+    escrow::types::{KeyHash, TezosKeyMaterial, TezosPublicKey},
     merchant::{config::Service, database::QueryMerchant, server::SessionKey, Chan},
     offer_abort, proceed,
     protocol::{self, establish, ChannelStatus, Party::Merchant},
@@ -126,7 +123,6 @@ impl Method for Establish {
             session_key,
             merchant_deposit,
             customer_deposit,
-            tezos_key_material.public_key(),
             &customer_tezos_public_key,
             &tezos_key_material,
             chan,
@@ -158,7 +154,6 @@ async fn approve_and_establish(
     session_key: SessionKey,
     merchant_deposit: MerchantBalance,
     customer_deposit: CustomerBalance,
-    merchant_tezos_public_key: &TezosPublicKey,
     customer_tezos_public_key: &TezosPublicKey,
     merchant_key_material: &TezosKeyMaterial,
     chan: Chan<establish::MerchantApproveEstablish>,
@@ -184,7 +179,7 @@ async fn approve_and_establish(
         customer_randomness,
         // Merchant's Pointcheval-Sanders public key:
         zkabacus_merchant_config.signing_keypair().public_key(),
-        merchant_tezos_public_key.as_ref(),
+        merchant_key_material.public_key().as_ref(),
         customer_tezos_public_key.as_ref(),
     );
 

@@ -57,6 +57,10 @@ pub trait QueryMerchant: Send + Sync {
         new: &ChannelStatus,
     ) -> Result<()>;
 
+    /// Update an existing merchant channel's status to PendingClose, if it is in a state that can
+    /// do so allowably (e.g. not already in a close flow).
+    async fn update_status_to_pending_close(&self, channel_id: &ChannelId) -> Result<()>;
+
     /// Update the closing balances of the channel, only if it is currently in the expected state.
     ///
     /// This should only be called once the balances are finalized on chain and maintains the
@@ -73,7 +77,7 @@ pub trait QueryMerchant: Send + Sync {
     ) -> Result<()>;
 
     /// Get information about every channel in the database.
-    async fn get_channels(&self) -> Result<Vec<(ChannelId, ChannelStatus)>>;
+    async fn get_channels(&self) -> Result<Vec<ChannelDetails>>;
 
     /// Get channel status for a particular channel based on its [`ChannelId`].
     async fn get_channel_status(&self, channel_id: &ChannelId) -> Result<ChannelStatus>;
@@ -342,6 +346,55 @@ impl QueryMerchant for SqlitePool {
         }
     }
 
+    async fn update_status_to_pending_close(&self, channel_id: &ChannelId) -> Result<()> {
+        let mut transaction = self.begin().await?;
+
+        // Find out current status
+        let result: Option<ChannelStatus> = sqlx::query!(
+            r#"SELECT status AS "status: Option<ChannelStatus>"
+            FROM merchant_channels
+            WHERE channel_id = ?"#,
+            channel_id,
+        )
+        .fetch_one(&mut transaction)
+        .await?
+        .status;
+
+        // Only update status if it is an allowable value.
+        match result {
+            None => Err(Error::ChannelNotFound(*channel_id)),
+            Some(ChannelStatus::MerchantFunded)
+            | Some(ChannelStatus::Active)
+            | Some(ChannelStatus::PendingExpiry)
+            | Some(ChannelStatus::PendingMutualClose) => {
+                sqlx::query!(
+                    "UPDATE merchant_channels
+                    SET status = ?
+                    WHERE channel_id = ?",
+                    ChannelStatus::PendingClose,
+                    channel_id
+                )
+                .execute(&mut transaction)
+                .await?;
+
+                transaction.commit().await?;
+                Ok(())
+            }
+            Some(unexpected_status) => Err(Error::UnexpectedChannelStatus {
+                channel_id: *channel_id,
+                expected: vec![
+                    ChannelStatus::Originated,
+                    ChannelStatus::CustomerFunded,
+                    ChannelStatus::MerchantFunded,
+                    ChannelStatus::Active,
+                    ChannelStatus::PendingExpiry,
+                    ChannelStatus::PendingMutualClose,
+                ],
+                found: unexpected_status,
+            }),
+        }
+    }
+
     async fn update_closing_balances(
         &self,
         channel_id: &ChannelId,
@@ -418,17 +471,30 @@ impl QueryMerchant for SqlitePool {
         }
     }
 
-    async fn get_channels(&self) -> Result<Vec<(ChannelId, ChannelStatus)>> {
+    async fn get_channels(&self) -> Result<Vec<ChannelDetails>> {
         let channels = sqlx::query!(
             r#"SELECT
                 channel_id AS "channel_id: ChannelId",
-                status as "status: ChannelStatus"
+                status as "status: ChannelStatus",
+                contract_id AS "contract_id: ContractId",
+                level AS "level: Level",
+                merchant_deposit AS "merchant_deposit: MerchantBalance",
+                customer_deposit AS "customer_deposit: CustomerBalance",
+                closing_balances AS "closing_balances: ClosingBalances"
             FROM merchant_channels"#
         )
         .fetch_all(self)
         .await?
         .into_iter()
-        .map(|r| (r.channel_id, r.status))
+        .map(|r| ChannelDetails {
+            channel_id: r.channel_id,
+            status: r.status,
+            contract_id: r.contract_id,
+            level: r.level,
+            merchant_deposit: r.merchant_deposit,
+            customer_deposit: r.customer_deposit,
+            closing_balances: r.closing_balances,
+        })
         .collect();
 
         Ok(channels)
@@ -555,13 +621,15 @@ impl QueryMerchant for SqlitePool {
 mod tests {
     use super::*;
     use crate::database::SqlitePoolOptions;
-    use rand::SeedableRng;
+    use {rand::SeedableRng, strum::IntoEnumIterator, tezedge::OriginatedAddress};
 
-    use tezedge::OriginatedAddress;
     use zkabacus_crypto::internal::{
         test_new_nonce, test_new_revocation_lock, test_new_revocation_secret, test_verify_pair,
     };
     use zkabacus_crypto::{CustomerRandomness, MerchantRandomness, Verification};
+
+    // The default dummy originated contract address, per https://tezos.stackexchange.com/a/2270
+    const DEFAULT_ADDR: &str = "KT1Mjjcb6tmSsLm7Cb3DSQszePjfchPM4Uxm";
 
     fn assert_valid_pair(lock: &RevocationLock, secret: &RevocationSecret) {
         assert!(
@@ -578,13 +646,13 @@ mod tests {
         Ok(conn)
     }
 
-    #[tokio::test(flavor = "multi_thread")]
+    #[tokio::test]
     async fn test_migrate() -> Result<()> {
         create_migrated_db().await?;
         Ok(())
     }
 
-    #[tokio::test(flavor = "multi_thread")]
+    #[tokio::test]
     async fn test_insert_nonce() -> Result<()> {
         let conn = create_migrated_db().await?;
         let mut rng = rand::thread_rng();
@@ -598,7 +666,7 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test(flavor = "multi_thread")]
+    #[tokio::test]
     async fn test_insert_revocation() -> Result<()> {
         let conn = create_migrated_db().await?;
         let mut rng = rand::thread_rng();
@@ -628,7 +696,30 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test(flavor = "multi_thread")]
+    #[tokio::test]
+    async fn test_merchant_statuses() -> Result<()> {
+        let conn = create_migrated_db().await?;
+
+        // Create channel and set its initial status.
+        let channel_id = insert_new_channel(&conn).await?;
+
+        // Get a list of every possible status, assuming that the first one is what channels
+        // are inserted with
+        let mut statuses = ChannelStatus::iter();
+        let mut current_status = statuses.next().unwrap();
+
+        // Make sure that every legal channel status can be inserted into the db.
+        for next_status in statuses {
+            conn.compare_and_swap_channel_status(&channel_id, &current_status, &next_status)
+                .await?;
+
+            current_status = next_status;
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn test_merchant_config() -> Result<()> {
         let conn = create_migrated_db().await?;
         let mut rng = StdRng::from_entropy();
@@ -653,18 +744,15 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test(flavor = "multi_thread")]
-    async fn test_merchant_channels() -> Result<()> {
-        let conn = create_migrated_db().await?;
+    async fn insert_new_channel(conn: &SqlitePool) -> Result<ChannelId> {
         let mut rng = StdRng::from_entropy();
 
         let cid_m = MerchantRandomness::new(&mut rng);
         let cid_c = CustomerRandomness::new(&mut rng);
         let pk = KeyPair::new(&mut rng).public_key().clone();
         let channel_id = ChannelId::new(cid_m, cid_c, &pk, &[], &[]);
-        let contract_id = ContractId::new(
-            OriginatedAddress::from_base58check("KT1Mjjcb6tmSsLm7Cb3DSQszePjfchPM4Uxm").unwrap(),
-        );
+        let contract_id =
+            ContractId::new(OriginatedAddress::from_base58check(DEFAULT_ADDR).unwrap());
 
         let merchant_deposit = MerchantBalance::try_new(5).unwrap();
         let customer_deposit = CustomerBalance::try_new(5).unwrap();
@@ -677,6 +765,14 @@ mod tests {
             &customer_deposit,
         )
         .await?;
+
+        Ok(channel_id)
+    }
+
+    #[tokio::test]
+    async fn test_merchant_channels() -> Result<()> {
+        let conn = create_migrated_db().await?;
+        let channel_id = insert_new_channel(&conn).await?;
         conn.compare_and_swap_channel_status(
             &channel_id,
             &ChannelStatus::Originated,
@@ -687,33 +783,13 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test(flavor = "multi_thread")]
+    #[tokio::test]
     async fn test_closing_balance_update() -> Result<()> {
         // set up new db
         let conn = create_migrated_db().await?;
-        let mut rng = StdRng::from_entropy();
 
-        // set defaults for a new channel
-        let cid_m = MerchantRandomness::new(&mut rng);
-        let cid_c = CustomerRandomness::new(&mut rng);
-        let pk = KeyPair::new(&mut rng).public_key().clone();
-        let channel_id = ChannelId::new(cid_m, cid_c, &pk, &[], &[]);
-        let contract_id = ContractId::new(
-            OriginatedAddress::from_base58check("KT1Mjjcb6tmSsLm7Cb3DSQszePjfchPM4Uxm").unwrap(),
-        );
-
-        // insert new channel
-        let merchant_deposit = MerchantBalance::try_new(5).unwrap();
-        let customer_deposit = CustomerBalance::try_new(5).unwrap();
-        let level = 10.into();
-        conn.new_channel(
-            &channel_id,
-            &contract_id,
-            &level,
-            &merchant_deposit,
-            &customer_deposit,
-        )
-        .await?;
+        // Make a new random channel.
+        let channel_id = insert_new_channel(&conn).await?;
 
         // make sure the initial closing balances are not set
         let mut closing_balances = conn.get_closing_balances(&channel_id).await?;
