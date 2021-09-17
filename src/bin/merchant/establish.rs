@@ -239,12 +239,15 @@ async fn approve_and_establish(
         .await
         .context("Failed to insert new channel_id, contract_id in database")?;
 
-    // TODO: check (waiting, if necessary, until a certain configurable timeout) that the
-    // contract has been funded by the customer on chain and confirmed to desired block depth:
-    // - if merchant contribution is zero, check contract storage is set to OPEN state for the
-    //   required confirmation depth
-    // - if merchant contribution is greater than zero, check contract storage is set to
-    //   AWAITING FUNDING state for the required confirmation depth
+    tezos::establish::verify_customer_funding(
+        &merchant_deposit,
+        Some(tezos_uri),
+        merchant_key_material,
+        &contract_id,
+        tezos::DEFAULT_CONFIRMATION_DEPTH,
+    )
+    .await
+    .unwrap_or_else(|err| eprintln!("Could not verify customer funding: {}", err));
 
     // TODO: otherwise, if any of these checks fail, invoke `abort!`
 

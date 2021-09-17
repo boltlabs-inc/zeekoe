@@ -587,6 +587,17 @@ pub mod establish {
         GetContractState(#[from] GetContractStateError),
     }
 
+    #[derive(Debug, thiserror::Error)]
+    pub enum VerifyCustomerFundingError {
+        #[error("Expected contract to be {expected:?}, but was {actual:?}")]
+        UnexpectedContractStatus {
+            expected: ContractStatus,
+            actual: ContractStatus,
+        },
+        #[error(transparent)]
+        GetContractState(#[from] GetContractStateError),
+    }
+
     /// Originate a contract on chain.
     ///
     /// This call will wait until the contract is confirmed at depth. It returns the new
@@ -731,11 +742,28 @@ pub mod establish {
     ///
     /// This function will wait until the customer's funding operation is confirmed at depth
     /// and is called by the merchant.
-    pub fn verify_customer_funding(
-        _contract_id: &ContractId,
-        _customer_funding_info: &CustomerFundingInformation,
-    ) -> Result<(), Error> {
-        todo!()
+    pub async fn verify_customer_funding(
+        merchant_balance: &MerchantBalance,
+        uri: Option<&http::Uri>,
+        tezos_key_material: &TezosKeyMaterial,
+        contract_id: &ContractId,
+        confirmation_depth: u64,
+    ) -> Result<(), VerifyCustomerFundingError> {
+        let expected = if merchant_balance.into_inner() > 0 {
+            ContractStatus::AwaitingMerchantFunding
+        } else {
+            ContractStatus::Open
+        };
+
+        let contract_state =
+            get_contract_state(uri, tezos_key_material, contract_id, confirmation_depth).await?;
+
+        match contract_state.status {
+            s if s == expected => Ok(()),
+            actual => {
+                Err(VerifyCustomerFundingError::UnexpectedContractStatus { expected, actual })
+            }
+        }
     }
 
     /// Verify that the contract storage status has been open for ``required_confirmations`.
