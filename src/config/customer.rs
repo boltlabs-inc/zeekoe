@@ -11,7 +11,10 @@ use http::Uri;
 
 pub use super::DatabaseLocation;
 
-use crate::{customer::defaults, escrow::types::TezosKeyMaterial};
+use crate::{
+    customer::defaults,
+    escrow::types::{KeySpecifier, TezosKeyMaterial},
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "snake_case")]
@@ -32,7 +35,7 @@ pub struct Config {
     pub max_note_length: u64,
     #[serde(with = "http_serde::uri")]
     pub tezos_uri: Uri,
-    pub tezos_key_material: PathBuf,
+    pub tezos_account: KeySpecifier,
     #[serde(default)]
     pub trust_certificate: Option<PathBuf>,
 }
@@ -54,11 +57,12 @@ impl Config {
         config.trust_certificate = config
             .trust_certificate
             .map(|ref cert_path| config_dir.join(cert_path));
+        config.tezos_account.set_relative_path(config_dir);
 
         Ok(config)
     }
 
     pub async fn load_tezos_key_material(&self) -> anyhow::Result<TezosKeyMaterial> {
-        Ok(TezosKeyMaterial::read_key_pair(&self.tezos_key_material)?)
+        Ok(TezosKeyMaterial::read_key_pair(&self.tezos_account)?)
     }
 }

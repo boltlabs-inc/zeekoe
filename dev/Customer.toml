@@ -1,4 +1,4 @@
 database = { sqlite = "customer.db" }
 trust_certificate = "localhost.crt"
-tezos_key_material = "tezos-contract/pytezos-tests/sample_files/tz1S6eSPZVQzHyPF2bRKhSKZhDZZSikB3e51.json"
+tezos_account = "tezos-contract/pytezos-tests/sample_files/tz1S6eSPZVQzHyPF2bRKhSKZhDZZSikB3e51.json"
 tezos_uri = "https://rpc.tzkt.io/edo2net/"

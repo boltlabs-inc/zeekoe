@@ -390,7 +390,7 @@ impl Command for cli::Close {
         let database = database(&config).await?;
 
         // Load Tezos key and URI from file
-        let tezos_key_material = TezosKeyMaterial::read_key_pair(config.tezos_account.clone())?;
+        let tezos_key_material = TezosKeyMaterial::read_key_pair(&config.tezos_account)?;
 
         // Either initialize the merchant's config afresh, or get existing config if it exists
         // (it should already exist)

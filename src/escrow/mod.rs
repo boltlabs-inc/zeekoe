@@ -3,7 +3,7 @@ pub mod tezos;
 
 pub mod types {
 
-    use std::convert::TryFrom;
+    use std::{borrow::Cow, convert::TryFrom, path::PathBuf};
 
     use super::notify::Level;
     use tezedge::{
@@ -53,13 +53,41 @@ pub mod types {
     /// An address is the hash of a [`TezosPublicKey`].
     pub type TezosFundingAddress = tezedge::ImplicitAddress;
 
+    /// Set of methods to specify a key in the config file, specified in order of preference.
+    ///
+    /// Rearranging these is a breaking change due to the untagged serialization.
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[serde(untagged)]
+    pub enum KeySpecifier {
+        Path(PathBuf),
+        Alias { alias: String },
+    }
+
+    impl KeySpecifier {
+        /// If the `KeySpecifier` is a `Path`, updates it to be relative to the given directory.
+        pub fn set_relative_path(&mut self, config_dir: &Path) {
+            eprintln!("{:?}", self);
+            if let KeySpecifier::Path(path) = self {
+                *path = config_dir.join(&path)
+            }
+        }
+
+        /// Convert the `KeySpecifier` into a type that can be passed to `inline_python`.
+        /// The output will be a valid input for the `key` parameter of
+        /// [`PyTezosClient.using()`](https://pytezos.org/high_level.html?highlight=using#pytezos.client.PyTezosClient.using)
+        pub fn into_python_type(&self) -> Cow<str> {
+            match self {
+                KeySpecifier::Path(path) => path.to_string_lossy(),
+                KeySpecifier::Alias { alias } => Cow::from(alias.clone()),
+            }
+        }
+    }
+
     /// Tezos key material, with public key and contents of key file.
     #[derive(Clone)]
     pub struct TezosKeyMaterial {
         public_key: TezosPublicKey,
         private_key: TezosPrivateKey,
-        #[allow(unused)]
-        file_contents: String,
     }
 
     impl TezosKeyMaterial {
@@ -67,11 +95,8 @@ pub mod types {
         ///
         /// The file should use the key file json formatting that is also used by faucet:
         /// https://faucet.tzalpha.net/
-        pub fn read_key_pair(path: impl AsRef<Path>) -> Result<TezosKeyMaterial, Error> {
-            let file_contents = fs::read_to_string(&path)
-                .map_err(|_| Error::KeyFileInvalid("Failed to read file".to_string()))?;
-
-            let path = path.as_ref().to_string_lossy();
+        pub fn read_key_pair(key_specifier: &KeySpecifier) -> Result<TezosKeyMaterial, Error> {
+            let path = key_specifier.into_python_type();
 
             // Use pytezos parsing functions to parse account config file.
             let key_context: inline_python::Context = inline_python::python!(
@@ -91,7 +116,6 @@ pub mod types {
                     .map_err(|_| Error::KeyFileInvalid("Couldn't parse public key".to_string()))?,
                 private_key: TezosPrivateKey::from_base58check(&private_key_string)
                     .map_err(|_| Error::KeyFileInvalid("Couldn't parse private key".to_string()))?,
-                file_contents,
             })
         }
 
@@ -113,11 +137,6 @@ pub mod types {
         /// Get the funding address.
         pub fn funding_address(&self) -> TezosFundingAddress {
             self.public_key().hash()
-        }
-
-        /// The contents of the Tezos key file that was used to create this struct.
-        pub fn file_contents(&self) -> &str {
-            &self.file_contents
         }
     }
 
