@@ -89,11 +89,18 @@ impl Command for Watch {
                     let mut rng = rng.clone();
                     let off_chain = self.off_chain;
                     tokio::spawn(async move {
-                        dispatch_channel(&mut rng, &config, database.as_ref(), &channel, off_chain)
-                            .await
-                            .unwrap_or_else(|e| {
-                                eprintln!("Error dispatching on {}: {}", &channel.label, e)
-                            });
+                        match dispatch_channel(
+                            &mut rng,
+                            &config,
+                            database.as_ref(),
+                            &channel,
+                            off_chain,
+                        )
+                        .await
+                        {
+                            Ok(()) => eprintln!("Successfully dispatched {}", &channel.label),
+                            Err(e) => eprintln!("Error dispatching on {}: {}", &channel.label, e),
+                        }
                     });
                 }
                 interval.tick().await;
@@ -140,7 +147,10 @@ async fn dispatch_channel(
         Some(contract_id) => {
             tezos::get_contract_state(Some(&config.tezos_uri), &tezos_key_material, contract_id)
                 .await
-                .context("Chain watcher failed to retrieve contract state")?
+                .context(format!(
+                    "Chain watcher failed to retrieve contract state for {}",
+                    &channel.label
+                ))?
         }
         None => return Ok(()),
     };

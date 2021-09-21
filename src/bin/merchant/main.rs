@@ -219,16 +219,19 @@ impl Command for Run {
                     let tezos_key_material = tezos_key_material.clone();
                     let tezos_uri = config.tezos_uri.clone();
                     tokio::spawn(async move {
-                        dispatch_channel(
+                        match dispatch_channel(
                             database.as_ref(),
                             &channel,
                             tezos_key_material,
                             tezos_uri,
                         )
                         .await
-                        .unwrap_or_else(|e| {
-                            eprintln!("Error dispatching on {}: {}", &channel.channel_id, e)
-                        });
+                        {
+                            Ok(()) => eprintln!("Successfully dispatched {}", &channel.channel_id),
+                            Err(e) => {
+                                eprintln!("Error dispatching on {}: {}", &channel.channel_id, e)
+                            }
+                        }
                     });
                 }
                 polling_interval.tick().await;

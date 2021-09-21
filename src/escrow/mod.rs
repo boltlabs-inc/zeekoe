@@ -15,7 +15,6 @@ pub mod types {
         sha3::{Digest, Sha3_256},
         std::{
             fmt::{self, Display, Formatter},
-            fs,
             path::Path,
         },
         thiserror::Error,
