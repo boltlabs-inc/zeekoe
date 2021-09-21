@@ -1,18 +1,17 @@
 use {
+    crate::escrow::types::*,
     futures::Future,
-    inline_python::python,
+    inline_python::{pyo3, pyo3::conversion::FromPyObject, python},
     std::{
-        convert::TryFrom,
+        convert::{TryFrom, TryInto},
         str::FromStr,
         sync::Mutex,
         time::{Duration, SystemTime},
     },
+    tezedge::{OriginatedAddress, ToBase58Check},
     tokio::task::JoinError,
+    zkabacus_crypto::{CustomerBalance, MerchantBalance, RevocationLock},
 };
-
-use crate::escrow::types::*;
-use tezedge::{OriginatedAddress, ToBase58Check};
-use zkabacus_crypto::{CustomerBalance, MerchantBalance, RevocationLock};
 
 /// The Michelson contract code for the ZkChannels contract.
 static CONTRACT_CODE: &str = include_str!("zkchannel_contract.tz");
@@ -110,7 +109,7 @@ fn python_context() -> inline_python::Context {
 
             return (status, level)
 
-
+        // Get the state of a contract.
         def contract_state(
             uri,
             cust_acc,
@@ -122,17 +121,16 @@ fn python_context() -> inline_python::Context {
 
             if min_confirmations > 0:
                 block_id = "head~{}".format(min_confirmations)
-                storage = cust_ci.using(block_id=block_id).storage()
+                contract = cust_ci.using(block_id = block_id)
+                storage = contract.storage()
             else:
-                storage = cust_ci.storage
+                contract = cust_ci
+                storage = cust_ci.storage()
 
-            return (
-                storage["status"](),
-                storage["delay_expiry"](),
-                storage["revocation_lock"]().to_bytes(32, byteorder="little"),
-                storage["customer_balance"](),
-                storage["merchant_balance"]()
-            )
+            storage["revocation_lock"] = storage["revocation_lock"].to_bytes(32, byteorder="little")
+
+            micheline_json = json.dumps(contract.to_micheline(), sort_keys = True)
+            return (storage, micheline_json)
 
         // Call the `addMerchFunding` endpoint of an extant contract
         def add_merchant_funding(
@@ -391,38 +389,144 @@ fn pointcheval_sanders_public_key_to_python_input(
     (g2, y2s, x2)
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum VerificationError {
+    #[error("Expected contract to be {expected:?}, but was {actual:?}")]
+    UnexpectedContractStatus {
+        expected: ContractStatus,
+        actual: ContractStatus,
+    },
+
+    #[error(transparent)]
+    ContractState(#[from] ContractStateError),
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ContractStateError {
+    #[error(transparent)]
+    PythonError(#[from] JoinError),
+    #[error(transparent)]
+    ParseContractStatus(#[from] ParseContractStatusError),
+    #[error(transparent)]
+    ZkAbacusError(#[from] zkabacus_crypto::Error),
+    #[error("Could not parse bytes as `RevocationLock`: {0:?}")]
+    ParseRevocationLock(Vec<u8>),
+}
+
 /// State of a zkChannels contract at a point in time.
 #[derive(Debug)]
 pub struct ContractState {
-    /// Current contract status.
-    status: ContractStatus,
-    /// Indicator to whether the timeout on the contract has expired, if it was set.
-    timeout_expired: Option<bool>,
-    /// Revocation lock from the contract, if it was set.
-    revocation_lock: Option<RevocationLock>,
-    /// Final balances from the contract, if they have been determined.
-    final_balances: Option<FinalBalances>,
+    merchant_address_base58: String,
+    merchant_tezos_public_key_base58: String,
+    customer_amount: u64,
+    merchant_amount: u64,
+    status: i32,
+    revocation_lock_bytes: Vec<u8>,
+    self_delay: u64,
+    delay_expiry: u32,
+    merchant_public_key: (Vec<u8>, [Vec<u8>; 5], Vec<u8>),
+    contract_hash: ContractHash,
 }
 
 impl ContractState {
     /// Get the current status of the contract.
-    pub fn status(&self) -> ContractStatus {
-        self.status
+    pub fn status(&self) -> Result<ContractStatus, ContractStateError> {
+        Ok(ContractStatus::try_from(self.status)?)
     }
 
     /// Get the indicator to whether the timeout was set and, if so, whether it has expired.
     pub fn timeout_expired(&self) -> Option<bool> {
-        self.timeout_expired
+        match self.delay_expiry {
+            0 => None,
+            n => {
+                let timeout_expired =
+                    SystemTime::UNIX_EPOCH + Duration::from_secs(n.into()) < SystemTime::now();
+                Some(timeout_expired)
+            }
+        }
     }
 
-    // Get the revocation lock from the contract, if it has been set.
-    pub fn revocation_lock(&self) -> Option<&RevocationLock> {
-        self.revocation_lock.as_ref()
+    pub fn customer_balance(&self) -> Result<CustomerBalance, zkabacus_crypto::Error> {
+        CustomerBalance::try_new(self.customer_amount)
+    }
+
+    pub fn merchant_balance(&self) -> Result<MerchantBalance, zkabacus_crypto::Error> {
+        MerchantBalance::try_new(self.merchant_amount)
     }
 
     /// Get the final balances on the contract if they are determined.
-    pub fn final_balances(&self) -> Option<&FinalBalances> {
-        self.final_balances.as_ref()
+    pub fn final_balances(&self) -> Result<Option<FinalBalances>, ContractStateError> {
+        Ok(match self.status()? {
+            ContractStatus::CustomerClose => Some(FinalBalances {
+                merchant_balance: self.merchant_balance()?,
+                customer_balance: self.customer_balance()?,
+            }),
+            _ => None,
+        })
+    }
+
+    // Get the revocation lock from the contract, if it has been set.
+    pub fn revocation_lock(&self) -> Result<Option<RevocationLock>, ContractStateError> {
+        Ok(match self.status()? {
+            ContractStatus::CustomerClose => {
+                let revocation_lock_bytes: &[u8; 32] =
+                    &self.revocation_lock_bytes.clone().try_into().map_err(|_| {
+                        ContractStateError::ParseRevocationLock(self.revocation_lock_bytes.clone())
+                    })?;
+                let revocation_lock = RevocationLock::from_bytes(&revocation_lock_bytes)
+                    .ok_or_else(|| {
+                        ContractStateError::ParseRevocationLock(self.revocation_lock_bytes.clone())
+                    })?;
+                Some(revocation_lock)
+            }
+            _ => None,
+        })
+    }
+
+    /// The merchant's Pointcheval Sanders public key: (g2, y2s, x2)
+    pub fn merchant_public_key(&self) -> &(Vec<u8>, [Vec<u8>; 5], Vec<u8>) {
+        &self.merchant_public_key
+    }
+
+    /// A SHA3-256 hash of the contract's Micheline JSON encoding.
+    pub fn contract_hash(&self) -> &ContractHash {
+        &self.contract_hash
+    }
+}
+
+impl<'source> FromPyObject<'source> for ContractState {
+    // This expects a tuple of the shape:
+    //
+    // (storage, micheline_json)
+    //
+    // Where storage is a hash of the storage of a contract, and `micheline_json` is the serialized
+    // Micheline JSON representation of the contract.
+    fn extract(obj: &'source pyo3::PyAny) -> pyo3::PyResult<Self> {
+        let storage = obj.get_item(0)?;
+        let micheline_json = obj.get_item(1)?.extract()?;
+
+        Ok(ContractState {
+            merchant_address_base58: storage.get_item("merchant_address")?.extract()?,
+            merchant_tezos_public_key_base58: storage.get_item("merchant_public_key")?.extract()?,
+            customer_amount: storage.get_item("customer_balance")?.extract()?,
+            merchant_amount: storage.get_item("merchant_balance")?.extract()?,
+            status: storage.get_item("status")?.extract()?,
+            revocation_lock_bytes: storage.get_item("revocation_lock")?.extract()?,
+            self_delay: storage.get_item("self_delay")?.extract()?,
+            delay_expiry: storage.get_item("delay_expiry")?.extract()?,
+            merchant_public_key: (
+                storage.get_item("g2")?.extract()?,
+                [
+                    storage.get_item("y2s_0")?.extract()?,
+                    storage.get_item("y2s_1")?.extract()?,
+                    storage.get_item("y2s_2")?.extract()?,
+                    storage.get_item("y2s_3")?.extract()?,
+                    storage.get_item("y2s_4")?.extract()?,
+                ],
+                storage.get_item("x2")?.extract()?,
+            ),
+            contract_hash: ContractHash::new(micheline_json),
+        })
     }
 }
 
@@ -441,10 +545,6 @@ pub enum OperationStatus {
 #[derive(Debug, thiserror::Error)]
 #[error("Could not parse `OperationStatus` {0}")]
 pub struct OperationStatusParseError(String);
-
-#[derive(Debug, thiserror::Error)]
-#[error("Could not get contract status: {0}")]
-pub struct GetContractStateError(#[from] JoinError);
 
 impl FromStr for OperationStatus {
     type Err = OperationStatusParseError;
@@ -471,7 +571,7 @@ pub fn get_contract_state(
     originator_key_pair: &TezosKeyMaterial,
     contract_id: &ContractId,
     confirmation_depth: u64,
-) -> impl Future<Output = Result<ContractState, GetContractStateError>> + Send + 'static {
+) -> impl Future<Output = Result<ContractState, ContractStateError>> + Send + 'static {
     let uri = uri.map(|uri| uri.to_string());
     let customer_account_key = originator_key_pair.private_key().to_base58check();
     let contract_id = contract_id.clone().to_originated_address().to_base58check();
@@ -481,50 +581,18 @@ pub fn get_contract_state(
         tokio::task::spawn_blocking(move || {
             let context = python_context();
             context.run(python! {
-                        out = contract_state(
-                            'uri,
-                            'customer_account_key,
-                            'contract_id,
-                            'confirmation_depth
-                        )
+                out = contract_state(
+                    'uri,
+                    'customer_account_key,
+                    'contract_id,
+                    'confirmation_depth
+                )
             });
 
-            let (status, delay_expiry, revocation_lock_bytes, customer_amount, merchant_amount) =
-                context.get::<(i32, u32, Vec<u8>, u64, u64)>("out");
-
-            let status = ContractStatus::try_from(status).unwrap();
-
-            let timeout_expired = if delay_expiry == 0 {
-                None
-            } else {
-                let delay_expiry =
-                    SystemTime::UNIX_EPOCH + Duration::from_secs(delay_expiry.into());
-                Some(delay_expiry < SystemTime::now())
-            };
-
-            let (revocation_lock, final_balances) = if status == ContractStatus::CustomerClose {
-                let revocation_lock_bytes = <[u8; 32]>::try_from(revocation_lock_bytes).unwrap();
-                let revocation_lock = RevocationLock::from_bytes(&revocation_lock_bytes).unwrap();
-
-                let final_balances = FinalBalances {
-                    merchant_balance: MerchantBalance::try_new(merchant_amount).unwrap(),
-                    customer_balance: CustomerBalance::try_new(customer_amount).unwrap(),
-                };
-
-                (Some(revocation_lock), Some(final_balances))
-            } else {
-                (None, None)
-            };
-
-            ContractState {
-                status,
-                timeout_expired,
-                revocation_lock,
-                final_balances,
-            }
+            context.get::<ContractState>("out")
         })
         .await
-        .map_err(GetContractStateError)
+        .map_err(ContractStateError::PythonError)
     }
 }
 
@@ -578,25 +646,6 @@ pub mod establish {
     #[derive(Debug, thiserror::Error)]
     #[error("Could not reclaim funding from contract: {0}")]
     pub struct ReclaimFundingError(#[from] JoinError);
-
-    #[derive(Debug, thiserror::Error)]
-    pub enum VerifyMerchantFundingError {
-        #[error("Expected contract to be 'open', but was {actual:?}")]
-        ContractNotOpen { actual: ContractStatus },
-        #[error(transparent)]
-        GetContractState(#[from] GetContractStateError),
-    }
-
-    #[derive(Debug, thiserror::Error)]
-    pub enum VerifyCustomerFundingError {
-        #[error("Expected contract to be {expected:?}, but was {actual:?}")]
-        UnexpectedContractStatus {
-            expected: ContractStatus,
-            actual: ContractStatus,
-        },
-        #[error(transparent)]
-        GetContractState(#[from] GetContractStateError),
-    }
 
     /// Originate a contract on chain.
     ///
@@ -720,17 +769,25 @@ pub mod establish {
     /// This function will wait until the origination operation is confirmed at depth
     /// and is called by the merchant.
     ///
-    /// This function will return [`Error::InvalidZkChannelsContract`] if the contract is not a valid
+    /// This function will return [`VerificationError`] if the contract is not a valid
     /// zkChannels contract or it does not have the expected storage.
     #[allow(unused)]
-    pub fn verify_origination(
+    pub async fn verify_origination(
+        uri: Option<&http::Uri>,
+        tezos_key_material: &TezosKeyMaterial,
         contract_id: &ContractId,
-        merchant_funding_info: &MerchantFundingInformation,
-        customer_funding_info: &CustomerFundingInformation,
-        merchant_public_key: &PublicKey,
-        channel_id: &ChannelId,
-    ) -> Result<(), Error> {
-        todo!()
+        confirmation_depth: u64,
+    ) -> Result<(), VerificationError> {
+        let contract_state =
+            get_contract_state(uri, tezos_key_material, contract_id, confirmation_depth).await?;
+
+        match contract_state.status()? {
+            ContractStatus::Open => Ok(()),
+            actual => Err(VerificationError::UnexpectedContractStatus {
+                expected: ContractStatus::Open,
+                actual,
+            }),
+        }
     }
 
     /// Verify that the customer has successfully funded the contract via the `addFunding`
@@ -748,7 +805,7 @@ pub mod establish {
         tezos_key_material: &TezosKeyMaterial,
         contract_id: &ContractId,
         confirmation_depth: u64,
-    ) -> Result<(), VerifyCustomerFundingError> {
+    ) -> Result<(), VerificationError> {
         let expected = if merchant_balance.into_inner() > 0 {
             ContractStatus::AwaitingMerchantFunding
         } else {
@@ -757,12 +814,12 @@ pub mod establish {
 
         let contract_state =
             get_contract_state(uri, tezos_key_material, contract_id, confirmation_depth).await?;
+        let actual = contract_state.status()?;
 
-        match contract_state.status {
-            s if s == expected => Ok(()),
-            actual => {
-                Err(VerifyCustomerFundingError::UnexpectedContractStatus { expected, actual })
-            }
+        if expected == actual {
+            Ok(())
+        } else {
+            Err(VerificationError::UnexpectedContractStatus { expected, actual })
         }
     }
 
@@ -772,13 +829,16 @@ pub mod establish {
         tezos_key_material: &TezosKeyMaterial,
         contract_id: &ContractId,
         confirmation_depth: u64,
-    ) -> Result<(), VerifyMerchantFundingError> {
+    ) -> Result<(), VerificationError> {
         let contract_state =
             get_contract_state(uri, tezos_key_material, contract_id, confirmation_depth).await?;
 
-        match contract_state.status {
+        match contract_state.status()? {
             ContractStatus::Open => Ok(()),
-            actual => Err(VerifyMerchantFundingError::ContractNotOpen { actual }),
+            actual => Err(VerificationError::UnexpectedContractStatus {
+                expected: ContractStatus::Open,
+                actual,
+            }),
         }
     }
 
