@@ -65,7 +65,6 @@ pub mod types {
     impl KeySpecifier {
         /// If the `KeySpecifier` is a `Path`, updates it to be relative to the given directory.
         pub fn set_relative_path(&mut self, config_dir: &Path) {
-            eprintln!("{:?}", self);
             if let KeySpecifier::Path(path) = self {
                 *path = config_dir.join(&path)
             }

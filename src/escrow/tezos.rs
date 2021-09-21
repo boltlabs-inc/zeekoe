@@ -1,17 +1,24 @@
-use std::convert::TryFrom;
-use std::str::FromStr;
-use std::time::{Duration, SystemTime};
+use {
+    futures::Future,
+    inline_python::python,
+    std::{
+        convert::TryFrom,
+        str::FromStr,
+        sync::Mutex,
+        time::{Duration, SystemTime},
+    },
+    tokio::task::JoinError,
+};
 
 use crate::escrow::types::*;
-use futures::Future;
-use inline_python::python;
 use tezedge::{OriginatedAddress, ToBase58Check};
-use tokio::task::JoinError;
 use zkabacus_crypto::{CustomerBalance, MerchantBalance, RevocationLock};
 
 /// The Michelson contract code for the ZkChannels contract.
 static CONTRACT_CODE: &str = include_str!("zkchannel_contract.tz");
-
+lazy_static::lazy_static! {
+    static ref CONTRACT_CODE_MUTEX: Mutex<u64> = Mutex::new(0);
+}
 /// The default confirmation depth to consider chain operations to be final.
 pub const DEFAULT_CONFIRMATION_DEPTH: u64 = 1; // FIXME: put this back to 20 after testing
 
@@ -22,7 +29,8 @@ pub const DEFAULT_SELF_DELAY: u64 = 2 * 24 * 60 * 60;
 /// away. This ensures we don't carry over global state, and we can concurrently use python-based
 /// functions without the Global Interpreter Lock.
 fn python_context() -> inline_python::Context {
-    python! {
+    let mutex = CONTRACT_CODE_MUTEX.lock().unwrap();
+    let context = python! {
         from pytezos import pytezos, Contract, ContractInterface
         import json
 
@@ -334,7 +342,9 @@ fn python_context() -> inline_python::Context {
             level = 1 // TODO: get the level where the operation was confirmed
 
             return (status, level)
-    }
+    };
+    drop(mutex);
+    context
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -457,6 +467,7 @@ pub fn get_contract_state(
     let uri = uri.map(|uri| uri.to_string());
     let customer_account_key = originator_key_pair.private_key().to_base58check();
     let contract_id = contract_id.clone().to_originated_address().to_base58check();
+    eprintln!("Querying contract {}", contract_id);
 
     async move {
         tokio::task::spawn_blocking(move || {
