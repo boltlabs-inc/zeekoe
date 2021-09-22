@@ -197,9 +197,6 @@ impl Command for Establish {
         .await
         .context("Failed to initialize the channel")?;
 
-        // TODO: parameterize these hard-coded defaults
-        let uri = "https://rpc.tzkt.io/edo2net/".parse().unwrap();
-
         // Write out establishment struct to disk if operating in off-chain mode
         if self.off_chain {
             write_establish_json(&establishment)?;
@@ -223,7 +220,7 @@ impl Command for Establish {
         } else {
             // Originate the contract on-chain
             tezos::establish::originate(
-                Some(&uri),
+                Some(&config.tezos_uri),
                 &merchant_funding_info,
                 &customer_funding_info,
                 &establishment.merchant_ps_public_key,
@@ -249,19 +246,25 @@ impl Command for Establish {
                 |inactive| -> Result<_, Infallible> { Ok((State::Originated(inactive), ())) },
             )
             .await
-            .with_context(|| {
-                format!(
-                    "Failed to update channel {} to Originated status",
-                    &actual_label
-                )
-            })??;
+            .context(format!(
+                "Failed to update channel {} to Originated status",
+                &actual_label
+            ))??;
+
+        database
+            .initialize_contract_details(&actual_label, &contract_id, origination_level)
+            .await
+            .context(format!(
+                "Failed to store contract details for {}",
+                &actual_label
+            ))?;
 
         let (customer_funding_status, _customer_funding_level) = if self.off_chain {
             // TODO: prompt user to fund the contract on chain
             todo!("prompt user to fund contract on chain and submit details")
         } else {
             tezos::establish::add_customer_funding(
-                Some(&uri),
+                Some(&config.tezos_uri),
                 &contract_id,
                 &customer_funding_info,
                 &tezos_key_material,

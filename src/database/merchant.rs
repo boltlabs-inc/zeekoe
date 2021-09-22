@@ -80,10 +80,17 @@ pub trait QueryMerchant: Send + Sync {
     async fn get_channels(&self) -> Result<Vec<ChannelDetails>>;
 
     /// Get channel status for a particular channel based on its [`ChannelId`].
-    async fn get_channel_status(&self, channel_id: &ChannelId) -> Result<ChannelStatus>;
+    async fn channel_status(&self, channel_id: &ChannelId) -> Result<ChannelStatus>;
 
-    /// Get closing balances for a particular channel based on its [`ChannelId`].
-    async fn get_closing_balances(&self, channel_id: &ChannelId) -> Result<ClosingBalances>;
+    /// Get closing balances for a particular channel based on its [`ChannelId`]. These  may not
+    /// sum to total channel balance if the status is not [`Closed`](ChannelStatus::Closed).
+    async fn closing_balances(&self, channel_id: &ChannelId) -> Result<ClosingBalances>;
+
+    /// Get initial channel balances for a particular channel based on its [`ChannelId`].
+    async fn initial_balances(
+        &self,
+        channel_id: &ChannelId,
+    ) -> Result<(MerchantBalance, CustomerBalance)>;
 
     /// Get contract information for a particular channel based on its [`ChannelId`].
     async fn contract_details(&self, channel_id: &ChannelId) -> Result<(ContractId, Level)>;
@@ -500,7 +507,7 @@ impl QueryMerchant for SqlitePool {
         Ok(channels)
     }
 
-    async fn get_channel_status(&self, channel_id: &ChannelId) -> Result<ChannelStatus> {
+    async fn channel_status(&self, channel_id: &ChannelId) -> Result<ChannelStatus> {
         let mut results = sqlx::query!(
             r#"SELECT
                 status as "status: ChannelStatus"
@@ -525,7 +532,7 @@ impl QueryMerchant for SqlitePool {
         Ok(status)
     }
 
-    async fn get_closing_balances(&self, channel_id: &ChannelId) -> Result<ClosingBalances> {
+    async fn closing_balances(&self, channel_id: &ChannelId) -> Result<ClosingBalances> {
         let mut results = sqlx::query!(
             r#"SELECT closing_balances as "closing_balances: ClosingBalances"
             FROM merchant_channels
@@ -547,6 +554,34 @@ impl QueryMerchant for SqlitePool {
         }
 
         Ok(closing_balances)
+    }
+
+    async fn initial_balances(
+        &self,
+        channel_id: &ChannelId,
+    ) -> Result<(MerchantBalance, CustomerBalance)> {
+        let mut results = sqlx::query!(
+            r#"SELECT merchant_deposit as "merchant_balance: MerchantBalance",
+                customer_deposit as "customer_balance: CustomerBalance"
+            FROM merchant_channels
+            WHERE channel_id = ?
+            LIMIT 2"#,
+            channel_id
+        )
+        .fetch_all(self)
+        .await?
+        .into_iter();
+
+        let initial_balances = match results.next() {
+            None => return Err(Error::ChannelNotFound(*channel_id)),
+            Some(record) => (record.merchant_balance, record.customer_balance),
+        };
+
+        if results.next().is_some() {
+            return Err(Error::ChannelIdCollision(channel_id.to_string()));
+        }
+
+        Ok(initial_balances)
     }
 
     async fn contract_details(&self, channel_id: &ChannelId) -> Result<(ContractId, Level)> {
@@ -792,7 +827,7 @@ mod tests {
         let channel_id = insert_new_channel(&conn).await?;
 
         // make sure the initial closing balances are not set
-        let mut closing_balances = conn.get_closing_balances(&channel_id).await?;
+        let mut closing_balances = conn.closing_balances(&channel_id).await?;
         assert!(matches!(closing_balances.merchant_balance, None));
         assert!(matches!(closing_balances.customer_balance, None));
 
@@ -808,7 +843,7 @@ mod tests {
         .await?;
 
         // make sure the updated closing balances are set correctly
-        closing_balances = conn.get_closing_balances(&channel_id).await?;
+        closing_balances = conn.closing_balances(&channel_id).await?;
         assert!(
             matches!(closing_balances.merchant_balance, Some(_))
                 && closing_balances.merchant_balance.unwrap().into_inner()

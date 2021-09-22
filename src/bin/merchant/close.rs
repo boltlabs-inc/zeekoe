@@ -1,5 +1,5 @@
 //* Close functionalities for a merchant.
-use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng};
+use {anyhow::Context, async_trait::async_trait, http::Uri, rand::rngs::StdRng};
 
 use super::{database, Command};
 use rand::SeedableRng;
@@ -36,15 +36,13 @@ impl Method for Close {
         _rng: StdRng,
         _client: &reqwest::Client,
         tezos_key_material: TezosKeyMaterial,
+        tezos_uri: Uri,
         _service: &Service,
         merchant_config: &MerchantConfig,
         database: &dyn QueryMerchant,
         _session_key: SessionKey,
         chan: Chan<Self::Protocol>,
     ) -> Result<(), anyhow::Error> {
-        // TODO: parameterize these hard-coded defaults
-        let uri = "https://rpc.tzkt.io/edo2net/".parse().unwrap();
-
         // Run zkAbacus close and update channel status to PendingClose
         let (chan, close_state) = zkabacus_close(merchant_config, database, chan)
             .await
@@ -61,7 +59,7 @@ impl Method for Close {
 
         // Generate an authorization signature under the merchant's EdDSA Tezos key
         let authorization_signature = tezos::close::authorize_mutual_close(
-            Some(&uri),
+            Some(&tezos_uri),
             &contract_id,
             &close_state,
             &tezos_key_material,
@@ -110,12 +108,10 @@ impl Method for Close {
 pub async fn process_customer_close(
     database: &dyn QueryMerchant,
     tezos_key_material: &TezosKeyMaterial,
+    tezos_uri: &Uri,
     channel_id: &ChannelId,
     revocation_lock: &RevocationLock,
 ) -> Result<(), anyhow::Error> {
-    // TODO: parameterize these hard-coded defaults
-    let uri = "https://rpc.tzkt.io/edo2net/".parse().unwrap();
-
     // Set status to PendingClose if possible
     database
         .update_status_to_pending_close(channel_id)
@@ -164,7 +160,7 @@ pub async fn process_customer_close(
 
             // Call the merchDispute entrypoint and wait for it to be confirmed
             let (_status, _dispute_level) = tezos::close::merch_dispute(
-                Some(&uri),
+                Some(tezos_uri),
                 &contract_id,
                 revocation_secret,
                 tezos_key_material,
@@ -196,7 +192,7 @@ pub async fn finalize_customer_close(
 ) -> Result<(), anyhow::Error> {
     // Retrieve current channel status.
     let current_status = database
-        .get_channel_status(channel_id)
+        .channel_status(channel_id)
         .await
         .context("Failed to check channel status")?;
 
@@ -393,7 +389,7 @@ impl Command for cli::Close {
         // Retrieve zkAbacus config from the database
         let database = database(&config).await?;
 
-        // Load Tezos keys from file
+        // Load Tezos key and URI from file
         let tezos_key_material = TezosKeyMaterial::read_key_pair(config.tezos_account.clone())?;
 
         // Either initialize the merchant's config afresh, or get existing config if it exists
@@ -410,6 +406,7 @@ impl Command for cli::Close {
                     database.as_ref(),
                     &channel_id,
                     &tezos_key_material,
+                    &config.tezos_uri,
                 )
                 .await
             }
@@ -430,13 +427,11 @@ async fn expiry(
     database: &dyn QueryMerchant,
     channel_id: &ChannelId,
     tezos_key_material: &TezosKeyMaterial,
+    tezos_uri: &Uri,
 ) -> Result<(), anyhow::Error> {
-    // TODO: parameterize these hard-coded defaults
-    let uri = "https://rpc.tzkt.io/edo2net/".parse().unwrap();
-
     // Retrieve current channel status
     let current_status = database
-        .get_channel_status(channel_id)
+        .channel_status(channel_id)
         .await
         .context("Failed to retrieve current channel status")?;
 
@@ -460,7 +455,7 @@ async fn expiry(
 
     // Call expiry entrypoint
     tezos::close::expiry(
-        Some(&uri),
+        Some(tezos_uri),
         &contract_id,
         tezos_key_material,
         tezos::DEFAULT_CONFIRMATION_DEPTH,
@@ -483,10 +478,8 @@ pub async fn claim_expiry_funds(
     database: &dyn QueryMerchant,
     channel_id: &ChannelId,
     tezos_key_material: &TezosKeyMaterial,
+    tezos_uri: &Uri,
 ) -> Result<(), anyhow::Error> {
-    // TODO: parameterize these hard-coded defaults
-    let uri = "https://rpc.tzkt.io/edo2net/".parse().unwrap();
-
     // Update database status to PendingMerchantClaim
     database
         .compare_and_swap_channel_status(
@@ -511,7 +504,7 @@ pub async fn claim_expiry_funds(
 
     // Call merchClaim entrypoint and retrieve final channel balances
     let (_status, _claim_level) = tezos::close::merch_claim(
-        Some(&uri),
+        Some(tezos_uri),
         &contract_id,
         tezos_key_material,
         tezos::DEFAULT_CONFIRMATION_DEPTH,
@@ -576,8 +569,10 @@ async fn merchant_take_all_balances(
     channel_id: &ChannelId,
 ) -> Result<(MerchantBalance, CustomerBalance), anyhow::Error> {
     // Get the initial deposits
-    let initial_customer_deposit: CustomerBalance = todo!("Get customer initial deposit");
-    let initial_merchant_deposit: MerchantBalance = todo!("Get merchant initial deposit");
+    let (initial_merchant_deposit, initial_customer_deposit) = database
+        .initial_balances(channel_id)
+        .await
+        .context("Failed to fetch initial channel balances")?;
 
     // Compute fund transfer to the merchant
     let merchant_balance = MerchantBalance::try_new(

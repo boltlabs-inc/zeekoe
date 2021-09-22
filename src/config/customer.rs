@@ -7,6 +7,8 @@ use {
     },
 };
 
+use http::Uri;
+
 pub use super::DatabaseLocation;
 
 use crate::{customer::defaults, escrow::types::TezosKeyMaterial};
@@ -28,6 +30,8 @@ pub struct Config {
     pub max_message_length: usize,
     #[serde(default = "defaults::max_note_length")]
     pub max_note_length: u64,
+    #[serde(with = "http_serde::uri")]
+    pub tezos_uri: Uri,
     pub tezos_key_material: PathBuf,
     #[serde(default)]
     pub trust_certificate: Option<PathBuf>,

@@ -1,4 +1,5 @@
 use {
+    http::Uri,
     serde::{Deserialize, Serialize},
     std::{net::IpAddr, path::Path, path::PathBuf, time::Duration},
     url::Url,
@@ -14,6 +15,8 @@ use crate::merchant::defaults;
 pub struct Config {
     pub database: DatabaseLocation,
     pub tezos_account: PathBuf,
+    #[serde(with = "http_serde::uri")]
+    pub tezos_uri: Uri,
     #[serde(rename = "service")]
     pub services: Vec<Service>,
 }

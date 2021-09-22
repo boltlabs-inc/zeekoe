@@ -6,6 +6,7 @@ use {
         stream::{FuturesUnordered, StreamExt},
         FutureExt,
     },
+    http::Uri,
     rand::{rngs::StdRng, SeedableRng},
     sqlx::SqlitePool,
     std::{convert::identity, sync::Arc},
@@ -91,6 +92,7 @@ impl Command for Run {
                 let service = Arc::new(service.clone());
                 let mut wait_terminate = terminate.subscribe();
                 let tezos_key_material = tezos_key_material.clone();
+                let tezos_uri = config.tezos_uri.clone();
 
                 async move {
                     // Initialize a new `Server` with parameters taken from the configuration
@@ -116,6 +118,7 @@ impl Command for Run {
                         let database = database.clone();
                         let service = service.clone();
                         let tezos_key_material = tezos_key_material.clone();
+                        let tezos_uri = tezos_uri.clone();
 
                         // TODO: permit configuration option to make this deterministic for testing
                         let rng = StdRng::from_entropy();
@@ -126,6 +129,7 @@ impl Command for Run {
                                     rng,
                                     &client,
                                     tezos_key_material,
+                                    tezos_uri,
                                     &service,
                                     &merchant_config,
                                     database.as_ref(),
@@ -136,6 +140,7 @@ impl Command for Run {
                                     rng,
                                     &client,
                                     tezos_key_material,
+                                    tezos_uri,
                                     &service,
                                     &merchant_config,
                                     database.as_ref(),
@@ -146,6 +151,7 @@ impl Command for Run {
                                     rng,
                                     &client,
                                     tezos_key_material,
+                                    tezos_uri,
                                     &service,
                                     &merchant_config,
                                     database.as_ref(),
@@ -156,6 +162,7 @@ impl Command for Run {
                                     rng,
                                     &client,
                                     tezos_key_material,
+                                    tezos_uri,
                                     &service,
                                     &merchant_config,
                                     database.as_ref(),
@@ -210,12 +217,18 @@ impl Command for Run {
                 for channel in channels {
                     let database = database.clone();
                     let tezos_key_material = tezos_key_material.clone();
+                    let tezos_uri = config.tezos_uri.clone();
                     tokio::spawn(async move {
-                        dispatch_channel(database.as_ref(), &channel, tezos_key_material)
-                            .await
-                            .unwrap_or_else(|e| {
-                                eprintln!("Error dispatching on {}: {}", &channel.channel_id, e)
-                            });
+                        dispatch_channel(
+                            database.as_ref(),
+                            &channel,
+                            tezos_key_material,
+                            tezos_uri,
+                        )
+                        .await
+                        .unwrap_or_else(|e| {
+                            eprintln!("Error dispatching on {}: {}", &channel.channel_id, e)
+                        });
                     });
                 }
                 polling_interval.tick().await;
@@ -244,13 +257,11 @@ async fn dispatch_channel(
     database: &dyn QueryMerchant,
     channel: &ChannelDetails,
     tezos_key_material: TezosKeyMaterial,
+    tezos_uri: Uri,
 ) -> Result<(), anyhow::Error> {
-    // TODO: parameterize these hard-coded defaults
-    let uri = "https://rpc.tzkt.io/edo2net/".parse().unwrap();
-
     // Retrieve on-chain contract status
     let contract_state =
-        tezos::get_contract_state(Some(&uri), &tezos_key_material, &channel.contract_id)
+        tezos::get_contract_state(Some(&tezos_uri), &tezos_key_material, &channel.contract_id)
             .await
             .context(format!(
                 "Merchant chain watcher failed to retrieve contract state for {}",
@@ -266,7 +277,13 @@ async fn dispatch_channel(
         && contract_state.timeout_expired().unwrap_or(false)
         && channel.status == ChannelStatus::PendingExpiry
     {
-        close::claim_expiry_funds(database, &channel.channel_id, &tezos_key_material).await?;
+        close::claim_expiry_funds(
+            database,
+            &channel.channel_id,
+            &tezos_key_material,
+            &tezos_uri,
+        )
+        .await?;
     }
 
     // The channel has not reacted to a customer posting close balances on chain
@@ -293,6 +310,7 @@ async fn dispatch_channel(
         close::process_customer_close(
             database,
             &tezos_key_material,
+            &tezos_uri,
             &channel.channel_id,
             revocation_lock,
         )
@@ -323,6 +341,7 @@ where
         rng: StdRng,
         client: &reqwest::Client,
         tezos_key_material: TezosKeyMaterial,
+        tezos_uri: Uri,
         config: &Service,
         merchant_config: &zkabacus_crypto::merchant::Config,
         database: &dyn QueryMerchant,

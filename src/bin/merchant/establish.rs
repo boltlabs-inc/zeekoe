@@ -1,4 +1,4 @@
-use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng};
+use {anyhow::Context, async_trait::async_trait, http::Uri, rand::rngs::StdRng};
 
 use zkabacus_crypto::{
     merchant::Config as ZkAbacusConfig, ChannelId, Context as ProofContext, CustomerBalance,
@@ -7,7 +7,10 @@ use zkabacus_crypto::{
 
 use zeekoe::{
     abort,
-    escrow::types::{KeyHash, TezosKeyMaterial, TezosPublicKey},
+    escrow::{
+        tezos,
+        types::{KeyHash, TezosKeyMaterial, TezosPublicKey},
+    },
     merchant::{config::Service, database::QueryMerchant, server::SessionKey, Chan},
     offer_abort, proceed,
     protocol::{self, establish, ChannelStatus, Party::Merchant},
@@ -28,6 +31,7 @@ impl Method for Establish {
         mut rng: StdRng,
         client: &reqwest::Client,
         tezos_key_material: TezosKeyMaterial,
+        tezos_uri: Uri,
         service: &Service,
         zkabacus_merchant_config: &ZkAbacusConfig,
         database: &dyn QueryMerchant,
@@ -125,6 +129,7 @@ impl Method for Establish {
             customer_deposit,
             &customer_tezos_public_key,
             &tezos_key_material,
+            &tezos_uri,
             chan,
         )
         .await;
@@ -156,11 +161,9 @@ async fn approve_and_establish(
     customer_deposit: CustomerBalance,
     customer_tezos_public_key: &TezosPublicKey,
     merchant_key_material: &TezosKeyMaterial,
+    tezos_uri: &Uri,
     chan: Chan<establish::MerchantApproveEstablish>,
 ) -> Result<(), anyhow::Error> {
-    // The URI of the tezos node to connect to (TODO: parameterize this)
-    let uri: http::Uri = "https://rpc.tzkt.io/edo2net".parse().unwrap();
-
     // The approval service has approved
     proceed!(in chan);
 
@@ -264,7 +267,7 @@ async fn approve_and_establish(
     // confirmation that the funding has gone through to the required confirmation depth
     if merchant_deposit.into_inner() > 0 {
         match tezos::establish::add_merchant_funding(
-            Some(&uri),
+            Some(tezos_uri),
             &contract_id,
             &tezos::establish::MerchantFundingInformation {
                 balance: merchant_deposit,
