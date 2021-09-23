@@ -21,6 +21,6 @@ fi
 
 ./convert_format.sh $JSON close
 python3 zkchannel_pytezos_mgr.py --contract=$TEZOS_CONTRACT/zkchannels-contract/zkchannel_contract.tz --contract-id=$CONTRACT_ID \
-	--cust=$KEY/tz1S6eSPZVQzHyPF2bRKhSKZhDZZSikB3e51.json --merch=$KEY/tz1VcYZwxQoyxfjhpNiRkdCUe5rzs53LMev6.json \
+	--cust=$KEY/tz1iKxZpa5x1grZyN2Uw9gERXJJPMyG22Sqp.json --merch=$KEY/tz1bXwRiFvijKnZYUj9J53oYE3fFkMTWXqNx.json \
 	--cust-close out.$JSON
 

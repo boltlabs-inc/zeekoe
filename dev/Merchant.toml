@@ -1,5 +1,5 @@
 database = { sqlite = "merchant.db" }
-tezos_account = "../tezos-contract/pytezos-tests/sample_files/tz1VcYZwxQoyxfjhpNiRkdCUe5rzs53LMev6.json"
+tezos_account = "../tezos-contract/pytezos-tests/sample_files/tz1bXwRiFvijKnZYUj9J53oYE3fFkMTWXqNx.json"
 tezos_uri = "https://rpc.tzkt.io/granadanet"
 
 [[service]]
