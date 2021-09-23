@@ -1,5 +1,5 @@
 # Example usage:
-# python3 zkchannel_pytezos_mgr.py --contract=zkchannel_contract.tz --cust=tz1S6eSPZVQzHyPF2bRKhSKZhDZZSikB3e51.json --merch=tz1VcYZwxQoyxfjhpNiRkdCUe5rzs53LMev6.json --custclose=cust_close.json --merchclose=merch_close.json 
+# python3 zkchannel_pytezos_mgr.py --contract=zkchannel_contract.tz --cust=tz1iKxZpa5x1grZyN2Uw9gERXJJPMyG22Sqp.json --merch=tz1bXwRiFvijKnZYUj9J53oYE3fFkMTWXqNx.json --custclose=cust_close.json --merchclose=merch_close.json 
 
 import argparse
 from pprint import pprint
