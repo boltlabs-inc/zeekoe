@@ -227,6 +227,7 @@ impl Command for Establish {
                 &tezos_key_material,
                 &channel_id,
                 tezos::DEFAULT_CONFIRMATION_DEPTH,
+                // @Darius: replace constant with the config self delay value.
                 tezos::DEFAULT_SELF_DELAY,
             )
             .await

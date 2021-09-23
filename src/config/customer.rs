@@ -36,6 +36,7 @@ pub struct Config {
     #[serde(with = "http_serde::uri")]
     pub tezos_uri: Uri,
     pub tezos_account: KeySpecifier,
+    // @Darius: add self_delay: u64 with serde default
     #[serde(default)]
     pub trust_certificate: Option<PathBuf>,
 }

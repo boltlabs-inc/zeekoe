@@ -29,6 +29,8 @@ pub(crate) mod shared {
     pub const fn port() -> u16 {
         2611
     }
+
+    // @Darius: move default self delay value here (from tezos.rs)
 }
 
 pub mod merchant {
