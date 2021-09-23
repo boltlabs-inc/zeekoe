@@ -26,10 +26,8 @@ impl Command for Watch {
         let config = Arc::new(config);
 
         // Make sure Tezos keys are accessible from disk
-        let _ = config
-            .load_tezos_key_material()
-            .await
-            .context("Customer chain-watching daemon failed to load Tezos key material")?;
+        let key_load_test = config.load_tezos_key_material()?;
+        drop(key_load_test);
 
         /*
         // Note: commenting out the server setup because we will not use it with the polling
@@ -137,10 +135,7 @@ async fn dispatch_channel(
     off_chain: bool,
 ) -> Result<(), anyhow::Error> {
     // Load keys from disk
-    let tezos_key_material = config
-        .load_tezos_key_material()
-        .await
-        .context("Chain watcher failed to load Tezos key material")?;
+    let tezos_key_material = config.load_tezos_key_material()?;
 
     // Retrieve on-chain contract status
     let contract_state = match &channel.contract_details.contract_id {
@@ -191,11 +186,6 @@ async fn dispatch_channel(
         && contract_state.timeout_expired().unwrap_or(false)
         && zkchannels_state::PendingClose.matches(&channel.state)
     {
-        let tezos_key_material = config
-            .load_tezos_key_material()
-            .await
-            .context("Chain watcher failed to load Tezos key material")?;
-
         close::claim_funds(database, config, &channel.label, &tezos_key_material)
             .await
             .context("Chain watcher failed to claim funds")?;

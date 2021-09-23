@@ -64,7 +64,7 @@ impl Config {
         Ok(config)
     }
 
-    pub async fn load_tezos_key_material(&self) -> anyhow::Result<TezosKeyMaterial> {
+    pub fn load_tezos_key_material(&self) -> anyhow::Result<TezosKeyMaterial> {
         Ok(TezosKeyMaterial::read_key_pair(&self.tezos_account)?)
     }
 }

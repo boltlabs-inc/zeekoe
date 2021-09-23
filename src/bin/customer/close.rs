@@ -42,10 +42,7 @@ enum Error {
 #[async_trait]
 impl Command for Close {
     async fn run(self, mut rng: StdRng, config: self::Config) -> Result<(), anyhow::Error> {
-        let tezos_key_material = config
-            .load_tezos_key_material()
-            .await
-            .context("Failed to load Tezos key material")?;
+        let tezos_key_material = config.load_tezos_key_material()?;
 
         let database = database(&config)
             .await

@@ -33,7 +33,7 @@ use zeekoe::{
 use tezedge::crypto::Prefix;
 use zeekoe::escrow::tezos;
 
-use super::{connect, database, Command};
+use super::{connect, database, load_tezos_client, Command};
 
 #[derive(Debug, Clone, Serialize)]
 struct Establishment {
@@ -80,10 +80,7 @@ impl Command for Establish {
         .map_err(|_| establish::Error::InvalidDeposit(Merchant))?;
 
         // Load the customer's Tezos account details
-        let tezos_key_material = config
-            .load_tezos_key_material()
-            .await
-            .context("Failed to load customer key material")?;
+        let tezos_key_material = config.load_tezos_key_material()?;
         let tezos_public_key = tezos_key_material.public_key().clone();
         let tezos_address = tezos_public_key.hash();
 
@@ -273,15 +270,8 @@ impl Command for Establish {
             // TODO: prompt user to fund the contract on chain
             todo!("prompt user to fund contract on chain and submit details")
         } else {
-            tezos::establish::add_customer_funding(
-                Some(&config.tezos_uri),
-                &contract_id,
-                &customer_funding_info,
-                &tezos_key_material,
-                tezos::DEFAULT_CONFIRMATION_DEPTH,
-            )
-            .await
-            .context("Failed to fund contract on-chain")?
+            let tezos_client = load_tezos_client(&config, &actual_label, database.as_ref()).await?;
+            tezos::establish::add_customer_funding(&tezos_client, &customer_funding_info).await?
         };
 
         // Check to make sure funding succeeded

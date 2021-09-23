@@ -15,8 +15,9 @@ use zeekoe::{
         client::{Backoff, SessionKey, ZkChannelAddress},
         database::{connect_sqlite, QueryCustomer},
         defaults::config_path,
-        Chan, Cli, Client, Config,
+        Chan, ChannelName, Cli, Client, Config,
     },
+    escrow::{tezos, types::TezosClient},
     protocol,
 };
 
@@ -145,6 +146,28 @@ pub async fn database(config: &Config) -> Result<Arc<dyn QueryCustomer>, anyhow:
         }
     };
     Ok(database)
+}
+
+pub async fn load_tezos_client(
+    config: &Config,
+    channel_name: &ChannelName,
+    database: &dyn QueryCustomer,
+) -> Result<TezosClient, anyhow::Error> {
+    let contract_id = match database.contract_details(channel_name).await?.contract_id {
+        Some(contract_id) => contract_id,
+        None => {
+            return Err(anyhow::anyhow!(
+                "Cannot load TezosClient for channel that has not set contract details"
+            ))
+        }
+    };
+
+    Ok(TezosClient {
+        uri: Some(config.tezos_uri.clone()),
+        contract_id,
+        client_key_pair: config.load_tezos_key_material()?,
+        confirmation_depth: tezos::DEFAULT_CONFIRMATION_DEPTH,
+    })
 }
 
 #[allow(unused)]

@@ -20,7 +20,7 @@ use std::time::Duration;
 use zeekoe::{
     escrow::{
         tezos,
-        types::{ContractStatus, TezosKeyMaterial},
+        types::{ContractStatus, TezosClient, TezosKeyMaterial},
     },
     merchant::{
         cli::{self, Run},
@@ -44,6 +44,7 @@ use close::Close;
 use establish::Establish;
 use parameters::Parameters;
 use pay::Pay;
+use zkabacus_crypto::ChannelId;
 
 /// A single merchant-side command, parameterized by the currently loaded configuration.
 ///
@@ -409,6 +410,21 @@ pub async fn database(config: &Config) -> Result<Arc<dyn QueryMerchant>, anyhow:
         }
     };
     Ok(database)
+}
+
+pub async fn load_tezos_client(
+    config: &Config,
+    channel_id: &ChannelId,
+    database: &dyn QueryMerchant,
+) -> Result<TezosClient, anyhow::Error> {
+    let (contract_id, _) = database.contract_details(channel_id).await?;
+
+    Ok(TezosClient {
+        uri: Some(config.tezos_uri.clone()),
+        contract_id,
+        client_key_pair: TezosKeyMaterial::read_key_pair(&config.tezos_account)?,
+        confirmation_depth: tezos::DEFAULT_CONFIRMATION_DEPTH,
+    })
 }
 
 #[allow(unused)]

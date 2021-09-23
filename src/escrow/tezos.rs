@@ -741,19 +741,13 @@ pub mod establish {
     /// - the specified customer address does not match the `cust_addr` field in the contract
     /// - the specified funding information does not match the `custFunding` amount in the contract
     /// - the `addFunding` entrypoint has not been called by the customer address before.
-    #[allow(unused)]
     pub fn add_customer_funding(
-        uri: Option<&http::Uri>,
-        contract_id: &ContractId,
+        tezos_client: &TezosClient,
         customer_funding_info: &CustomerFundingInformation,
-        customer_key_pair: &TezosKeyMaterial,
-        confirmation_depth: u64,
-    ) -> impl Future<Output = Result<(OperationStatus), CustomerFundError>> + Send + 'static {
+    ) -> impl Future<Output = Result<OperationStatus, CustomerFundError>> + Send + 'static {
         let customer_funding = customer_funding_info.balance.into_inner();
-        let customer_private_key = customer_key_pair.private_key().to_base58check();
-        let customer_pubkey = customer_funding_info.public_key.to_base58check();
-        let contract_id = contract_id.clone().to_originated_address().to_base58check();
-        let uri = uri.map(|uri| uri.to_string());
+        let (uri, customer_private_key, contract_id) = tezos_client.into_python_types();
+        let confirmation_depth = tezos_client.confirmation_depth;
 
         async move {
             tokio::task::spawn_blocking(move || {
