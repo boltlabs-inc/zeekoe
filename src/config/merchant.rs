@@ -7,7 +7,10 @@ use {
 
 pub use super::DatabaseLocation;
 
-use crate::{escrow::types::KeySpecifier, merchant::defaults};
+use crate::{
+    escrow::types::{KeySpecifier, TezosKeyMaterial},
+    merchant::defaults,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "snake_case")]
@@ -62,6 +65,10 @@ impl Config {
         }
 
         Ok(config)
+    }
+
+    pub fn load_tezos_key_material(&self) -> Result<TezosKeyMaterial, anyhow::Error> {
+        Ok(TezosKeyMaterial::read_key_pair(&self.tezos_account)?)
     }
 }
 

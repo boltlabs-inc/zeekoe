@@ -9,9 +9,7 @@ use zeekoe::{
     escrow::{tezos, types::TezosKeyMaterial},
     merchant::{
         cli,
-        config::Service,
         database::{Error, QueryMerchant},
-        server::SessionKey,
         Chan, Config,
     },
     offer_abort, proceed,
@@ -23,27 +21,20 @@ use zkabacus_crypto::{
     RevocationLock, Verification,
 };
 
-use super::Method;
-
 pub struct Close;
 
-#[async_trait]
-impl Method for Close {
-    type Protocol = protocol::Close;
-
-    async fn run(
+impl Close {
+    pub async fn run(
         &self,
-        _rng: StdRng,
-        _client: &reqwest::Client,
-        tezos_key_material: TezosKeyMaterial,
-        tezos_uri: Uri,
-        _self_delay: u64,
-        _service: &Service,
+        config: &Config,
         merchant_config: &MerchantConfig,
         database: &dyn QueryMerchant,
-        _session_key: SessionKey,
-        chan: Chan<Self::Protocol>,
+        chan: Chan<protocol::Close>,
     ) -> Result<(), anyhow::Error> {
+        // @FIXME: extract tezos uri, key material from config.
+        let tezos_key_material = config.load_tezos_key_material()?;
+        let tezos_uri = &config.tezos_uri;
+
         // Run zkAbacus close and update channel status to PendingClose
         let (chan, close_state) = zkabacus_close(merchant_config, database, chan)
             .await
@@ -60,7 +51,7 @@ impl Method for Close {
 
         // Generate an authorization signature under the merchant's EdDSA Tezos key
         let authorization_signature = tezos::close::authorize_mutual_close(
-            Some(&tezos_uri),
+            Some(tezos_uri),
             &contract_id,
             &close_state,
             &tezos_key_material,

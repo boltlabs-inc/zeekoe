@@ -1,12 +1,11 @@
 use {
     anyhow::Context,
     async_trait::async_trait,
-    dialectic::{offer, Session},
+    dialectic::offer,
     futures::{
         stream::{FuturesUnordered, StreamExt},
         FutureExt,
     },
-    http::Uri,
     rand::{rngs::StdRng, SeedableRng},
     sqlx::SqlitePool,
     std::{convert::identity, sync::Arc},
@@ -24,10 +23,9 @@ use zeekoe::{
     },
     merchant::{
         cli::{self, Run},
-        config::{DatabaseLocation, Service},
+        config::DatabaseLocation,
         database::{connect_sqlite, ChannelDetails, QueryMerchant},
         defaults::config_path,
-        server::SessionKey,
         Chan, Cli, Config, Server,
     },
     protocol::{ChannelStatus, ZkChannels},
@@ -63,20 +61,14 @@ impl Command for Run {
             .context("Failed to connect to merchant database")?;
 
         // Either initialize the merchant's config afresh, or get existing config if it exists
-        let merchant_config = database
+        let zkabacus_config = database
             .fetch_or_create_config(&mut StdRng::from_entropy()) // TODO: allow determinism
             .await?;
 
         // Share the configuration between all server threads
-        let merchant_config = Arc::new(merchant_config);
+        let zkabacus_config = Arc::new(zkabacus_config);
         let client = reqwest::Client::new();
-        let tezos_key_material = TezosKeyMaterial::read_key_pair(&config.tezos_account)
-            .with_context(|| {
-                format!(
-                    "Could not read Tezos key material from {:?}",
-                    config.tezos_account
-                )
-            })?;
+        let config = config.clone();
 
         // Sender and receiver to indicate graceful shutdown should occur
         let (terminate, _) = broadcast::channel(1);
@@ -88,13 +80,11 @@ impl Command for Run {
             .map(|service| {
                 // Clone `Arc`s for the various resources we need in this server
                 let client = client.clone();
-                let merchant_config = merchant_config.clone();
+                let config = config.clone();
+                let zkabacus_config = zkabacus_config.clone();
                 let database = database.clone();
                 let service = Arc::new(service.clone());
                 let mut wait_terminate = terminate.subscribe();
-                let tezos_key_material = tezos_key_material.clone();
-                let tezos_uri = config.tezos_uri.clone();
-                let self_delay = config.self_delay;
 
                 async move {
                     // Initialize a new `Server` with parameters taken from the configuration
@@ -116,11 +106,10 @@ impl Command for Run {
                     let interact = move |session_key, (), chan: Chan<ZkChannels>| {
                         // Clone `Arc`s for the various resources we need in this request
                         let client = client.clone();
-                        let merchant_config = merchant_config.clone();
+                        let zkabacus_config = zkabacus_config.clone();
                         let database = database.clone();
                         let service = service.clone();
-                        let tezos_key_material = tezos_key_material.clone();
-                        let tezos_uri = tezos_uri.clone();
+                        let config = config.clone();
 
                         // TODO: permit configuration option to make this deterministic for testing
                         let rng = StdRng::from_entropy();
@@ -128,25 +117,16 @@ impl Command for Run {
                         async move {
                             offer!(in chan {
                                 0 => Parameters.run(
-                                    rng,
-                                    &client,
-                                    tezos_key_material,
-                                    tezos_uri,
-                                    self_delay,
-                                    &service,
-                                    &merchant_config,
-                                    database.as_ref(),
-                                    session_key,
+                                    &config,
+                                    &zkabacus_config,
                                     chan,
                                 ).await?,
                                 1 => Establish.run(
                                     rng,
                                     &client,
-                                    tezos_key_material,
-                                    tezos_uri,
-                                    self_delay,
+                                    &config,
                                     &service,
-                                    &merchant_config,
+                                    &zkabacus_config,
                                     database.as_ref(),
                                     session_key,
                                     chan,
@@ -154,25 +134,15 @@ impl Command for Run {
                                 2 => Pay.run(
                                     rng,
                                     &client,
-                                    tezos_key_material,
-                                    tezos_uri,
-                                    self_delay,
                                     &service,
-                                    &merchant_config,
                                     database.as_ref(),
                                     session_key,
                                     chan,
                                 ).await?,
                                 3 => Close.run(
-                                    rng,
-                                    &client,
-                                    tezos_key_material,
-                                    tezos_uri,
-                                    self_delay,
-                                    &service,
-                                    &merchant_config,
+                                    &config,
+                                    &zkabacus_config,
                                     database.as_ref(),
-                                    session_key,
                                     chan,
                                 ).await?,
 
@@ -206,7 +176,7 @@ impl Command for Run {
         let polling_service_join_handle = tokio::spawn(async move {
             // Clone resources
             let database = database.clone();
-            let tezos_key_material = tezos_key_material.clone();
+            let config = config.clone();
 
             loop {
                 // Retrieve list of channels from database
@@ -222,17 +192,9 @@ impl Command for Run {
                 // Query each contract ID and dispatch on the result
                 for channel in channels {
                     let database = database.clone();
-                    let tezos_key_material = tezos_key_material.clone();
-                    let tezos_uri = config.tezos_uri.clone();
+                    let config = config.clone();
                     tokio::spawn(async move {
-                        match dispatch_channel(
-                            database.as_ref(),
-                            &channel,
-                            tezos_key_material,
-                            tezos_uri,
-                        )
-                        .await
-                        {
+                        match dispatch_channel(database.as_ref(), &channel, &config).await {
                             Ok(()) => eprintln!("Successfully dispatched {}", &channel.channel_id),
                             Err(e) => {
                                 eprintln!("Error dispatching on {}: {}", &channel.channel_id, e)
@@ -265,15 +227,19 @@ impl Command for Run {
 async fn dispatch_channel(
     database: &dyn QueryMerchant,
     channel: &ChannelDetails,
-    tezos_key_material: TezosKeyMaterial,
-    tezos_uri: Uri,
+    config: &Config,
 ) -> Result<(), anyhow::Error> {
+    // @FIXME: extract uri, key material from config.
+    let tezos_client = load_tezos_client(config, &channel.channel_id, database).await?;
+    let tezos_uri = &tezos_client.uri.unwrap();
+    let tezos_key_material = tezos_client.client_key_pair;
+
     // Retrieve on-chain contract status
     let contract_state = tezos::get_contract_state(
-        Some(&tezos_uri),
+        Some(tezos_uri),
         &tezos_key_material,
         &channel.contract_id,
-        tezos::DEFAULT_CONFIRMATION_DEPTH,
+        tezos_client.confirmation_depth,
     )
     .await
     .context(format!(
@@ -294,7 +260,7 @@ async fn dispatch_channel(
             database,
             &channel.channel_id,
             &tezos_key_material,
-            &tezos_uri,
+            tezos_uri,
         )
         .await?;
 
@@ -325,7 +291,7 @@ async fn dispatch_channel(
         close::process_customer_close(
             database,
             &tezos_key_material,
-            &tezos_uri,
+            tezos_uri,
             &channel.channel_id,
             &revocation_lock,
         )
@@ -340,30 +306,6 @@ async fn dispatch_channel(
     }
 
     Ok(())
-}
-
-#[async_trait]
-pub trait Method
-where
-    Self::Protocol: Session,
-    <Self::Protocol as Session>::Dual: Session,
-{
-    type Protocol;
-
-    #[allow(clippy::too_many_arguments)]
-    async fn run(
-        &self,
-        rng: StdRng,
-        client: &reqwest::Client,
-        tezos_key_material: TezosKeyMaterial,
-        tezos_uri: Uri,
-        self_delay: u64,
-        config: &Service,
-        merchant_config: &zkabacus_crypto::merchant::Config,
-        database: &dyn QueryMerchant,
-        session_key: SessionKey,
-        chan: Chan<Self::Protocol>,
-    ) -> Result<(), anyhow::Error>;
 }
 
 pub async fn main_with_cli(cli: Cli) -> Result<(), anyhow::Error> {
@@ -417,13 +359,14 @@ pub async fn load_tezos_client(
     channel_id: &ChannelId,
     database: &dyn QueryMerchant,
 ) -> Result<TezosClient, anyhow::Error> {
-    let (contract_id, _) = database.contract_details(channel_id).await?;
+    let contract_id = database.contract_details(channel_id).await?;
 
     Ok(TezosClient {
         uri: Some(config.tezos_uri.clone()),
         contract_id,
         client_key_pair: TezosKeyMaterial::read_key_pair(&config.tezos_account)?,
         confirmation_depth: tezos::DEFAULT_CONFIRMATION_DEPTH,
+        self_delay: config.self_delay,
     })
 }
 

@@ -304,6 +304,8 @@ pub mod types {
         pub client_key_pair: TezosKeyMaterial,
         /// Block depth for which the client will wait for their operation to reach.
         pub confirmation_depth: u64,
+        /// Mutually-agreed delay period for which a client must wait before claiming funds.
+        pub self_delay: u64,
     }
 
     impl TezosClient {

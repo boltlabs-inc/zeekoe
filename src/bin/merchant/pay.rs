@@ -1,35 +1,27 @@
-use {anyhow::Context, async_trait::async_trait, http::Uri, rand::rngs::StdRng};
+use {anyhow::Context, rand::rngs::StdRng};
 
 use zeekoe::{
     abort,
-    escrow::types::TezosKeyMaterial,
     merchant::{config::Service, database::QueryMerchant, server::SessionKey, Chan},
     offer_abort, proceed,
     protocol::{self, pay, Party::Merchant},
 };
 
-use zkabacus_crypto::{merchant::Config as MerchantConfig, Context as ProofContext, PaymentAmount};
+use zkabacus_crypto::{Context as ProofContext, PaymentAmount};
 
-use super::{approve, Method};
+use super::approve;
 
 pub struct Pay;
 
-#[async_trait]
-impl Method for Pay {
-    type Protocol = protocol::Pay;
-
-    async fn run(
+impl Pay {
+    pub async fn run(
         &self,
         rng: StdRng,
         client: &reqwest::Client,
-        _tezos_key_material: TezosKeyMaterial,
-        _tezos_uri: Uri,
-        _self_delay: u64,
         service: &Service,
-        merchant_config: &MerchantConfig,
         database: &dyn QueryMerchant,
         session_key: SessionKey,
-        chan: Chan<Self::Protocol>,
+        chan: Chan<protocol::Pay>,
     ) -> Result<(), anyhow::Error> {
         // Get the payment amount and note in the clear from the customer
         let (payment_amount, chan) = chan
@@ -57,16 +49,9 @@ impl Method for Pay {
         proceed!(in chan);
 
         // Run the zkAbacus.Pay protocol
-        let pay_result = zkabacus_pay(
-            rng,
-            merchant_config,
-            database,
-            session_key,
-            chan,
-            payment_amount,
-        )
-        .await
-        .context("Payment failed");
+        let pay_result = zkabacus_pay(rng, database, session_key, chan, payment_amount)
+            .await
+            .context("Payment failed");
 
         match pay_result {
             Ok(chan) => {
@@ -94,12 +79,14 @@ impl Method for Pay {
 /// The core zkAbacus.Pay protocol.
 async fn zkabacus_pay(
     mut rng: StdRng,
-    merchant_config: &MerchantConfig,
     database: &dyn QueryMerchant,
     session_key: SessionKey,
     chan: Chan<pay::CustomerStartPayment>,
     payment_amount: PaymentAmount,
 ) -> Result<Chan<pay::MerchantProvideService>, anyhow::Error> {
+    // Retrieve zkAbacus merchant config
+    let merchant_config = database.fetch_or_create_config(&mut rng).await?;
+
     // Generate the shared context for the proof
     let context = ProofContext::new(&session_key.to_bytes());
 

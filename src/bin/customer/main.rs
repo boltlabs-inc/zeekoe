@@ -167,6 +167,7 @@ pub async fn load_tezos_client(
         contract_id,
         client_key_pair: config.load_tezos_key_material()?,
         confirmation_depth: tezos::DEFAULT_CONFIRMATION_DEPTH,
+        self_delay: config.self_delay,
     })
 }
 

@@ -1,4 +1,4 @@
-use {anyhow::Context, async_trait::async_trait, http::Uri, rand::rngs::StdRng};
+use {anyhow::Context, rand::rngs::StdRng};
 
 use zkabacus_crypto::{
     merchant::Config as ZkAbacusConfig, ChannelId, Context as ProofContext, CustomerBalance,
@@ -11,33 +11,29 @@ use zeekoe::{
         tezos,
         types::{KeyHash, TezosKeyMaterial, TezosPublicKey},
     },
-    merchant::{config::Service, database::QueryMerchant, server::SessionKey, Chan},
+    merchant::{config::Service, database::QueryMerchant, server::SessionKey, Chan, Config},
     offer_abort, proceed,
     protocol::{self, establish, ChannelStatus, Party::Merchant},
 };
 
 use tezedge::crypto::Prefix;
 
-use super::{approve, Method};
+use super::{approve, load_tezos_client};
 
 pub struct Establish;
 
-#[async_trait]
-impl Method for Establish {
-    type Protocol = protocol::Establish;
-
-    async fn run(
+impl Establish {
+    #[allow(clippy::too_many_arguments)]
+    pub async fn run(
         &self,
         mut rng: StdRng,
         client: &reqwest::Client,
-        tezos_key_material: TezosKeyMaterial,
-        tezos_uri: Uri,
-        self_delay: u64,
+        config: &Config,
         service: &Service,
         zkabacus_merchant_config: &ZkAbacusConfig,
         database: &dyn QueryMerchant,
         session_key: SessionKey,
-        chan: Chan<Self::Protocol>,
+        chan: Chan<protocol::Establish>,
     ) -> Result<(), anyhow::Error> {
         // Receive the customer's random contribution to the channel ID
         let (customer_randomness, chan) = chan
@@ -88,6 +84,7 @@ impl Method for Establish {
         let funding_address_is_tz1 = matches!(customer_funding_address.get_prefix(), Prefix::tz1);
 
         // Check that the key hash matches the merchant's expected key hash
+        let tezos_key_material = config.load_tezos_key_material()?;
         let merchant_keys_match = key_hash
             == KeyHash::new(
                 zkabacus_merchant_config.signing_keypair().public_key(),
@@ -123,6 +120,7 @@ impl Method for Establish {
         let establish_result = approve_and_establish(
             &mut rng,
             database,
+            config,
             zkabacus_merchant_config,
             customer_randomness,
             session_key,
@@ -130,8 +128,6 @@ impl Method for Establish {
             customer_deposit,
             &customer_tezos_public_key,
             &tezos_key_material,
-            &tezos_uri,
-            self_delay,
             chan,
         )
         .await;
@@ -156,6 +152,7 @@ impl Method for Establish {
 async fn approve_and_establish(
     rng: &mut StdRng,
     database: &dyn QueryMerchant,
+    config: &Config,
     zkabacus_merchant_config: &zkabacus_crypto::merchant::Config,
     customer_randomness: CustomerRandomness,
     session_key: SessionKey,
@@ -163,8 +160,6 @@ async fn approve_and_establish(
     customer_deposit: CustomerBalance,
     customer_tezos_public_key: &TezosPublicKey,
     merchant_key_material: &TezosKeyMaterial,
-    tezos_uri: &Uri,
-    self_delay: u64,
     chan: Chan<establish::MerchantApproveEstablish>,
 ) -> Result<(), anyhow::Error> {
     // The approval service has approved
@@ -213,10 +208,10 @@ async fn approve_and_establish(
         .context("Failed to receive contract ID from customer")?;
 
     match tezos::establish::verify_origination(
-        Some(tezos_uri),
+        Some(&config.tezos_uri),
         merchant_key_material,
         &contract_id,
-        self_delay,
+        config.self_delay,
         merchant_deposit,
         customer_deposit,
         zkabacus_merchant_config.signing_keypair().public_key(),
@@ -251,7 +246,7 @@ async fn approve_and_establish(
 
     match tezos::establish::verify_customer_funding(
         &merchant_deposit,
-        Some(tezos_uri),
+        Some(&config.tezos_uri),
         merchant_key_material,
         &contract_id,
     )
@@ -282,16 +277,14 @@ async fn approve_and_establish(
     // If the merchant contribution was greater than zero, fund the channel on chain, and await
     // confirmation that the funding has gone through to the required confirmation depth
     if merchant_deposit.into_inner() > 0 {
+        let tezos_client = load_tezos_client(config, &channel_id, database).await?;
         match tezos::establish::add_merchant_funding(
-            Some(tezos_uri),
-            &contract_id,
+            &tezos_client,
             &tezos::establish::MerchantFundingInformation {
                 balance: merchant_deposit,
-                public_key: merchant_key_material.public_key().clone(),
-                address: merchant_key_material.funding_address(),
+                public_key: tezos_client.client_key_pair.public_key().clone(),
+                address: tezos_client.client_key_pair.funding_address(),
             },
-            merchant_key_material,
-            tezos::DEFAULT_CONFIRMATION_DEPTH,
         )
         .await
         {
