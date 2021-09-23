@@ -159,7 +159,7 @@ def zkchannel_unilateral_close(feetracker, contract_id, cust_py, _merch_py, cust
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--shell", "-n", required=False, help="the address to connect to edo2net", default = "https://rpc.tzkt.io/edo2net/")
+    parser.add_argument("--shell", "-n", required=False, help="the address to connect to granadanet", default = "https://rpc.tzkt.io/granadanet/")
     parser.add_argument("--contract", "-z", required=True, help="zkchannels michelson contract")
     parser.add_argument("--contract-id", help="specify the contract id")
     parser.add_argument("--cust", "-c", required=True, help="customer's testnet account json file")
@@ -171,7 +171,7 @@ if __name__ == "__main__":
 
     if args.shell:
         pytezos = pytezos.using(shell=args.shell)
-    print("Connecting to edo2net via: " + args.shell)
+    print("Connecting to granadanet via: " + args.shell)
     cust_acc = args.cust
     merch_acc = args.merch
     establish_json_file = args.establish
