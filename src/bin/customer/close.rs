@@ -10,7 +10,6 @@ use {
     rand::rngs::StdRng,
     serde::Serialize,
     std::{convert::Infallible, fs::File, path::PathBuf},
-    thiserror::Error,
 };
 
 use zeekoe::{
@@ -21,7 +20,7 @@ use zeekoe::{
         database::{zkchannels_state, QueryCustomer, QueryCustomerExt, State},
         Chan, ChannelName, Config,
     },
-    escrow::{self, tezos, types::TezosKeyMaterial},
+    escrow::{self, tezos},
     offer_abort, proceed,
     protocol::{close, Party::Customer},
 };
@@ -30,20 +29,12 @@ use zkabacus_crypto::{
     MerchantBalance, RevocationLock,
 };
 
-use super::{connect, connect_daemon, database, Command};
+use super::{connect, connect_daemon, database, load_tezos_client, Command};
 use anyhow::Context;
-
-#[derive(Debug, Error)]
-enum Error {
-    #[error("Cannot initiate close because there are no stored contract details.")]
-    NoContractDetails(ChannelName),
-}
 
 #[async_trait]
 impl Command for Close {
     async fn run(self, mut rng: StdRng, config: self::Config) -> Result<(), anyhow::Error> {
-        let tezos_key_material = config.load_tezos_key_material()?;
-
         let database = database(&config)
             .await
             .context("Failed to connect to local database")?;
@@ -55,12 +46,11 @@ impl Command for Close {
                 self.off_chain,
                 &mut rng,
                 database.as_ref(),
-                &tezos_key_material,
             )
             .await
             .context("Unilateral close failed")?;
         } else {
-            mutual_close(&self, rng, config, tezos_key_material)
+            mutual_close(&self, rng, config)
                 .await
                 .context("Mutual close failed")?;
         }
@@ -91,7 +81,6 @@ pub async fn unilateral_close(
     off_chain: bool,
     rng: &mut StdRng,
     database: &dyn QueryCustomer,
-    tezos_key_material: &TezosKeyMaterial,
 ) -> Result<(), anyhow::Error> {
     // Read the closing message and set the channel state to PendingClose
     let close_message = get_close_message(rng, database, channel_name)
@@ -116,26 +105,9 @@ pub async fn unilateral_close(
         return Ok(());
     }
     if !off_chain {
-        let contract_id = match database
-            .contract_details(channel_name)
-            .await
-            .context(format!("Failed to retrieve contract for {}", channel_name))?
-            .contract_id
-        {
-            Some(contract_id) => contract_id,
-            None => return Err(Error::NoContractDetails(channel_name.clone()).into()),
-        };
-
         // Call the custClose entrypoint and wait for it to be confirmed on chain
-        tezos::close::cust_close(
-            Some(&config.tezos_uri),
-            &contract_id,
-            &close_message,
-            tezos_key_material,
-            tezos::DEFAULT_CONFIRMATION_DEPTH,
-        )
-        .await
-        .context("Failed to post custClose transaction")?;
+        let tezos_client = load_tezos_client(config, channel_name, database).await?;
+        tezos::close::cust_close(&tezos_client, &close_message).await?;
     } else {
         // TODO: Print out information necessary to produce custClose transaction
         // Wait for customer confirmation that it posted
@@ -193,7 +165,6 @@ pub async fn claim_funds(
     database: &dyn QueryCustomer,
     config: &Config,
     channel_name: &ChannelName,
-    customer_key_material: &TezosKeyMaterial,
 ) -> Result<(), anyhow::Error> {
     // Retrieve channel information
     let channel_details = database.get_channel(channel_name).await.context(format!(
@@ -229,21 +200,14 @@ pub async fn claim_funds(
             channel_name
         ))??;
 
-    let contract_id = channel_details.contract_details.contract_id
-                .ok_or_else(|| anyhow::anyhow!("Failed to claim customer funds for {} because contract details were not correctly saved", channel_name))?;
-
     // Post custClaim entrypoint on chain and wait for it to be confirmed
-    match tezos::close::cust_claim(
-        Some(&config.tezos_uri),
-        &contract_id,
-        customer_key_material,
-        tezos::DEFAULT_CONFIRMATION_DEPTH,
-    )
-    .await
-    .context(format!(
-        "Failed to claim customer funds for {}",
-        channel_name.clone()
-    )) {
+    let tezos_client = load_tezos_client(config, channel_name, database).await?;
+    match tezos::close::cust_claim(&tezos_client)
+        .await
+        .context(format!(
+            "Failed to claim customer funds for {}",
+            channel_name.clone()
+        )) {
         Ok(_) => Ok(()),
         Err(e) => {
             // If `custClaim` didn't post correctly, revert state back to PendingClose
@@ -411,7 +375,6 @@ async fn mutual_close(
     close: &Close,
     rng: StdRng,
     config: self::Config,
-    tezos_key_material: TezosKeyMaterial,
 ) -> Result<(), anyhow::Error> {
     let database = database(&config)
         .await
@@ -440,24 +403,14 @@ async fn mutual_close(
         .await
         .context("Failed to receive authorization signature from the merchant.")?;
 
-    // Retrieve contract info
-    let contract_id = channel_details
-        .contract_details
-        .contract_id
-        .ok_or_else(|| {
-            anyhow::anyhow!("No saved contract details; cannot complete mutual close")
-        })?;
-
     // Call the mutual close entrypoint
+    let tezos_client = load_tezos_client(&config, &close.label, database.as_ref()).await?;
     let mutual_close_result = tezos::close::mutual_close(
-        Some(&config.tezos_uri),
-        &contract_id,
+        &tezos_client,
         close_state.channel_id(),
         close_state.customer_balance(),
         close_state.merchant_balance(),
         &authorization_signature,
-        &tezos_key_material,
-        tezos::DEFAULT_CONFIRMATION_DEPTH,
     )
     .await;
 

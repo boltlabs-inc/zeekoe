@@ -165,16 +165,9 @@ async fn dispatch_channel(
     {
         // TODO: this should wait for any payments to complete.
 
-        close::unilateral_close(
-            &channel.label,
-            config,
-            off_chain,
-            rng,
-            database,
-            &tezos_key_material,
-        )
-        .await
-        .context("Chain watcher failed to process contract in expiry state")?;
+        close::unilateral_close(&channel.label, config, off_chain, rng, database)
+            .await
+            .context("Chain watcher failed to process contract in expiry state")?;
     }
 
     // The channel has not claimed funds after custClose timeout expired
@@ -186,7 +179,7 @@ async fn dispatch_channel(
         && contract_state.timeout_expired().unwrap_or(false)
         && zkchannels_state::PendingClose.matches(&channel.state)
     {
-        close::claim_funds(database, config, &channel.label, &tezos_key_material)
+        close::claim_funds(database, config, &channel.label)
             .await
             .context("Chain watcher failed to claim funds")?;
         close::finalize_customer_claim(database, &channel.label)

@@ -1,12 +1,11 @@
 //* Close functionalities for a merchant.
-use {anyhow::Context, async_trait::async_trait, http::Uri, rand::rngs::StdRng};
+use {anyhow::Context, async_trait::async_trait};
 
-use super::{database, Command};
-use rand::SeedableRng;
+use super::{database, load_tezos_client, Command};
 
 use zeekoe::{
     abort,
-    escrow::{tezos, types::TezosKeyMaterial},
+    escrow::tezos,
     merchant::{
         cli,
         database::{Error, QueryMerchant},
@@ -31,10 +30,6 @@ impl Close {
         database: &dyn QueryMerchant,
         chan: Chan<protocol::Close>,
     ) -> Result<(), anyhow::Error> {
-        // @FIXME: extract tezos uri, key material from config.
-        let tezos_key_material = config.load_tezos_key_material()?;
-        let tezos_uri = &config.tezos_uri;
-
         // Run zkAbacus close and update channel status to PendingClose
         let (chan, close_state) = zkabacus_close(merchant_config, database, chan)
             .await
@@ -50,15 +45,11 @@ impl Close {
             ))?;
 
         // Generate an authorization signature under the merchant's EdDSA Tezos key
-        let authorization_signature = tezos::close::authorize_mutual_close(
-            Some(tezos_uri),
-            &contract_id,
-            &close_state,
-            &tezos_key_material,
-            tezos::DEFAULT_CONFIRMATION_DEPTH,
-        )
-        .context("Failed to post mutualClose entrypoint")?
-        .into();
+        let tezos_client = load_tezos_client(config, close_state.channel_id(), database).await?;
+        let authorization_signature =
+            tezos::close::authorize_mutual_close(&tezos_client, &close_state)
+                .context("Failed to post mutualClose entrypoint")?
+                .into();
 
         let chan = chan
             .send(authorization_signature)
@@ -98,9 +89,8 @@ impl Close {
 /// **Usage**: this should be called after receiving a notification that a custClose entrypoint
 /// call is confirmed on chain at any depth.
 pub async fn process_customer_close(
+    config: &Config,
     database: &dyn QueryMerchant,
-    tezos_key_material: &TezosKeyMaterial,
-    tezos_uri: &Uri,
     channel_id: &ChannelId,
     revocation_lock: &RevocationLock,
 ) -> Result<(), anyhow::Error> {
@@ -144,25 +134,14 @@ pub async fn process_customer_close(
                     )
                 })?;
 
-            // Retrieve contract ID
-            let contract_id = database
-                .contract_details(channel_id)
-                .await
-                .context("Failed to retrieve contract details")?;
-
             // Call the merchDispute entrypoint and wait for it to be confirmed
-            let _status = tezos::close::merch_dispute(
-                Some(tezos_uri),
-                &contract_id,
-                revocation_secret,
-                tezos_key_material,
-                tezos::DEFAULT_CONFIRMATION_DEPTH,
-            )
-            .await
-            .context(format!(
-                "Failed to post merchDispute entrypoint (id: {})",
-                &channel_id
-            ))?;
+            let tezos_client = load_tezos_client(config, channel_id, database).await?;
+            let _status = tezos::close::merch_dispute(&tezos_client, revocation_secret)
+                .await
+                .context(format!(
+                    "Failed to post merchDispute entrypoint (id: {})",
+                    &channel_id
+                ))?;
 
             // React to successfully confirmed dispute
             finalize_dispute(database, channel_id)
@@ -261,7 +240,6 @@ async fn finalize_dispute(
 
     // Update final balances to indicate successful dispute (i.e., that the transfer of the
     // customer's balance to merchant is confirmed).
-    // TODO: assert that customer/merchant balance matches expected pattern of 0/all?
     Ok(database
         .update_closing_balances(
             channel_id,
@@ -379,27 +357,9 @@ impl Command for cli::Close {
         // Retrieve zkAbacus config from the database
         let database = database(&config).await?;
 
-        // Load Tezos key and URI from file
-        let tezos_key_material = TezosKeyMaterial::read_key_pair(&config.tezos_account)?;
-
-        // Either initialize the merchant's config afresh, or get existing config if it exists
-        // (it should already exist)
-        let merchant_config = database
-            .fetch_or_create_config(&mut StdRng::from_entropy()) // TODO: allow determinism
-            .await?;
-
         // Make sure exactly one correct command line option is satisfied
         match (self.channel, self.all) {
-            (Some(channel_id), false) => {
-                expiry(
-                    &merchant_config,
-                    database.as_ref(),
-                    &channel_id,
-                    &tezos_key_material,
-                    &config.tezos_uri,
-                )
-                .await
-            }
+            (Some(channel_id), false) => expiry(&config, database.as_ref(), &channel_id).await,
             // TODO: iterate through database; call expiry for every channel
             (None, true) => Err(anyhow::anyhow!(
                 "Closing all channels is not yet implemented."
@@ -413,11 +373,9 @@ impl Command for cli::Close {
 ///
 /// **Usage**: this is called directly from the command line.
 async fn expiry(
-    _merchant_config: &MerchantConfig,
+    config: &Config,
     database: &dyn QueryMerchant,
     channel_id: &ChannelId,
-    tezos_key_material: &TezosKeyMaterial,
-    tezos_uri: &Uri,
 ) -> Result<(), anyhow::Error> {
     // Retrieve current channel status
     let current_status = database
@@ -445,24 +403,9 @@ async fn expiry(
             &channel_id
         ))?;
 
-    // Retrieve contract details
-    let contract_id = database
-        .contract_details(channel_id)
-        .await
-        .context(format!(
-            "Failed to retrieve contract details (id: {})",
-            &channel_id
-        ))?;
-
     // Call expiry entrypoint
-    tezos::close::expiry(
-        Some(tezos_uri),
-        &contract_id,
-        tezos_key_material,
-        tezos::DEFAULT_CONFIRMATION_DEPTH,
-    )
-    .await
-    .context(format!(
+    let tezos_client = load_tezos_client(config, channel_id, database).await?;
+    tezos::close::expiry(&tezos_client).await.context(format!(
         "Failed to initiate expiry close flow (id: {})",
         &channel_id
     ))?;
@@ -476,10 +419,9 @@ async fn expiry(
 /// is confirmed on chain _and_ the timelock period has passed without
 /// any other operation to the contract (i.e., a custClose entrypoint call) confirmed on chain.
 pub async fn claim_expiry_funds(
+    config: &Config,
     database: &dyn QueryMerchant,
     channel_id: &ChannelId,
-    tezos_key_material: &TezosKeyMaterial,
-    tezos_uri: &Uri,
 ) -> Result<(), anyhow::Error> {
     // Update database status to PendingMerchantClaim
     database
@@ -494,27 +436,14 @@ pub async fn claim_expiry_funds(
             channel_id
         ))?;
 
-    // Retrieve contract details
-    let contract_id = database
-        .contract_details(channel_id)
+    // Call merchClaim entrypoint
+    let tezos_client = load_tezos_client(config, channel_id, database).await?;
+    let _status = tezos::close::merch_claim(&tezos_client)
         .await
         .context(format!(
-            "Failed to retrieve contract details (id: {})",
+            "Failed to claim merchant funds (id: {})",
             &channel_id
         ))?;
-
-    // Call merchClaim entrypoint and retrieve final channel balances
-    let _status = tezos::close::merch_claim(
-        Some(tezos_uri),
-        &contract_id,
-        tezos_key_material,
-        tezos::DEFAULT_CONFIRMATION_DEPTH,
-    )
-    .await
-    .context(format!(
-        "Failed to claim merchant funds (id: {})",
-        &channel_id
-    ))?;
 
     Ok(())
 }

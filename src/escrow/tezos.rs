@@ -624,7 +624,6 @@ pub mod establish {
     use super::*;
     use zkabacus_crypto::{ChannelId, PublicKey};
 
-    #[allow(unused)]
     pub struct CustomerFundingInformation {
         /// Initial balance for the customer in the channel.
         pub balance: CustomerBalance,
@@ -638,7 +637,6 @@ pub mod establish {
         pub public_key: TezosPublicKey,
     }
 
-    #[allow(unused)]
     pub struct MerchantFundingInformation {
         /// Initial balance for the merchant in the channel.
         pub balance: MerchantBalance,
@@ -953,14 +951,10 @@ pub mod establish {
     /// - the `addFunding` entrypoint has not been called by the customer address
     #[allow(unused)]
     pub fn reclaim_customer_funding(
-        uri: Option<&http::Uri>,
-        contract_id: &ContractId,
-        customer_key_pair: &TezosKeyMaterial,
-        confirmation_depth: u64,
+        tezos_client: &TezosClient,
     ) -> impl Future<Output = Result<OperationStatus, ReclaimFundingError>> + Send + 'static {
-        let customer_private_key = customer_key_pair.private_key().to_base58check();
-        let contract_id = contract_id.clone().to_originated_address().to_base58check();
-        let uri = uri.map(|uri| uri.to_string());
+        let (uri, customer_private_key, contract_id) = tezos_client.into_python_types();
+        let confirmation_depth = tezos_client.confirmation_depth;
 
         async move {
             tokio::task::spawn_blocking(move || {
@@ -997,7 +991,6 @@ pub mod close {
     use {
         serde::{Deserialize, Serialize},
         tezedge::signer::OperationSignatureInfo,
-        tezedge::ToBase58Check,
         zkabacus_crypto::{
             customer::ClosingMessage, revlock::RevocationSecret, CloseState, CustomerBalance,
             MerchantBalance,
@@ -1079,16 +1072,11 @@ pub mod close {
     /// - the contract status is not OPEN
     /// - the [`TezosFundingAddress`] specified does not match the `merch_addr` field in the
     ///   the specified contract
-    #[allow(unused)]
     pub fn expiry(
-        uri: Option<&http::Uri>,
-        contract_id: &ContractId,
-        merchant_key_pair: &TezosKeyMaterial,
-        confirmation_depth: u64,
+        tezos_client: &TezosClient,
     ) -> impl Future<Output = Result<OperationStatus, ExpiryError>> + Send + 'static {
-        let merchant_private_key = merchant_key_pair.private_key().to_base58check();
-        let contract_id = contract_id.clone().to_originated_address().to_base58check();
-        let uri = uri.map(|uri| uri.to_string());
+        let (uri, merchant_private_key, contract_id) = tezos_client.into_python_types();
+        let confirmation_depth = tezos_client.confirmation_depth;
 
         async move {
             tokio::task::spawn_blocking(move || {
@@ -1116,16 +1104,11 @@ pub mod close {
     /// - the contract status is not EXPIRY
     /// - the [`TezosKeyPair`] does not match the `merch_addr` field in the specified
     ///   contract
-    #[allow(unused)]
     pub fn merch_claim(
-        uri: Option<&http::Uri>,
-        contract_id: &ContractId,
-        merchant_key_pair: &TezosKeyMaterial,
-        confirmation_depth: u64,
+        tezos_client: &TezosClient,
     ) -> impl Future<Output = Result<OperationStatus, MerchantClaimError>> + Send + 'static {
-        let merchant_private_key = merchant_key_pair.private_key().to_base58check();
-        let contract_id = contract_id.clone().to_originated_address().to_base58check();
-        let uri = uri.map(|uri| uri.to_string());
+        let (uri, merchant_private_key, contract_id) = tezos_client.into_python_types();
+        let confirmation_depth = tezos_client.confirmation_depth;
 
         async move {
             tokio::task::spawn_blocking(move || {
@@ -1160,23 +1143,19 @@ pub mod close {
     /// - the signature in the [`ClosingMessage`] is not a well-formed signature
     /// - the signature in the [`ClosingMessage`] is not a valid signature under the merchant
     ///   public key on the expected tuple
-    #[allow(unused)]
     pub fn cust_close(
-        uri: Option<&http::Uri>,
-        contract_id: &ContractId,
+        tezos_client: &TezosClient,
         close_message: &ClosingMessage,
-        customer_key_pair: &TezosKeyMaterial,
-        confirmation_depth: u64,
     ) -> impl Future<Output = Result<OperationStatus, CustomerCloseError>> + Send + 'static {
+        let (uri, customer_private_key, contract_id) = tezos_client.into_python_types();
+        let confirmation_depth = tezos_client.confirmation_depth;
+
         let customer_balance = close_message.customer_balance().into_inner();
         let merchant_balance = close_message.merchant_balance().into_inner();
         let revocation_lock = hex_string(&close_message.revocation_lock().as_bytes());
-        let customer_private_key = customer_key_pair.private_key().to_base58check();
-        let contract_id = contract_id.clone().to_originated_address().to_base58check();
         let (sigma1, sigma2) = close_message.closing_signature().clone().as_bytes();
         let sigma1 = hex_string(&sigma1);
         let sigma2 = hex_string(&sigma2);
-        let uri = uri.map(|uri| uri.to_string());
 
         async move {
             tokio::task::spawn_blocking(move || {
@@ -1212,18 +1191,14 @@ pub mod close {
     /// - the contract status is not CUST_CLOSE
     /// - the [`TezosKeyPair`] does not match the `merch_addr` field in the specified contract
     /// - the [`RevocationSecret`] does not hash to the `rev_lock` field in the specified contract
-    #[allow(unused)]
     pub fn merch_dispute(
-        uri: Option<&http::Uri>,
-        contract_id: &ContractId,
+        tezos_client: &TezosClient,
         revocation_secret: &RevocationSecret,
-        merchant_key_pair: &TezosKeyMaterial,
-        confirmation_depth: u64,
     ) -> impl Future<Output = Result<OperationStatus, MerchantDisputeError>> + Send + 'static {
-        let merchant_private_key = merchant_key_pair.private_key().to_base58check();
-        let contract_id = contract_id.clone().to_originated_address().to_base58check();
+        let (uri, merchant_private_key, contract_id) = tezos_client.into_python_types();
+        let confirmation_depth = tezos_client.confirmation_depth;
+
         let revocation_secret = hex_string(&revocation_secret.as_bytes());
-        let uri = uri.map(|uri| uri.to_string());
 
         async move {
             tokio::task::spawn_blocking(move || {
@@ -1256,16 +1231,11 @@ pub mod close {
     /// This operation is invalid if:
     /// - the contract status is not CUST_CLOSE
     /// - the [`TezosKeyPair`] does not match the `cust_addr` field in the specified contract
-    #[allow(unused)]
     pub fn cust_claim(
-        uri: Option<&http::Uri>,
-        contract_id: &ContractId,
-        customer_key_pair: &TezosKeyMaterial,
-        confirmation_depth: u64,
+        tezos_client: &TezosClient,
     ) -> impl Future<Output = Result<OperationStatus, CustomerClaimError>> + Send + 'static {
-        let customer_private_key = customer_key_pair.private_key().to_base58check();
-        let contract_id = contract_id.clone().to_originated_address().to_base58check();
-        let uri = uri.map(|uri| uri.to_string());
+        let (uri, customer_private_key, contract_id) = tezos_client.into_python_types();
+        let confirmation_depth = tezos_client.confirmation_depth;
 
         async move {
             tokio::task::spawn_blocking(move || {
@@ -1294,11 +1264,8 @@ pub mod close {
     /// This is called by the merchant.
     #[allow(unused)]
     pub fn authorize_mutual_close(
-        uri: Option<&http::Uri>,
-        contract_id: &ContractId,
+        tezos_client: &TezosClient,
         close_state: &CloseState,
-        merchant_key_pair: &TezosKeyMaterial,
-        confirmation_depth: u64,
     ) -> Result<OperationSignatureInfo, Error> {
         todo!()
     }
@@ -1315,16 +1282,12 @@ pub mod close {
     /// - the `authorization_signature` is not a valid signature under the merchant public key
     ///   on the expected tuple
     #[allow(unused)]
-    #[allow(clippy::too_many_arguments)]
     pub fn mutual_close(
-        uri: Option<&http::Uri>,
-        contract_id: &ContractId,
+        tezos_client: &TezosClient,
         channel_id: &ChannelId,
         customer_balance: &CustomerBalance,
         merchant_balance: &MerchantBalance,
         authorization_signature: &MutualCloseAuthorizationSignature,
-        merchant_key_pair: &TezosKeyMaterial,
-        confirmation_depth: u64,
     ) -> impl Future<Output = Result<OperationStatus, Error>> + Send + 'static {
         async move { todo!() }
     }

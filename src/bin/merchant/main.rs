@@ -256,14 +256,7 @@ async fn dispatch_channel(
         && contract_state.timeout_expired().unwrap_or(false)
         && channel.status == ChannelStatus::PendingExpiry
     {
-        close::claim_expiry_funds(
-            database,
-            &channel.channel_id,
-            &tezos_key_material,
-            tezos_uri,
-        )
-        .await?;
-
+        close::claim_expiry_funds(config, database, &channel.channel_id).await?;
         close::finalize_expiry_close(database, &channel.channel_id).await?;
     }
 
@@ -288,14 +281,8 @@ async fn dispatch_channel(
                 channel.channel_id
             )
         })?;
-        close::process_customer_close(
-            database,
-            &tezos_key_material,
-            tezos_uri,
-            &channel.channel_id,
-            &revocation_lock,
-        )
-        .await?;
+        close::process_customer_close(config, database, &channel.channel_id, &revocation_lock)
+            .await?;
         close::finalize_customer_close(
             database,
             &channel.channel_id,
