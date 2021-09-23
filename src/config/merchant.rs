@@ -17,7 +17,8 @@ pub struct Config {
     pub tezos_account: KeySpecifier,
     #[serde(with = "http_serde::uri")]
     pub tezos_uri: Uri,
-    // @Darius: add self delay
+    #[serde(default = "defaults::self_delay")]
+    pub self_delay: u64,
     #[serde(rename = "service")]
     pub services: Vec<Service>,
 }

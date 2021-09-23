@@ -30,7 +30,10 @@ pub(crate) mod shared {
         2611
     }
 
-    // @Darius: move default self delay value here (from tezos.rs)
+    pub const fn self_delay() -> u64 {
+        // 2 days, in seconds.
+        2 * 24 * 60 * 60
+    }
 }
 
 pub mod merchant {
