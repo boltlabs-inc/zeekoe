@@ -93,6 +93,7 @@ impl Command for Run {
                 let mut wait_terminate = terminate.subscribe();
                 let tezos_key_material = tezos_key_material.clone();
                 let tezos_uri = config.tezos_uri.clone();
+                let self_delay = config.self_delay;
 
                 async move {
                     // Initialize a new `Server` with parameters taken from the configuration
@@ -130,6 +131,7 @@ impl Command for Run {
                                     &client,
                                     tezos_key_material,
                                     tezos_uri,
+                                    self_delay,
                                     &service,
                                     &merchant_config,
                                     database.as_ref(),
@@ -141,6 +143,7 @@ impl Command for Run {
                                     &client,
                                     tezos_key_material,
                                     tezos_uri,
+                                    self_delay,
                                     &service,
                                     &merchant_config,
                                     database.as_ref(),
@@ -152,6 +155,7 @@ impl Command for Run {
                                     &client,
                                     tezos_key_material,
                                     tezos_uri,
+                                    self_delay,
                                     &service,
                                     &merchant_config,
                                     database.as_ref(),
@@ -163,6 +167,7 @@ impl Command for Run {
                                     &client,
                                     tezos_key_material,
                                     tezos_uri,
+                                    self_delay,
                                     &service,
                                     &merchant_config,
                                     database.as_ref(),
@@ -349,6 +354,7 @@ where
         client: &reqwest::Client,
         tezos_key_material: TezosKeyMaterial,
         tezos_uri: Uri,
+        self_delay: u64,
         config: &Service,
         merchant_config: &zkabacus_crypto::merchant::Config,
         database: &dyn QueryMerchant,

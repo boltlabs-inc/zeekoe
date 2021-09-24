@@ -20,6 +20,7 @@ impl Method for Parameters {
         _client: &reqwest::Client,
         tezos_key_material: TezosKeyMaterial,
         _tezos_uri: Uri,
+        _self_delay: u64,
         _config: &Service,
         merchant_config: &zkabacus_crypto::merchant::Config,
         _database: &dyn QueryMerchant,

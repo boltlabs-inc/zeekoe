@@ -1,0 +1,13 @@
+[package]
+name = "canonicalize_json_micheline"
+version = "0.1.0"
+authors = ["Mukund Lakshman <mukund@boltlabs.io>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+olpc-cjson = "0.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"

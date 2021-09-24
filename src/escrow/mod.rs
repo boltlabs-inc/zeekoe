@@ -237,12 +237,12 @@ pub mod types {
     #[derive(Debug, Clone, Copy, PartialEq)]
     pub enum ContractStatus {
         AwaitingCustomerFunding = 0,
-        AwaitingMerchantFunding,
-        Open,
-        Expiry,
-        CustomerClose,
-        Closed,
-        FundingReclaimed,
+        AwaitingMerchantFunding = 1,
+        Open = 2,
+        Expiry = 3,
+        CustomerClose = 4,
+        Closed = 5,
+        FundingReclaimed = 6,
     }
 
     #[derive(Error, Debug)]

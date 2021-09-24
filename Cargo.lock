@@ -170,6 +170,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "006d2236168221348c30781d43299a75e9b9e62f5a3e0ff5f6d0aa162c9f3936"
 
 [[package]]
+name = "canonicalize_json_micheline"
+version = "0.1.0"
+dependencies = [
+ "olpc-cjson",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "cc"
 version = "1.0.70"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1323,6 +1333,17 @@ checksum = "05499f3756671c15885fee9034446956fff3f243d6077b91e5767df161f766b3"
 dependencies = [
  "hermit-abi",
  "libc",
+]
+
+[[package]]
+name = "olpc-cjson"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72ca49fe685014bbf124ee547da94ed7bb65a6eb9dc9c4711773c081af96a39c"
+dependencies = [
+ "serde",
+ "serde_json",
+ "unicode-normalization",
 ]
 
 [[package]]
@@ -2931,6 +2952,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "bincode",
+ "canonicalize_json_micheline",
  "comfy-table",
  "dialectic",
  "dialectic-reconnect",

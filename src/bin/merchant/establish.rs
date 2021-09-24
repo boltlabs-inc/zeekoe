@@ -32,6 +32,7 @@ impl Method for Establish {
         client: &reqwest::Client,
         tezos_key_material: TezosKeyMaterial,
         tezos_uri: Uri,
+        self_delay: u64,
         service: &Service,
         zkabacus_merchant_config: &ZkAbacusConfig,
         database: &dyn QueryMerchant,
@@ -130,6 +131,7 @@ impl Method for Establish {
             &customer_tezos_public_key,
             &tezos_key_material,
             &tezos_uri,
+            self_delay,
             chan,
         )
         .await;
@@ -162,6 +164,7 @@ async fn approve_and_establish(
     customer_tezos_public_key: &TezosPublicKey,
     merchant_key_material: &TezosKeyMaterial,
     tezos_uri: &Uri,
+    self_delay: u64,
     chan: Chan<establish::MerchantApproveEstablish>,
 ) -> Result<(), anyhow::Error> {
     // The approval service has approved
@@ -213,17 +216,17 @@ async fn approve_and_establish(
         .await
         .context("Failed to receive contract origination level from the customer")?;
 
-    // TODO: check (waiting, if necessary, until a certain configurable timeout) that the
-    // contract has been originated on chain and confirmed to desired block depth, and:
-    // - the originated contract contains the expected zkChannels contract
-    // - the originated contract's on-chain storage is as expected for the zkAbacus channel ID:
-    //   * the contract storage contains the merchant's zkAbacus Pointcheval Sanders public key
-    //   * the merchant's tezos tz1 address and eddsa public key match the fields merch_addr and
-    //     merch_pk, respectively
-    //   * the self_delay field in the contract matches the global default
-    //   * the close field matches the merchant's close flag (constant close curve point)
-    //   * customer deposit and merchant deposit match the initial balances in the contract
-    //     storage bal_cust_0 and bal_merch_0, respectively
+    tezos::establish::verify_origination(
+        Some(tezos_uri),
+        merchant_key_material,
+        &contract_id,
+        tezos::DEFAULT_CONFIRMATION_DEPTH,
+        self_delay,
+        merchant_deposit,
+        customer_deposit,
+        zkabacus_merchant_config.signing_keypair().public_key(),
+    )
+    .await;
 
     // TODO: otherwise, if any of these checks fail, invoke `abort!`
 

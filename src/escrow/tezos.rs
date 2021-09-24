@@ -1,5 +1,6 @@
 use {
     crate::escrow::types::*,
+    canonicalize_json_micheline::{canonicalize_json_micheline, CanonicalizeError},
     futures::Future,
     inline_python::{pyo3, pyo3::conversion::FromPyObject, python},
     std::{
@@ -13,11 +14,14 @@ use {
     zkabacus_crypto::{CustomerBalance, MerchantBalance, RevocationLock},
 };
 
-/// The Michelson contract code for the ZkChannels contract.
-static CONTRACT_CODE: &str = include_str!("zkchannel_contract.tz");
+/// The Micheline JSON for the ZkChannels contract.
+static CONTRACT_CODE: &str = include_str!("zkchannels_contract_canonical.json");
+
 lazy_static::lazy_static! {
     static ref CONTRACT_CODE_MUTEX: Mutex<u64> = Mutex::new(0);
+    static ref CONTRACT_CODE_HASH: ContractHash = ContractHash::new(&*CONTRACT_CODE);
 }
+
 /// The default confirmation depth to consider chain operations to be final.
 pub const DEFAULT_CONFIRMATION_DEPTH: u64 = 1; // FIXME: put this back to 20 after testing
 
@@ -33,7 +37,7 @@ fn python_context() -> inline_python::Context {
         from pytezos import pytezos, Contract, ContractInterface
         import json
 
-        main_code = ContractInterface.from_michelson('CONTRACT_CODE)
+        main_code = ContractInterface.from_micheline(json.loads('CONTRACT_CODE))
 
         // Originate a contract on chain
         def originate(
@@ -129,8 +133,8 @@ fn python_context() -> inline_python::Context {
 
             storage["revocation_lock"] = storage["revocation_lock"].to_bytes(32, byteorder="little")
 
-            micheline_json = json.dumps(contract.to_micheline(), sort_keys = True)
-            return (storage, micheline_json)
+            contract_code = json.dumps(contract.to_micheline(), sort_keys = True)
+            return (storage, contract_code)
 
         // Call the `addMerchFunding` endpoint of an extant contract
         def add_merchant_funding(
@@ -368,8 +372,13 @@ impl FinalBalances {
     }
 }
 
+fn vec_equals<T: PartialEq>(a: &Vec<T>, b: &Vec<T>) -> bool {
+    let matching = a.iter().zip(b.iter()).filter(|&(a, b)| a == b).count();
+    matching == a.len() && matching == b.len()
+}
+
 /// Convert a byte vector into a string like "0xABC123".
-fn hex_string(bytes: Vec<u8>) -> String {
+fn hex_string(bytes: &[u8]) -> String {
     format!("0x{}", hex::encode(bytes))
 }
 
@@ -379,12 +388,12 @@ fn pointcheval_sanders_public_key_to_python_input(
     public_key: &zkabacus_crypto::PublicKey,
 ) -> (String, Vec<String>, String) {
     let zkabacus_crypto::PublicKey { g2, y2s, x2, .. } = public_key;
-    let g2 = hex_string(g2.to_uncompressed().to_vec());
+    let g2 = hex_string(&g2.to_uncompressed().to_vec());
     let y2s = y2s
         .iter()
-        .map(|y2| hex_string(y2.to_uncompressed().to_vec()))
+        .map(|y2| hex_string(&y2.to_uncompressed().to_vec()))
         .collect::<Vec<_>>();
-    let x2 = hex_string(x2.to_uncompressed().to_vec());
+    let x2 = hex_string(&x2.to_uncompressed().to_vec());
 
     (g2, y2s, x2)
 }
@@ -396,9 +405,26 @@ pub enum VerificationError {
         expected: ContractStatus,
         actual: ContractStatus,
     },
-
     #[error(transparent)]
     ContractState(#[from] ContractStateError),
+    #[error("Contract hash did not match expected hash")]
+    UnexpectedContractHash,
+    #[error("Expected customer contract's self_delay to be {expected:?}, but was {actual:?}")]
+    UnexpectedSelfDelay { expected: u64, actual: u64 },
+    #[error("Expected contract's merchant_balance to be {expected:?}, but was {actual:?}")]
+    UnexpectedMerchantBalance {
+        expected: MerchantBalance,
+        actual: MerchantBalance,
+    },
+    #[error("Expected contract's customer_balance to be {expected:?}, but was {actual:?}")]
+    UnexpectedCustomerBalance {
+        expected: CustomerBalance,
+        actual: CustomerBalance,
+    },
+    #[error(transparent)]
+    ZkAbacus(#[from] zkabacus_crypto::Error),
+    #[error("Contract's MerchantPublicKey did not match the merchant's public key")]
+    UnexpectedMerchantKey,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -411,6 +437,8 @@ pub enum ContractStateError {
     ZkAbacusError(#[from] zkabacus_crypto::Error),
     #[error("Could not parse bytes as `RevocationLock`: {0:?}")]
     ParseRevocationLock(Vec<u8>),
+    #[error("Error canonicalizing contract: {0:?}")]
+    Canonicalize(#[from] CanonicalizeError),
 }
 
 /// State of a zkChannels contract at a point in time.
@@ -425,7 +453,7 @@ pub struct ContractState {
     self_delay: u64,
     delay_expiry: u32,
     merchant_public_key: (Vec<u8>, [Vec<u8>; 5], Vec<u8>),
-    contract_hash: ContractHash,
+    contract_code: String,
 }
 
 impl ContractState {
@@ -489,8 +517,13 @@ impl ContractState {
     }
 
     /// A SHA3-256 hash of the contract's Micheline JSON encoding.
-    pub fn contract_hash(&self) -> &ContractHash {
-        &self.contract_hash
+    pub fn has_correct_hash(&self) -> Result<bool, ContractStateError> {
+        let canonicalized_contract_code = canonicalize_json_micheline(&self.contract_code)?;
+        Ok(ContractHash::new(&canonicalized_contract_code) == *CONTRACT_CODE_HASH)
+    }
+
+    pub fn self_delay(&self) -> u64 {
+        self.self_delay
     }
 }
 
@@ -503,7 +536,7 @@ impl<'source> FromPyObject<'source> for ContractState {
     // Micheline JSON representation of the contract.
     fn extract(obj: &'source pyo3::PyAny) -> pyo3::PyResult<Self> {
         let storage = obj.get_item(0)?;
-        let micheline_json = obj.get_item(1)?.extract()?;
+        let contract_code = obj.get_item(1)?.extract()?;
 
         Ok(ContractState {
             merchant_address_base58: storage.get_item("merchant_address")?.extract()?,
@@ -525,7 +558,7 @@ impl<'source> FromPyObject<'source> for ContractState {
                 ],
                 storage.get_item("x2")?.extract()?,
             ),
-            contract_hash: ContractHash::new(micheline_json),
+            contract_code,
         })
     }
 }
@@ -575,7 +608,6 @@ pub fn get_contract_state(
     let uri = uri.map(|uri| uri.to_string());
     let customer_account_key = originator_key_pair.private_key().to_base58check();
     let contract_id = contract_id.clone().to_originated_address().to_base58check();
-    eprintln!("Querying contract {}", contract_id);
 
     async move {
         tokio::task::spawn_blocking(move || {
@@ -680,7 +712,7 @@ pub mod establish {
         let customer_account_key = originator_key_pair.private_key().to_base58check();
         let customer_funding = customer_funding_info.balance.into_inner();
         let customer_address = customer_funding_info.address.to_base58check();
-        let channel_id = hex_string(channel_id.to_bytes().to_vec());
+        let channel_id = hex_string(&channel_id.to_bytes().to_vec());
         let uri = uri.map(|uri| uri.to_string());
 
         async move {
@@ -777,17 +809,68 @@ pub mod establish {
         tezos_key_material: &TezosKeyMaterial,
         contract_id: &ContractId,
         confirmation_depth: u64,
+        self_delay: u64,
+        expected_merchant_balance: MerchantBalance,
+        expected_customer_balance: CustomerBalance,
+        merchant_public_key: &PublicKey,
     ) -> Result<(), VerificationError> {
         let contract_state =
             get_contract_state(uri, tezos_key_material, contract_id, confirmation_depth).await?;
 
         match contract_state.status()? {
-            ContractStatus::Open => Ok(()),
-            actual => Err(VerificationError::UnexpectedContractStatus {
-                expected: ContractStatus::Open,
-                actual,
-            }),
+            ContractStatus::AwaitingCustomerFunding => Ok::<_, VerificationError>(()),
+            actual => {
+                return Err(VerificationError::UnexpectedContractStatus {
+                    expected: ContractStatus::AwaitingCustomerFunding,
+                    actual,
+                })
+            }
+        };
+
+        if contract_state.self_delay() != self_delay {
+            return Err(VerificationError::UnexpectedSelfDelay {
+                expected: self_delay,
+                actual: contract_state.self_delay(),
+            });
         }
+
+        let merchant_balance = contract_state.merchant_balance()?;
+        let customer_balance = contract_state.customer_balance()?;
+
+        if merchant_balance.into_inner() != expected_merchant_balance.into_inner() {
+            return Err(VerificationError::UnexpectedMerchantBalance {
+                expected: expected_merchant_balance,
+                actual: merchant_balance,
+            });
+        }
+
+        if customer_balance.into_inner() != expected_customer_balance.into_inner() {
+            return Err(VerificationError::UnexpectedCustomerBalance {
+                expected: expected_customer_balance,
+                actual: customer_balance,
+            });
+        }
+
+        let (expected_g2, expected_y2s, expected_x2) =
+            super::pointcheval_sanders_public_key_to_python_input(merchant_public_key);
+        let (g2, y2s, x2) = contract_state.merchant_public_key();
+        let (g2, y2s, x2) = (
+            hex_string(g2),
+            y2s.iter()
+                .map(|y2| hex_string(&y2))
+                .collect::<Vec<String>>(),
+            hex_string(x2),
+        );
+
+        if (g2 != expected_g2 || !vec_equals(&y2s, &expected_y2s) || x2 != expected_x2) {
+            return Err(VerificationError::UnexpectedMerchantKey);
+        }
+
+        if !contract_state.has_correct_hash()? {
+            return Err(VerificationError::UnexpectedContractHash);
+        }
+
+        Ok(())
     }
 
     /// Verify that the customer has successfully funded the contract via the `addFunding`
@@ -1126,12 +1209,12 @@ pub mod close {
     {
         let customer_balance = close_message.customer_balance().into_inner();
         let merchant_balance = close_message.merchant_balance().into_inner();
-        let revocation_lock = hex_string(close_message.revocation_lock().as_bytes().to_vec());
+        let revocation_lock = hex_string(&close_message.revocation_lock().as_bytes().to_vec());
         let customer_private_key = customer_key_pair.private_key().to_base58check();
         let contract_id = contract_id.clone().to_originated_address().to_base58check();
         let (sigma1, sigma2) = close_message.closing_signature().clone().as_bytes();
-        let sigma1 = hex_string(sigma1.to_vec());
-        let sigma2 = hex_string(sigma2.to_vec());
+        let sigma1 = hex_string(&sigma1);
+        let sigma2 = hex_string(&sigma2);
         let uri = uri.map(|uri| uri.to_string());
 
         async move {
@@ -1179,7 +1262,7 @@ pub mod close {
     {
         let merchant_private_key = merchant_key_pair.private_key().to_base58check();
         let contract_id = contract_id.clone().to_originated_address().to_base58check();
-        let revocation_secret = hex_string(revocation_secret.as_bytes().to_vec());
+        let revocation_secret = hex_string(&revocation_secret.as_bytes().to_vec());
         let uri = uri.map(|uri| uri.to_string());
 
         async move {
