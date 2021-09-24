@@ -26,7 +26,7 @@ pub const DEFAULT_CONFIRMATION_DEPTH: u64 = 1; // FIXME: put this back to 20 aft
 pub const DEFAULT_SELF_DELAY: u64 = 2 * 24 * 60 * 60;
 
 /// The default `revocation_lock`: a hex-encoded string which pytezos reads as a scalar 0.
-const DEFAULT_REVOCATION_LOCK: &str = "0x0";
+const DEFAULT_REVOCATION_LOCK: &str = "0x00";
 
 /// Create a fresh python execution context to be used for a single python operation, then thrown
 /// away. This ensures we don't carry over global state, and we can concurrently use python-based
