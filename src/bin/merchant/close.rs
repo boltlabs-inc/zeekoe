@@ -434,6 +434,17 @@ async fn expiry(
         .channel_status(channel_id)
         .await
         .context("Failed to retrieve current channel status")?;
+    match current_status {
+        ChannelStatus::MerchantFunded | ChannelStatus::Active => (),
+        _ => {
+            return Err(Error::UnexpectedChannelStatus {
+                channel_id: *channel_id,
+                expected: vec![ChannelStatus::MerchantFunded, ChannelStatus::Active],
+                found: current_status,
+            }
+            .into())
+        }
+    };
 
     // Update database status to PendingExpiry
     database
@@ -515,8 +526,7 @@ pub async fn claim_expiry_funds(
         &channel_id
     ))?;
 
-    // React to successfully confirmed merchClaim
-    finalize_expiry_close(database, channel_id).await
+    Ok(())
 }
 
 /// Finalize the channel balances. This is called during a unilateral merchant close flow if the
@@ -525,7 +535,7 @@ pub async fn claim_expiry_funds(
 ///
 /// **Usage**: this is called after the merchClaim operation is confirmed on chain to an appropriate
 /// depth.
-async fn finalize_expiry_close(
+pub async fn finalize_expiry_close(
     database: &dyn QueryMerchant,
     channel_id: &ChannelId,
 ) -> Result<(), anyhow::Error> {
@@ -533,7 +543,7 @@ async fn finalize_expiry_close(
     database
         .compare_and_swap_channel_status(
             channel_id,
-            &ChannelStatus::PendingClose,
+            &ChannelStatus::PendingMerchantClaim,
             &ChannelStatus::Closed,
         )
         .await

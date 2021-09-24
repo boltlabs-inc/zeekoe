@@ -287,6 +287,8 @@ async fn dispatch_channel(
             &tezos_uri,
         )
         .await?;
+
+        close::finalize_expiry_close(database, &channel.channel_id).await?;
     }
 
     // The channel has not reacted to a customer posting close balances on chain

@@ -356,11 +356,12 @@ pub async fn finalize_expiry(
     database: &dyn QueryCustomer,
     channel_name: &ChannelName,
 ) -> Result<(), anyhow::Error> {
-    // Update status from PendingClose to Closed
+    // Update status from PendingExpiry to Closed
+    // Calculate updated balances (all money going to the merchant)
     let (customer_balance, merchant_balance) = database
         .with_channel_state(
             channel_name,
-            zkchannels_state::PendingClose,
+            zkchannels_state::PendingExpiry,
             |closing_message| -> Result<_, anyhow::Error> {
                 let balances = transfer_balances_to_merchant(
                     *closing_message.customer_balance(),
@@ -375,7 +376,7 @@ pub async fn finalize_expiry(
             channel_name
         ))??;
 
-    // Update final balances to indicate that the customer balance is paid out to the customer
+    // Save final balances (with all money going to the merchant)
     database
         .update_closing_balances(channel_name, merchant_balance, Some(customer_balance))
         .await
