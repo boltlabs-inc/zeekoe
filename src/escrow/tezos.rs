@@ -22,9 +22,6 @@ lazy_static::lazy_static! {
 /// The default confirmation depth to consider chain operations to be final.
 pub const DEFAULT_CONFIRMATION_DEPTH: u64 = 1; // FIXME: put this back to 20 after testing
 
-/// The default `self_delay` parameter: 2 days, in seconds.
-pub const DEFAULT_SELF_DELAY: u64 = 2 * 24 * 60 * 60;
-
 /// The default `revocation_lock`: a hex-encoded string which pytezos reads as a scalar 0.
 const DEFAULT_REVOCATION_LOCK: &str = "0x00";
 

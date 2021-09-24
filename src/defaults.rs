@@ -29,6 +29,11 @@ pub(crate) mod shared {
     pub const fn port() -> u16 {
         2611
     }
+
+    pub const fn self_delay() -> u64 {
+        // 2 days, in seconds.
+        2 * 24 * 60 * 60
+    }
 }
 
 pub mod merchant {
