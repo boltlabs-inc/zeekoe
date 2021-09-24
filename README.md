@@ -119,9 +119,18 @@ $ ./target/debug/zkchannel merchant --config "./dev/Merchant.toml" run
 serving on: [::1]:2611
 ```
 
-Leaving the merchant running, we can now act as the customer to establish a new zkChannel with
-the merchant, making an initial deposit of 5 XTZ. We're specifying here that we'd like to give this
-channel the nickname "my-first-zkchannel", so we can keep track of it by a human-readable name.
+This sets up the merchant server and creates a separate thread that watches the chain and reacts to
+any changes in the merchant's open contracts. We must also run a customer chain watcher. These 
+watchers must continue to run the entire time that a party has any open channels.
+Failure to run the watcher can result in loss of funds!
+
+```bash
+$ ./target/debug/zkchannel customer --config "./dev/Customer.toml" watch
+```
+
+Once the chain watchers are running, the customer can establish a new zkChannel with
+the merchant, making an initial deposit of 5 XTZ. We specify a human-readable nickname
+"my-first-zkchannel" to more easily keep track of the channel.
 
 As with the merchant, we specify a local configuration file using the `--config` flag, which
 overrides the default location of the customer configuration file. This configuration file puts the
@@ -184,18 +193,31 @@ $ ./target/debug/zkchannel customer --config "./dev/Customer.toml" list
 └────────────────────┴───────┴───────────┴────────────┴──────────────────────────────────────────────┘
 ```
 
-Finally, after some number of payments, we can close the channel.
+Finally, after some number of payments, either party can close the channel. When a close procedure
+is initiated, no further payments can be made on the channel. If the customer initiates, it runs:
 
 ```bash
 $ ./target/debug/zkchannel customer --config "./dev/Customer.toml" close --force my-first-zkchannel
-Closing data written to "6827e5ed90227b0f7afca7be8a8f756ce83275ed1b43744a0bcec695b43526db.close.json"
+<output omitted>
 ```
 
-Just as in the channel establishment protocol, an external tool in this repository can consume the
-closing data to close the contract on chain and recover the current balance of the channel. This
-will shortly be integrated into the functionality of `zkchannel customer close` itself.
+This command posts the current channel balances on chain. The merchant's chain watcher will see the
+post and make sure it is valid. If it is valid, the customer's chain watcher will claim their
+balance after 48 hours. If it is not, the merchant's chain watcher will immediately post proof that
+the balances are outdated and claim the full channel balance.
 
-Finally, we can see that the channel is now closed. No further payments can be made on this channel.
+If the merchant initiates, it runs:
+
+```bash
+$ ./target/debug/zkchannel merchant --config "./dev/Merchant.toml" \
+    close --channel aCfl7ZAiew96/Ke+io91bOgyde0bQ3RKC87GlbQ1Jts=
+```
+
+The customer's chain watcher will observe the change to the contract. If necessary, it will
+post the correct channel balances, and the close procedure will continue as above. Otherwise,
+the merchant will claim the full balance of the channel after 48 hours.
+
+Once these steps are complete, we can see that the channel is successfully closed. 
 
 ```bash
 $ ./target/debug/zkchannel customer --config "./dev/Customer.toml" list
@@ -206,7 +228,7 @@ $ ./target/debug/zkchannel customer --config "./dev/Customer.toml" list
 └────────────────────┴────────┴───────────┴────────────┴──────────────────────────────────────────────┘
 ```
 
-The merchant server may now be stopped by pressing ^C.
+The merchant server and customer chain watcher may now be stopped by pressing ^C.
 
 ## Development
 

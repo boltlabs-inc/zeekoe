@@ -33,7 +33,7 @@ pub enum Customer {
     Pay(Pay),
     Refund(Refund),
     Close(Close),
-    Run(Watch),
+    Watch(Watch),
 }
 
 /// List all the zkChannels you've established with merchants.

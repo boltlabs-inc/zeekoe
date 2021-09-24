@@ -63,7 +63,7 @@ pub async fn main_with_cli(cli: Cli) -> Result<(), anyhow::Error> {
         Pay(pay) => pay.run(rng, config.await?).await,
         Refund(refund) => refund.run(rng, config.await?).await,
         Close(close) => close.run(rng, config.await?).await,
-        Run(run) => run.run(rng, config.await?).await,
+        Watch(watch) => watch.run(rng, config.await?).await,
     }
 }
 
