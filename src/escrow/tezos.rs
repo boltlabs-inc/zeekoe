@@ -372,7 +372,7 @@ impl FinalBalances {
     }
 }
 
-fn vec_equals<T: PartialEq>(a: &Vec<T>, b: &Vec<T>) -> bool {
+fn vec_equals<T: PartialEq>(a: &[T], b: &[T]) -> bool {
     let matching = a.iter().zip(b.iter()).filter(|&(a, b)| a == b).count();
     matching == a.len() && matching == b.len()
 }
@@ -501,7 +501,7 @@ impl ContractState {
                     &self.revocation_lock_bytes.clone().try_into().map_err(|_| {
                         ContractStateError::ParseRevocationLock(self.revocation_lock_bytes.clone())
                     })?;
-                let revocation_lock = RevocationLock::from_bytes(&revocation_lock_bytes)
+                let revocation_lock = RevocationLock::from_bytes(revocation_lock_bytes)
                     .ok_or_else(|| {
                         ContractStateError::ParseRevocationLock(self.revocation_lock_bytes.clone())
                     })?;
@@ -804,6 +804,7 @@ pub mod establish {
     /// This function will return [`VerificationError`] if the contract is not a valid
     /// zkChannels contract or it does not have the expected storage.
     #[allow(unused)]
+    #[allow(clippy::too_many_arguments)]
     pub async fn verify_origination(
         uri: Option<&http::Uri>,
         tezos_key_material: &TezosKeyMaterial,
@@ -856,9 +857,7 @@ pub mod establish {
         let (g2, y2s, x2) = contract_state.merchant_public_key();
         let (g2, y2s, x2) = (
             hex_string(g2),
-            y2s.iter()
-                .map(|y2| hex_string(&y2))
-                .collect::<Vec<String>>(),
+            y2s.iter().map(|y2| hex_string(y2)).collect::<Vec<String>>(),
             hex_string(x2),
         );
 

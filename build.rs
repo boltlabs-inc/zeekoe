@@ -8,10 +8,12 @@ fn main() -> Result<(), CanonicalizeError> {
 
     let contract_json = include_str!("src/escrow/zkchannels_contract.json");
     let canonical_contract_json = canonicalize_json_micheline(contract_json)?;
-    std::fs::write(CANONICAL_CONTRACT_PATH, canonical_contract_json).expect(&format!(
-        "Unable to write canonicalized contract to {}",
-        CANONICAL_CONTRACT_PATH
-    ));
+    std::fs::write(CANONICAL_CONTRACT_PATH, canonical_contract_json).unwrap_or_else(|_| {
+        panic!(
+            "Unable to write canonicalized contract to {}",
+            CANONICAL_CONTRACT_PATH
+        )
+    });
 
     Ok(())
 }
