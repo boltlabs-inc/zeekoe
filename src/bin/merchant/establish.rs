@@ -216,7 +216,7 @@ async fn approve_and_establish(
         .await
         .context("Failed to receive contract origination level from the customer")?;
 
-    tezos::establish::verify_origination(
+    match tezos::establish::verify_origination(
         Some(tezos_uri),
         merchant_key_material,
         &contract_id,
@@ -226,7 +226,14 @@ async fn approve_and_establish(
         customer_deposit,
         zkabacus_merchant_config.signing_keypair().public_key(),
     )
-    .await;
+    .await
+    {
+        Ok(()) => {}
+        Err(err) => {
+            eprintln!("Warning: {}", err);
+            abort!(in chan return establish::Error::FailedVerifyOrigination);
+        }
+    };
 
     // TODO: otherwise, if any of these checks fail, invoke `abort!`
 
@@ -242,7 +249,7 @@ async fn approve_and_establish(
         .await
         .context("Failed to insert new channel_id, contract_id in database")?;
 
-    tezos::establish::verify_customer_funding(
+    match tezos::establish::verify_customer_funding(
         &merchant_deposit,
         Some(tezos_uri),
         merchant_key_material,
@@ -250,7 +257,13 @@ async fn approve_and_establish(
         tezos::DEFAULT_CONFIRMATION_DEPTH,
     )
     .await
-    .unwrap_or_else(|err| eprintln!("Could not verify customer funding: {}", err));
+    {
+        Ok(()) => {}
+        Err(err) => {
+            eprintln!("Warning: {}", err);
+            abort!(in chan return establish::Error::FailedVerifyCustomerFunding);
+        }
+    };
 
     // TODO: otherwise, if any of these checks fail, invoke `abort!`
 
