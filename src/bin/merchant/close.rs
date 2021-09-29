@@ -227,18 +227,16 @@ pub async fn finalize_customer_close(
                     channel_id
                 ))
         }
-        // If database status is Dispute, update merchant final balance to include the merchant
-        // balance.
-        ChannelStatus::Dispute => database
-            .update_closing_balances(channel_id, &ChannelStatus::Dispute, merchant_balance, None)
-            .await
-            .context(format!(
-                "Failed to save merchant's final balance for after successful dispute (id = {})",
-                channel_id
-            )),
+        // If status is Dispute or Closed, then there has been a successful dispute operation
+        ChannelStatus::Dispute | ChannelStatus::Closed => Ok(()),
+        // Any other status is unexpected and incorrect.
         _ => Err(Error::UnexpectedChannelStatus {
             channel_id: *channel_id,
-            expected: vec![ChannelStatus::PendingClose, ChannelStatus::Dispute],
+            expected: vec![
+                ChannelStatus::PendingClose,
+                ChannelStatus::Dispute,
+                ChannelStatus::Closed,
+            ],
             found: current_status,
         }
         .into()),

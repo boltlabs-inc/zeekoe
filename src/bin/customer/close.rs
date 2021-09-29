@@ -188,6 +188,10 @@ async fn finalize_customer_close(
 /// **Usage**: this function is called when
 /// the contract's customer claim delay has passed *and* the custClose entrypoint call/operation
 /// is confirmed on chain at any depth.
+//
+// Note to developers: This function reverts the status update if the `cust_claim` entrypoint call
+// fails. This revert is only valid if no other state changes in this function!
+// DO NOT ADD STATE CHANGES without first removing the status update.
 pub async fn claim_funds(
     database: &dyn QueryCustomer,
     config: &Config,
@@ -218,7 +222,7 @@ pub async fn claim_funds(
                 .ok_or_else(|| anyhow::anyhow!("Failed to claim customer funds for {} because contract details were not correctly saved", channel_name))?;
 
             // Post custClaim entrypoint on chain and wait for it to be confirmed
-            tezos::close::cust_claim(
+            match tezos::close::cust_claim(
                 Some(&config.tezos_uri),
                 &contract_id,
                 customer_key_material,
@@ -228,9 +232,21 @@ pub async fn claim_funds(
             .context(format!(
                 "Failed to claim customer funds for {}",
                 channel_name.clone()
-            ))?;
-
-            Ok(())
+            )) {
+                Ok(_) => Ok(()),
+                Err(e) =>  {
+                // If `custClaim` didn't post correctly, revert state back to PendingClose
+                database.with_channel_state(
+                    channel_name,
+                    zkchannels_state::PendingCustomerClaim,
+                    |closing_message| -> Result<_, Infallible> {
+                        Ok((State::PendingClose(closing_message), ()))
+                    },
+                )
+                .await??;
+                Err(e)
+                }
+            }
         }
         // If it is Dispute, do nothing
         State::Dispute(_) => Ok(()),
