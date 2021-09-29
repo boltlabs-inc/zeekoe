@@ -235,8 +235,6 @@ async fn approve_and_establish(
         }
     };
 
-    // TODO: otherwise, if any of these checks fail, invoke `abort!`
-
     // Store the channel information in the database
     database
         .new_channel(
@@ -264,8 +262,6 @@ async fn approve_and_establish(
             abort!(in chan return establish::Error::FailedVerifyCustomerFunding);
         }
     };
-
-    // TODO: otherwise, if any of these checks fail, invoke `abort!`
 
     // Transition the contract state in the database from originated to customer-funded
     database

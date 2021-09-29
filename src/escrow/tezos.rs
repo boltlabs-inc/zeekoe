@@ -388,12 +388,12 @@ fn pointcheval_sanders_public_key_to_python_input(
     public_key: &zkabacus_crypto::PublicKey,
 ) -> (String, Vec<String>, String) {
     let zkabacus_crypto::PublicKey { g2, y2s, x2, .. } = public_key;
-    let g2 = hex_string(&g2.to_uncompressed().to_vec());
+    let g2 = hex_string(&g2.to_uncompressed());
     let y2s = y2s
         .iter()
-        .map(|y2| hex_string(&y2.to_uncompressed().to_vec()))
+        .map(|y2| hex_string(&y2.to_uncompressed()))
         .collect::<Vec<_>>();
-    let x2 = hex_string(&x2.to_uncompressed().to_vec());
+    let x2 = hex_string(&x2.to_uncompressed());
 
     (g2, y2s, x2)
 }
@@ -712,7 +712,7 @@ pub mod establish {
         let customer_account_key = originator_key_pair.private_key().to_base58check();
         let customer_funding = customer_funding_info.balance.into_inner();
         let customer_address = customer_funding_info.address.to_base58check();
-        let channel_id = hex_string(&channel_id.to_bytes().to_vec());
+        let channel_id = hex_string(&channel_id.to_bytes());
         let uri = uri.map(|uri| uri.to_string());
 
         async move {
@@ -803,7 +803,6 @@ pub mod establish {
     ///
     /// This function will return [`VerificationError`] if the contract is not a valid
     /// zkChannels contract or it does not have the expected storage.
-    #[allow(unused)]
     #[allow(clippy::too_many_arguments)]
     pub async fn verify_origination(
         uri: Option<&http::Uri>,
@@ -818,15 +817,19 @@ pub mod establish {
         let contract_state =
             get_contract_state(uri, tezos_key_material, contract_id, confirmation_depth).await?;
 
-        match contract_state.status()? {
-            ContractStatus::AwaitingCustomerFunding => Ok::<_, VerificationError>(()),
-            actual => {
-                return Err(VerificationError::UnexpectedContractStatus {
-                    expected: ContractStatus::AwaitingCustomerFunding,
-                    actual,
-                })
-            }
-        };
+        // TODO: Ensure contract status is as expected on-chain. We need to rework the flow to
+        // support this, because as things currently stand, we do not know at what depth the
+        // contract was originated.
+        //
+        // match contract_state.status()? {
+        //     ContractStatus::AwaitingCustomerFunding => Ok::<_, VerificationError>(()),
+        //     actual => {
+        //         return Err(VerificationError::UnexpectedContractStatus {
+        //             expected: ContractStatus::AwaitingCustomerFunding,
+        //             actual,
+        //         })
+        //     }
+        // };
 
         if contract_state.self_delay() != self_delay {
             return Err(VerificationError::UnexpectedSelfDelay {
@@ -861,7 +864,7 @@ pub mod establish {
             hex_string(x2),
         );
 
-        if (g2 != expected_g2 || !vec_equals(&y2s, &expected_y2s) || x2 != expected_x2) {
+        if g2 != expected_g2 || !vec_equals(&y2s, &expected_y2s) || x2 != expected_x2 {
             return Err(VerificationError::UnexpectedMerchantKey);
         }
 
@@ -1208,7 +1211,7 @@ pub mod close {
     {
         let customer_balance = close_message.customer_balance().into_inner();
         let merchant_balance = close_message.merchant_balance().into_inner();
-        let revocation_lock = hex_string(&close_message.revocation_lock().as_bytes().to_vec());
+        let revocation_lock = hex_string(&close_message.revocation_lock().as_bytes());
         let customer_private_key = customer_key_pair.private_key().to_base58check();
         let contract_id = contract_id.clone().to_originated_address().to_base58check();
         let (sigma1, sigma2) = close_message.closing_signature().clone().as_bytes();
@@ -1261,7 +1264,7 @@ pub mod close {
     {
         let merchant_private_key = merchant_key_pair.private_key().to_base58check();
         let contract_id = contract_id.clone().to_originated_address().to_base58check();
-        let revocation_secret = hex_string(&revocation_secret.as_bytes().to_vec());
+        let revocation_secret = hex_string(&revocation_secret.as_bytes());
         let uri = uri.map(|uri| uri.to_string());
 
         async move {
