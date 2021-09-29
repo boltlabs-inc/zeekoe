@@ -238,6 +238,7 @@ pub mod establish {
     };
 
     pub type MerchantApproveEstablish = Session! {
+        // Let the merchant decide whether they want to open the channel as described
         OfferAbort<MerchantSupplyInfo, Error>;
     };
 
@@ -250,21 +251,30 @@ pub mod establish {
 
     pub type CustomerSupplyProof = Session! {
         send EstablishProof;
+        // Let the merchant verify the proof
         OfferAbort<MerchantSupplyClosingSignature, Error>;
     };
 
     pub type MerchantSupplyClosingSignature = Session! {
         recv ClosingSignature;
+        // Let the customer verify the signature
         ChooseAbort<CustomerSupplyContractInfo, Error>;
     };
 
     pub type CustomerSupplyContractInfo = Session! {
         send ContractId;
         send Level;
+        // Let the merchant make sure the contract was correctly originated
+        OfferAbort<MerchantVerifyCustomerFunding, Error>;
+    };
+
+    pub type MerchantVerifyCustomerFunding = Session! {
+        // Let the merchant make sure the contract was correctly funded
         OfferAbort<CustomerVerifyMerchantFunding, Error>;
     };
 
     pub type CustomerVerifyMerchantFunding = Session! {
+        // Let the customer make sure the merchant funded the contract
         ChooseAbort<Activate, Error>;
     };
 
@@ -304,12 +314,14 @@ pub mod close {
     pub type CustomerSendSignature = Session! {
         send CloseStateSignature;
         send CloseState;
+        // Let the merchant check whether the `CloseState` is outdated
         OfferAbort<MerchantSendAuthorization, Error>
     };
 
     pub type MerchantSendAuthorization = Session! {
         // Tezos authorization signature
         recv MutualCloseAuthorizationSignature;
+        // Let the merchant verify the signature
         ChooseAbort<Done, Error>
     };
 }
@@ -342,6 +354,7 @@ pub mod pay {
     pub type Pay = Session! {
         send PaymentAmount;
         send String; // Payment note
+        // Let the merchant decide if it wants to allow the described payment
         OfferAbort<CustomerStartPayment, Error>;
     };
 
@@ -349,11 +362,13 @@ pub mod pay {
     pub type CustomerStartPayment = Session! {
         send Nonce;
         send PayProof;
+        // Let the merchant check that the `PayProof` is valid
         OfferAbort<MerchantAcceptPayment, Error>;
     };
 
     pub type MerchantAcceptPayment = Session! {
         recv ClosingSignature;
+        // Let the customer verify the signature
         ChooseAbort<CustomerRevokePreviousPayToken, Error>;
     };
 
@@ -361,6 +376,7 @@ pub mod pay {
         send RevocationLock;
         send RevocationSecret;
         send RevocationLockBlindingFactor;
+        // Let the merchant verify that the revocation information is valid
         OfferAbort<MerchantIssueNewPayToken, Error>;
     };
 
