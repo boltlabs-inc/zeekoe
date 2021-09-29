@@ -236,7 +236,6 @@ async fn approve_and_establish(
         .new_channel(
             &channel_id,
             &contract_id,
-            &0.into(), // TODO: Remove
             &merchant_deposit,
             &customer_deposit,
         )
@@ -298,7 +297,7 @@ async fn approve_and_establish(
         )
         .await
         {
-            Ok((tezos::OperationStatus::Applied, _)) => {}
+            Ok(tezos::OperationStatus::Applied) => {}
             _ => abort!(in chan return establish::Error::FailedMerchantFunding),
         }
     }

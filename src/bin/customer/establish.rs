@@ -215,7 +215,7 @@ impl Command for Establish {
             public_key: tezos_public_key.clone(),
         };
 
-        let (contract_id, origination_status, origination_level) = if self.off_chain {
+        let (contract_id, origination_status) = if self.off_chain {
             // TODO: prompt user to submit the origination of the contract
             todo!("prompt user to submit contract origination details")
         } else {
@@ -253,7 +253,7 @@ impl Command for Establish {
             ))??;
 
         database
-            .initialize_contract_details(&actual_label, &contract_id, origination_level)
+            .initialize_contract_details(&actual_label, &contract_id)
             .await
             .context(format!(
                 "Failed to store contract details for {}",
@@ -269,7 +269,7 @@ impl Command for Establish {
         // Allow the merchant to verify origination
         offer_abort!(in chan as Customer);
 
-        let (customer_funding_status, _customer_funding_level) = if self.off_chain {
+        let customer_funding_status = if self.off_chain {
             // TODO: prompt user to fund the contract on chain
             todo!("prompt user to fund contract on chain and submit details")
         } else {
@@ -438,7 +438,6 @@ async fn get_parameters(
         ContractDetails {
             merchant_tezos_public_key,
             contract_id: None,
-            contract_level: None,
         },
     ))
 }

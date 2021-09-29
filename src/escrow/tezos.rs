@@ -75,16 +75,15 @@ fn python_context() -> inline_python::Context {
             // Originate main zkchannel contract
             out = cust_py.origination(script=main_code.script(initial_storage=initial_storage)).autofill().sign().send(min_confirmations=min_confirmations)
 
-            // Get address, status, and level of main zkchannel contract
+            // Get address, status of main zkchannel contract
             search_depth = 2 * min_confirmations
             op_info = pytezos.using(shell=uri).shell.blocks[-search_depth:].find_operation(out.hash())
             contents = op_info["contents"][0]
             contract_id = contents["metadata"]["operation_result"]["originated_contracts"][0]
             status = contents["metadata"]["operation_result"]["status"]
             block = op_info["branch"]
-            level = 1 // TODO: get the level where the operation was confirmed
 
-            return (contract_id, status, level)
+            return (contract_id, status)
 
         // Call the `addCustFunding` entrypoint of an extant contract
         def add_customer_funding(
@@ -103,15 +102,14 @@ fn python_context() -> inline_python::Context {
             // Call the addCustFunding entrypoint
             out = cust_ci.addCustFunding().with_amount(cust_funding).send(min_confirmations=min_confirmations)
 
-            // Get status and level of the addCustFunding operation
+            // Get status of the addCustFunding operation
             search_depth = 2 * min_confirmations
             op_info = pytezos.using(shell=uri).shell.blocks[-search_depth:].find_operation(out.hash())
             contents = op_info["contents"][0]
             status = contents["metadata"]["operation_result"]["status"]
             block = op_info["branch"]
-            level = 1 // TODO: get the level where the operation was confirmed
 
-            return (status, level)
+            return status
 
         // Get the state of a contract.
         def contract_state(
@@ -153,14 +151,13 @@ fn python_context() -> inline_python::Context {
             // Call the addMerchFunding entrypoint
             out = merch_ci.addMerchFunding().with_amount(merch_funding).send(min_confirmations=min_confirmations)
 
-            // Get status and level of the addMerchFunding operation
+            // Get status of the addMerchFunding operation
             search_depth = 2 * min_confirmations
             op_info = pytezos.using(shell=uri).shell.blocks[-search_depth:].find_operation(out.hash())
             contents = op_info["contents"][0]
             status = contents["metadata"]["operation_result"]["status"]
-            level = 1 // TODO: get the level where the operation was confirmed
 
-            return (status, level)
+            return status
 
         def cust_close(
             uri,
@@ -189,14 +186,13 @@ fn python_context() -> inline_python::Context {
             // Call the custClose entrypoint
             out = cust_ci.custClose(close_storage).send(min_confirmations=min_confirmations)
 
-            // Get status and level of the operation
+            // Get status of the operation
             search_depth = 2 * min_confirmations
             op_info = pytezos.using(shell=uri).shell.blocks[-search_depth:].find_operation(out.hash())
             contents = op_info["contents"][0]
             status = contents["metadata"]["operation_result"]["status"]
-            level = 1 // TODO: get the level where the operation was confirmed
 
-            return (status, level)
+            return status
 
         def cust_claim(
             uri,
@@ -213,14 +209,13 @@ fn python_context() -> inline_python::Context {
             // Call the custClaim entrypoint
             out = cust_ci.custClaim().send(min_confirmations=min_confirmations)
 
-            // Get status and level of the operation
+            // Get status of the operation
             search_depth = 2 * min_confirmations
             op_info = pytezos.using(shell=uri).shell.blocks[-search_depth:].find_operation(out.hash())
             contents = op_info["contents"][0]
             status = contents["metadata"]["operation_result"]["status"]
-            level = 1 // TODO: get the level where the operation was confirmed
 
-            return (status, level)
+            return status
 
         def reclaim_funding(
             uri,
@@ -237,14 +232,13 @@ fn python_context() -> inline_python::Context {
             // Call the reclaimFunding entrypoint
             out = cust_ci.reclaimFunding().send(min_confirmations=min_confirmations)
 
-            // Get status and level of the operation
+            // Get status of the operation
             search_depth = 2 * min_confirmations
             op_info = pytezos.using(shell=uri).shell.blocks[-search_depth:].find_operation(out.hash())
             contents = op_info["contents"][0]
             status = contents["metadata"]["operation_result"]["status"]
-            level = 1 // TODO: get the level where the operation was confirmed
 
-            return (status, level)
+            return status
 
         def expiry(
             uri,
@@ -261,14 +255,13 @@ fn python_context() -> inline_python::Context {
             // Call the expiry entrypoint
             out = merch_ci.expiry().send(min_confirmations=min_confirmations)
 
-            // Get status and level of the operation
+            // Get status of the operation
             search_depth = 2 * min_confirmations
             op_info = pytezos.using(shell=uri).shell.blocks[-search_depth:].find_operation(out.hash())
             contents = op_info["contents"][0]
             status = contents["metadata"]["operation_result"]["status"]
-            level = 1 // TODO: get the level where the operation was confirmed
 
-            return (status, level)
+            return status
 
         def merch_claim(
             uri,
@@ -285,14 +278,13 @@ fn python_context() -> inline_python::Context {
             // Call the merchClaim entrypoint
             out = merch_ci.merchClaim().send(min_confirmations=min_confirmations)
 
-            // Get status and level of the operation
+            // Get status of the operation
             search_depth = 2 * min_confirmations
             op_info = pytezos.using(shell=uri).shell.blocks[-search_depth:].find_operation(out.hash())
             contents = op_info["contents"][0]
             status = contents["metadata"]["operation_result"]["status"]
-            level = 1 // TODO: get the level where the operation was confirmed
 
-            return (status, level)
+            return status
 
         def merch_dispute(
             uri,
@@ -310,14 +302,13 @@ fn python_context() -> inline_python::Context {
             // Call the merchDispute entrypoint
             out = merch_ci.merchDispute(revocation_secret).send(min_confirmations=min_confirmations)
 
-            // Get status and level of the operation
+            // Get status of the operation
             search_depth = 2 * min_confirmations
             op_info = pytezos.using(shell=uri).shell.blocks[-search_depth:].find_operation(out.hash())
             contents = op_info["contents"][0]
             status = contents["metadata"]["operation_result"]["status"]
-            level = 1 // TODO: get the level where the operation was confirmed
 
-            return (status, level)
+            return status
 
         def mutual_close(
             uri,
@@ -343,14 +334,13 @@ fn python_context() -> inline_python::Context {
             // Call the mutualClose entrypoint
             out = cust_ci.mutualClose(mutual_close_storage).send(min_confirmations=min_confirmations)
 
-            // Get status and level of the operation
+            // Get status of the operation
             search_depth = 2 * min_confirmations
             op_info = pytezos.using(shell=uri).shell.blocks[-search_depth:].find_operation(out.hash())
             contents = op_info["contents"][0]
             status = contents["metadata"]["operation_result"]["status"]
-            level = 1 // TODO: get the level where the operation was confirmed
 
-            return (status, level)
+            return status
     };
     drop(mutex);
     context
@@ -633,7 +623,6 @@ pub mod establish {
     use tokio::task::JoinError;
 
     use super::*;
-    use crate::escrow::notify::Level;
     use zkabacus_crypto::{ChannelId, PublicKey};
 
     #[allow(unused)]
@@ -682,7 +671,7 @@ pub mod establish {
     /// Originate a contract on chain.
     ///
     /// This call will wait until the contract is confirmed at depth. It returns the new
-    /// [`ContractId`] and the [`Level`] of the block that contains the originated contract.
+    /// [`ContractId`].
     ///
     /// The `originator_key_pair` should belong to whichever party originates the contract.
     /// Currently, this must be called by the customer. Its public key must be the same as the one
@@ -700,9 +689,8 @@ pub mod establish {
         channel_id: &ChannelId,
         confirmation_depth: u64,
         self_delay: u64,
-    ) -> impl Future<Output = Result<(ContractId, OperationStatus, Level), OriginateError>>
-           + Send
-           + 'static {
+    ) -> impl Future<Output = Result<(ContractId, OperationStatus), OriginateError>> + Send + 'static
+    {
         let (g2, y2s, x2) =
             super::pointcheval_sanders_public_key_to_python_input(merchant_public_key);
         let merchant_funding = merchant_funding_info.balance.into_inner();
@@ -732,12 +720,12 @@ pub mod establish {
                     )
                 });
 
-                let (contract_id, status, level) = context.get::<(String, String, u32)>("out");
+                let (contract_id, status) = context.get::<(String, String)>("out");
                 let contract_id = ContractId::new(
                     OriginatedAddress::from_base58check(&contract_id)
                         .expect("Contract id returned from pytezos must be valid base58"),
                 );
-                (contract_id, status.parse().unwrap(), level.into())
+                (contract_id, status.parse().unwrap())
             })
             .await
             .map_err(OriginateError)
@@ -761,8 +749,7 @@ pub mod establish {
         customer_funding_info: &CustomerFundingInformation,
         customer_key_pair: &TezosKeyMaterial,
         confirmation_depth: u64,
-    ) -> impl Future<Output = Result<(OperationStatus, Level), CustomerFundError>> + Send + 'static
-    {
+    ) -> impl Future<Output = Result<(OperationStatus), CustomerFundError>> + Send + 'static {
         let customer_funding = customer_funding_info.balance.into_inner();
         let customer_private_key = customer_key_pair.private_key().to_base58check();
         let customer_pubkey = customer_funding_info.public_key.to_base58check();
@@ -782,8 +769,8 @@ pub mod establish {
                     )
                 });
 
-                let (status, level) = context.get::<(String, u32)>("out");
-                (status.parse().unwrap(), level.into())
+                let status = context.get::<String>("out");
+                status.parse().unwrap()
             })
             .await
             .map_err(CustomerFundError)
@@ -951,8 +938,7 @@ pub mod establish {
         merchant_funding_info: &MerchantFundingInformation,
         merchant_key_pair: &TezosKeyMaterial,
         confirmation_depth: u64,
-    ) -> impl Future<Output = Result<(OperationStatus, Level), CustomerFundError>> + Send + 'static
-    {
+    ) -> impl Future<Output = Result<OperationStatus, CustomerFundError>> + Send + 'static {
         let merchant_funding = merchant_funding_info.balance.into_inner();
         let merchant_private_key = merchant_key_pair.private_key().to_base58check();
         let merchant_pubkey = merchant_funding_info.public_key.to_base58check();
@@ -972,8 +958,8 @@ pub mod establish {
                     )
                 });
 
-                let (status, level) = context.get::<(String, u32)>("out");
-                (status.parse().unwrap(), level.into())
+                let status = context.get::<String>("out");
+                status.parse().unwrap()
             })
             .await
             .map_err(CustomerFundError)
@@ -994,8 +980,7 @@ pub mod establish {
         contract_id: &ContractId,
         customer_key_pair: &TezosKeyMaterial,
         confirmation_depth: u64,
-    ) -> impl Future<Output = Result<(OperationStatus, Level), ReclaimFundingError>> + Send + 'static
-    {
+    ) -> impl Future<Output = Result<OperationStatus, ReclaimFundingError>> + Send + 'static {
         let customer_private_key = customer_key_pair.private_key().to_base58check();
         let contract_id = contract_id.clone().to_originated_address().to_base58check();
         let uri = uri.map(|uri| uri.to_string());
@@ -1012,8 +997,8 @@ pub mod establish {
                     )
                 });
 
-                let (status, level) = context.get::<(String, u32)>("out");
-                (status.parse().unwrap(), level.into())
+                let status = context.get::<String>("out");
+                status.parse().unwrap()
             })
             .await
             .map_err(ReclaimFundingError)
@@ -1024,7 +1009,6 @@ pub mod establish {
 pub mod close {
     use super::python_context;
     use crate::escrow::{
-        notify::Level,
         tezos::{hex_string, OperationStatus},
         types::*,
     };
@@ -1124,7 +1108,7 @@ pub mod close {
         contract_id: &ContractId,
         merchant_key_pair: &TezosKeyMaterial,
         confirmation_depth: u64,
-    ) -> impl Future<Output = Result<(OperationStatus, Level), ExpiryError>> + Send + 'static {
+    ) -> impl Future<Output = Result<OperationStatus, ExpiryError>> + Send + 'static {
         let merchant_private_key = merchant_key_pair.private_key().to_base58check();
         let contract_id = contract_id.clone().to_originated_address().to_base58check();
         let uri = uri.map(|uri| uri.to_string());
@@ -1136,8 +1120,8 @@ pub mod close {
                     out = expiry('uri, 'merchant_private_key, 'contract_id, 'confirmation_depth)
                 });
 
-                let (status, level) = context.get::<(String, u32)>("out");
-                (status.parse().unwrap(), level.into())
+                let status = context.get::<String>("out");
+                status.parse().unwrap()
             })
             .await
             .map_err(ExpiryError)
@@ -1161,8 +1145,7 @@ pub mod close {
         contract_id: &ContractId,
         merchant_key_pair: &TezosKeyMaterial,
         confirmation_depth: u64,
-    ) -> impl Future<Output = Result<(OperationStatus, Level), MerchantClaimError>> + Send + 'static
-    {
+    ) -> impl Future<Output = Result<OperationStatus, MerchantClaimError>> + Send + 'static {
         let merchant_private_key = merchant_key_pair.private_key().to_base58check();
         let contract_id = contract_id.clone().to_originated_address().to_base58check();
         let uri = uri.map(|uri| uri.to_string());
@@ -1179,8 +1162,8 @@ pub mod close {
                     )
                 });
 
-                let (status, level) = context.get::<(String, u32)>("out");
-                (status.parse().unwrap(), level.into())
+                let status = context.get::<String>("out");
+                status.parse().unwrap()
             })
             .await
             .map_err(MerchantClaimError)
@@ -1207,8 +1190,7 @@ pub mod close {
         close_message: &ClosingMessage,
         customer_key_pair: &TezosKeyMaterial,
         confirmation_depth: u64,
-    ) -> impl Future<Output = Result<(OperationStatus, Level), CustomerCloseError>> + Send + 'static
-    {
+    ) -> impl Future<Output = Result<OperationStatus, CustomerCloseError>> + Send + 'static {
         let customer_balance = close_message.customer_balance().into_inner();
         let merchant_balance = close_message.merchant_balance().into_inner();
         let revocation_lock = hex_string(&close_message.revocation_lock().as_bytes());
@@ -1235,8 +1217,8 @@ pub mod close {
                     )
                 });
 
-                let (status, level) = context.get::<(String, u32)>("out");
-                (status.parse().unwrap(), level.into())
+                let status = context.get::<String>("out");
+                status.parse().unwrap()
             })
             .await
             .map_err(CustomerCloseError)
@@ -1260,8 +1242,7 @@ pub mod close {
         revocation_secret: &RevocationSecret,
         merchant_key_pair: &TezosKeyMaterial,
         confirmation_depth: u64,
-    ) -> impl Future<Output = Result<(OperationStatus, Level), MerchantDisputeError>> + Send + 'static
-    {
+    ) -> impl Future<Output = Result<OperationStatus, MerchantDisputeError>> + Send + 'static {
         let merchant_private_key = merchant_key_pair.private_key().to_base58check();
         let contract_id = contract_id.clone().to_originated_address().to_base58check();
         let revocation_secret = hex_string(&revocation_secret.as_bytes());
@@ -1280,8 +1261,8 @@ pub mod close {
                     )
                 });
 
-                let (status, level) = context.get::<(String, u32)>("out");
-                (status.parse().unwrap(), level.into())
+                let status = context.get::<String>("out");
+                status.parse().unwrap()
             })
             .await
             .map_err(MerchantDisputeError)
@@ -1304,8 +1285,7 @@ pub mod close {
         contract_id: &ContractId,
         customer_key_pair: &TezosKeyMaterial,
         confirmation_depth: u64,
-    ) -> impl Future<Output = Result<(OperationStatus, Level), CustomerClaimError>> + Send + 'static
-    {
+    ) -> impl Future<Output = Result<OperationStatus, CustomerClaimError>> + Send + 'static {
         let customer_private_key = customer_key_pair.private_key().to_base58check();
         let contract_id = contract_id.clone().to_originated_address().to_base58check();
         let uri = uri.map(|uri| uri.to_string());
@@ -1322,8 +1302,8 @@ pub mod close {
                     )
                 });
 
-                let (status, level) = context.get::<(String, u32)>("out");
-                (status.parse().unwrap(), level.into())
+                let status = context.get::<String>("out");
+                status.parse().unwrap()
             })
             .await
             .map_err(CustomerClaimError)
@@ -1368,7 +1348,7 @@ pub mod close {
         authorization_signature: &MutualCloseAuthorizationSignature,
         merchant_key_pair: &TezosKeyMaterial,
         confirmation_depth: u64,
-    ) -> impl Future<Output = Result<(OperationStatus, Level), Error>> + Send + 'static {
+    ) -> impl Future<Output = Result<OperationStatus, Error>> + Send + 'static {
         async move { todo!() }
     }
 

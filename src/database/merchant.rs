@@ -2,10 +2,7 @@ use {async_trait::async_trait, futures::StreamExt, rand::rngs::StdRng, thiserror
 
 pub use super::connect_sqlite;
 use crate::database::SqlitePool;
-use crate::{
-    escrow::{notify::Level, types::ContractId},
-    protocol::ChannelStatus,
-};
+use crate::{escrow::types::ContractId, protocol::ChannelStatus};
 use serde::{Deserialize, Serialize};
 use zkabacus_crypto::{
     revlock::{RevocationLock, RevocationSecret},
@@ -43,7 +40,6 @@ pub trait QueryMerchant: Send + Sync {
         &self,
         channel_id: &ChannelId,
         contract_id: &ContractId,
-        level: &Level,
         merchant_deposit: &MerchantBalance,
         customer_deposit: &CustomerBalance,
     ) -> Result<()>;
@@ -93,7 +89,7 @@ pub trait QueryMerchant: Send + Sync {
     ) -> Result<(MerchantBalance, CustomerBalance)>;
 
     /// Get contract information for a particular channel based on its [`ChannelId`].
-    async fn contract_details(&self, channel_id: &ChannelId) -> Result<(ContractId, Level)>;
+    async fn contract_details(&self, channel_id: &ChannelId) -> Result<ContractId>;
 
     /// Get details about a particular channel based on a unique prefix of its [`ChannelId`].
     async fn get_channel_details_by_prefix(&self, prefix: &str) -> Result<ChannelDetails>;
@@ -137,7 +133,6 @@ pub struct ChannelDetails {
     pub channel_id: ChannelId,
     pub status: ChannelStatus,
     pub contract_id: ContractId,
-    pub level: Level,
     pub merchant_deposit: MerchantBalance,
     pub customer_deposit: CustomerBalance,
     pub closing_balances: ClosingBalances,
@@ -278,7 +273,6 @@ impl QueryMerchant for SqlitePool {
         &self,
         channel_id: &ChannelId,
         contract_id: &ContractId,
-        level: &Level,
         merchant_deposit: &MerchantBalance,
         customer_deposit: &CustomerBalance,
     ) -> Result<()> {
@@ -287,15 +281,13 @@ impl QueryMerchant for SqlitePool {
             "INSERT INTO merchant_channels (
                 channel_id,
                 contract_id,
-                level,
                 merchant_deposit,
                 customer_deposit,
                 status,
                 closing_balances
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ) VALUES (?, ?, ?, ?, ?, ?)",
             channel_id,
             contract_id,
-            level,
             merchant_deposit,
             customer_deposit,
             ChannelStatus::Originated,
@@ -484,7 +476,6 @@ impl QueryMerchant for SqlitePool {
                 channel_id AS "channel_id: ChannelId",
                 status as "status: ChannelStatus",
                 contract_id AS "contract_id: ContractId",
-                level AS "level: Level",
                 merchant_deposit AS "merchant_deposit: MerchantBalance",
                 customer_deposit AS "customer_deposit: CustomerBalance",
                 closing_balances AS "closing_balances: ClosingBalances"
@@ -497,7 +488,6 @@ impl QueryMerchant for SqlitePool {
             channel_id: r.channel_id,
             status: r.status,
             contract_id: r.contract_id,
-            level: r.level,
             merchant_deposit: r.merchant_deposit,
             customer_deposit: r.customer_deposit,
             closing_balances: r.closing_balances,
@@ -584,10 +574,10 @@ impl QueryMerchant for SqlitePool {
         Ok(initial_balances)
     }
 
-    async fn contract_details(&self, channel_id: &ChannelId) -> Result<(ContractId, Level)> {
+    async fn contract_details(&self, channel_id: &ChannelId) -> Result<ContractId> {
         let mut result = sqlx::query!(
-            r#"SELECT contract_id as "contract_id: ContractId",
-                level as "level: Level"
+            r#"SELECT
+                contract_id as "contract_id: ContractId"
             FROM merchant_channels
             WHERE channel_id = ?
             LIMIT 2"#,
@@ -599,7 +589,7 @@ impl QueryMerchant for SqlitePool {
 
         let contract_details = match result.next() {
             None => return Err(Error::ChannelNotFound(*channel_id)),
-            Some(record) => (record.contract_id, record.level),
+            Some(record) => record.contract_id,
         };
 
         if result.next().is_some() {
@@ -617,7 +607,6 @@ impl QueryMerchant for SqlitePool {
                 channel_id AS "channel_id: ChannelId",
                 status as "status: ChannelStatus",
                 contract_id AS "contract_id: ContractId",
-                level AS "level: Level",
                 merchant_deposit AS "merchant_deposit: MerchantBalance",
                 customer_deposit AS "customer_deposit: CustomerBalance",
                 closing_balances AS "closing_balances: ClosingBalances"
@@ -637,7 +626,6 @@ impl QueryMerchant for SqlitePool {
                 channel_id: channel.channel_id,
                 status: channel.status,
                 contract_id: channel.contract_id,
-                level: channel.level,
                 merchant_deposit: channel.merchant_deposit,
                 customer_deposit: channel.customer_deposit,
                 closing_balances: channel.closing_balances,
@@ -791,11 +779,9 @@ mod tests {
 
         let merchant_deposit = MerchantBalance::try_new(5).unwrap();
         let customer_deposit = CustomerBalance::try_new(5).unwrap();
-        let level = 10.into();
         conn.new_channel(
             &channel_id,
             &contract_id,
-            &level,
             &merchant_deposit,
             &customer_deposit,
         )
