@@ -24,13 +24,9 @@ SANDBOX = "sandbox"
 
 SETUP = "setup"
 SCENARIO = "scenario"
-cmds = [SETUP, SCENARIO]
 
-def info(msg, args=None, debug=True):
-    the_args = ""
-    if args:
-        the_args = args
-    if debug: print("%s[+] %s%s%s" % (GREEN, msg, NC, the_args))
+def info(msg):
+    print("%s[+] %s%s" % (GREEN, msg, NC))
 
 def log(msg, debug=True):
     if debug: print("%s%s%s" % (BBlack, msg, NC))
@@ -39,11 +35,12 @@ def fatal_error(msg):
     print("%sERROR:%s %s%s%s" % (BBlack, NC, RED, msg, NC))
     sys.exit(-1)
 
-def create_merchant_config(merch_db, merch_config, merch_account_keys, url_path, verbose=False):
+def create_merchant_config(merch_db, merch_config, merch_account_keys, self_delay, url_path, verbose=False):
     config_contents = """
 database = {{ sqlite = "{merchant_db}" }}
 {tezos_account}
 tezos_uri = "{url}"
+self_delay = {self_delay}
 
 [[service]]
 address = "::1"
@@ -65,12 +62,13 @@ certificate = "localhost.crt"
         print("============")
     return
     
-def create_customer_config(cust_db, cust_config, cust_account_keys, url_path, verbose=False):
+def create_customer_config(cust_db, cust_config, cust_account_keys, self_delay, url_path, verbose=False):
     config_contents = """
 database = {{ sqlite = "{customer_db}" }}
 trust_certificate = "localhost.crt"
 {tezos_account}
 tezos_uri = "{url}"
+self_delay = {self_delay}
     """.format(customer_db=cust_db, tezos_account=cust_account_keys, url=url_path)
     f = open(cust_config, "w")
     f.write(config_contents)
@@ -98,6 +96,11 @@ def run_command(cmd, verbose):
 def start_merchant_server(merch_config, verbose):
     info("Starting the merchant server...")
     cmd = ["./target/debug/zkchannel", "merchant", "--config", merch_config, "run"]
+    return run_command(cmd, verbose)
+
+def start_customer_watcher(cust_config, verbose):
+    info("Starting the customer watcher...")
+    cmd = ["./target/debug/zkchannel", "customer", "--config", cust_config, "watch"]
     return run_command(cmd, verbose)
 
 def create_new_channel(cust_config, channel_name, initial_deposit, verbose):
@@ -138,7 +141,7 @@ def main():
     parser.add_argument("--scenario", help="establish a channel, make payments and test closing scenarios", action="store_true")
     parser.add_argument("--path", help="path to create configs", default="./dev")
     parser.add_argument("--network", help="select the type of network", default="sandbox")
-    parser.add_argument("--self-delay", "-t", help="self-delay for closing transactions", default="1")
+    parser.add_argument("--self-delay", "-t", type=int, help="self-delay for closing transactions", default="1")
     parser.add_argument("--url", "-u", help="url for tezos network", default="http://localhost:20000")
     parser.add_argument("--amount", "-a", help="starting balance for each channel", default="10")
     parser.add_argument("--verbose", "-v", help="increase output verbosity", action="store_true")
@@ -151,23 +154,23 @@ def main():
     if args.setup is False and args.scenario is False:
         cmd_is_list_channels = True
 
-    if args.setup: 
+    if args.setup:
         cmd_is_setup = True
     if args.scenario:
         cmd_is_scenario = True
 
     verbose = args.verbose
-    dev_path = args.path.lower()
+    dev_path = args.path
     url = args.url.lower()
     network = args.network.lower()
 
-    _self_delay = args.self_delay # not used yet
+    self_delay = args.self_delay
     customer_deposit = args.amount
     channel_count = args.channel
     num_payments = args.num_payments
 
     if int(channel_count) <= 0:
-        fatal_error("Expected a value > 0")
+        fatal_error("Expected '--channel' to be > 0")
 
     if network not in [SANDBOX, TESTNET]:
         fatal_error("Specified invalid 'network' argument. Values: '%s' or '%s'" % (SANDBOX, TESTNET))
@@ -183,24 +186,26 @@ def main():
 
         merch_keys = "tezos_account = { alias = \"bob\" }"
     else:
-        fatal_error("Need tezos accounts for customer and merchant on '%s'" % network)
-
+        fatal_error("Not implemented yet: No tezos account for customer and merchant on '%s'" % network)
 
     if cmd_is_setup:
         # create configs as needed
-        create_customer_config(cust_db, cust_config, cust_keys, url)
-        create_merchant_config(merch_db, merch_config, merch_keys, url)
+        create_customer_config(cust_db, cust_config, cust_keys, self_delay, url)
+        create_merchant_config(merch_db, merch_config, merch_keys, self_delay, url)
 
         start_merchant_server(merch_config, verbose)
+        start_customer_watcher(cust_config, verbose)
 
     elif cmd_is_scenario:
         info("Running basic scenario...")
-        # now we can establish a channel 
+        # now we can establish a channel
         create_new_channel(cust_config, channel_name, customer_deposit, verbose)
+        # set maximum payment amount so that the customer doesn't run out of money
+        max_pay_amount = float(customer_deposit)/num_payments
 
-        # let's make some payment
-        for i in range(0, num_payments):
-            pay_amount = str(round(random.uniform(0, 1), 4))
+        # let's make some payments
+        for _ in range(0, num_payments):
+            pay_amount = str(round(random.uniform(0, max_pay_amount), 4))
             make_payment(cust_config, channel_name, pay_amount, verbose)
 
         # # let's close
