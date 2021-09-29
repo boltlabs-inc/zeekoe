@@ -37,6 +37,7 @@ impl Method for Close {
         _client: &reqwest::Client,
         tezos_key_material: TezosKeyMaterial,
         tezos_uri: Uri,
+        _self_delay: u64,
         _service: &Service,
         merchant_config: &MerchantConfig,
         database: &dyn QueryMerchant,

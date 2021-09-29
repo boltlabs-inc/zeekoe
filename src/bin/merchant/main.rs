@@ -93,6 +93,7 @@ impl Command for Run {
                 let mut wait_terminate = terminate.subscribe();
                 let tezos_key_material = tezos_key_material.clone();
                 let tezos_uri = config.tezos_uri.clone();
+                let self_delay = config.self_delay;
 
                 async move {
                     // Initialize a new `Server` with parameters taken from the configuration
@@ -130,6 +131,7 @@ impl Command for Run {
                                     &client,
                                     tezos_key_material,
                                     tezos_uri,
+                                    self_delay,
                                     &service,
                                     &merchant_config,
                                     database.as_ref(),
@@ -141,6 +143,7 @@ impl Command for Run {
                                     &client,
                                     tezos_key_material,
                                     tezos_uri,
+                                    self_delay,
                                     &service,
                                     &merchant_config,
                                     database.as_ref(),
@@ -152,6 +155,7 @@ impl Command for Run {
                                     &client,
                                     tezos_key_material,
                                     tezos_uri,
+                                    self_delay,
                                     &service,
                                     &merchant_config,
                                     database.as_ref(),
@@ -163,6 +167,7 @@ impl Command for Run {
                                     &client,
                                     tezos_key_material,
                                     tezos_uri,
+                                    self_delay,
                                     &service,
                                     &merchant_config,
                                     database.as_ref(),
@@ -263,20 +268,24 @@ async fn dispatch_channel(
     tezos_uri: Uri,
 ) -> Result<(), anyhow::Error> {
     // Retrieve on-chain contract status
-    let contract_state =
-        tezos::get_contract_state(Some(&tezos_uri), &tezos_key_material, &channel.contract_id)
-            .await
-            .context(format!(
-                "Merchant chain watcher failed to retrieve contract state for {}",
-                channel.contract_id
-            ))?;
+    let contract_state = tezos::get_contract_state(
+        Some(&tezos_uri),
+        &tezos_key_material,
+        &channel.contract_id,
+        tezos::DEFAULT_CONFIRMATION_DEPTH,
+    )
+    .await
+    .context(format!(
+        "Merchant chain watcher failed to retrieve contract state for {}",
+        channel.contract_id
+    ))?;
 
     // The channel has not claimed funds after the expiry timeout expired
     // The condition is
     // - the contract is in expiry state
     // - the contract timeout is expired
     // - the channel status is PendingExpiry, indicating it has not yet claimed funds
-    if contract_state.status() == ContractStatus::Expiry
+    if contract_state.status()? == ContractStatus::Expiry
         && contract_state.timeout_expired().unwrap_or(false)
         && channel.status == ChannelStatus::PendingExpiry
     {
@@ -296,17 +305,17 @@ async fn dispatch_channel(
     // - the contract is in customer close state
     // - the channel status is either Active (if the customer initiated the close flow)
     //   or PendingExpiry (if the merchant initiated the close flow)
-    if contract_state.status() == ContractStatus::CustomerClose
+    if contract_state.status()? == ContractStatus::CustomerClose
         && (channel.status == ChannelStatus::Active
             || channel.status == ChannelStatus::PendingExpiry)
     {
-        let revocation_lock = contract_state.revocation_lock().ok_or_else(|| {
+        let revocation_lock = contract_state.revocation_lock()?.ok_or_else(|| {
             anyhow::anyhow!(
                 "Failed to retrieve revocation lock from contract storage for {}",
                 channel.channel_id
             )
         })?;
-        let final_balances = contract_state.final_balances().ok_or_else(|| {
+        let final_balances = contract_state.final_balances()?.ok_or_else(|| {
             anyhow::anyhow!(
                 "Failed to retrieve final balances from contract storage for {}",
                 channel.channel_id
@@ -317,7 +326,7 @@ async fn dispatch_channel(
             &tezos_key_material,
             &tezos_uri,
             &channel.channel_id,
-            revocation_lock,
+            &revocation_lock,
         )
         .await?;
         close::finalize_customer_close(
@@ -347,6 +356,7 @@ where
         client: &reqwest::Client,
         tezos_key_material: TezosKeyMaterial,
         tezos_uri: Uri,
+        self_delay: u64,
         config: &Service,
         merchant_config: &zkabacus_crypto::merchant::Config,
         database: &dyn QueryMerchant,

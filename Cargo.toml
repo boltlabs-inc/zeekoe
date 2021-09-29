@@ -76,8 +76,12 @@ dialectic-reconnect = { features = ["serde", "humantime-serde"], git = "ssh://gi
 comfy-table = "3.0.0"
 sqlx = { version = "0.5.2", features = ["any", "migrate", "offline", "runtime-tokio-rustls", "sqlite"] }
 tezedge = { package = "lib", git = "ssh://git@github.com/boltlabs-inc/tezedge-client", branch = "develop" }
+canonicalize_json_micheline = { path = "src/canonicalize_json_micheline" }
 
 [dev-dependencies]
 rand = "0.8.3"
 strum = "0.21"
 strum_macros = "0.21"
+
+[build-dependencies]
+canonicalize_json_micheline = { path = "src/canonicalize_json_micheline" }

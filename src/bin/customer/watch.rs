@@ -144,14 +144,19 @@ async fn dispatch_channel(
 
     // Retrieve on-chain contract status
     let contract_state = match &channel.contract_details.contract_id {
-        Some(contract_id) => {
-            tezos::get_contract_state(Some(&config.tezos_uri), &tezos_key_material, contract_id)
-                .await
-                .context(format!(
-                    "Chain watcher failed to retrieve contract state for {}",
-                    &channel.label
-                ))?
-        }
+        Some(contract_id) => tezos::get_contract_state(
+            Some(&config.tezos_uri),
+            &tezos_key_material,
+            contract_id,
+            tezos::DEFAULT_CONFIRMATION_DEPTH,
+        )
+        .await
+        .with_context(|| {
+            format!(
+                "Chain watcher failed to retrieve contract state for {}",
+                &channel.label
+            )
+        })?,
         None => return Ok(()),
     };
 
@@ -159,7 +164,7 @@ async fn dispatch_channel(
     // The condition is
     // - the contract is in Expiry state
     // - the local state is neither PendingClose nor PendingExpiry
-    if contract_state.status() == ContractStatus::Expiry
+    if contract_state.status()? == ContractStatus::Expiry
         && !(zkchannels_state::PendingClose.matches(&channel.state)
             || zkchannels_state::PendingExpiry.matches(&channel.state))
     {
@@ -182,7 +187,7 @@ async fn dispatch_channel(
     // - the contract is in the CustomerClose state
     // - the timeout has been set and expired
     // - the local state is PendingClose (customer did not yet try to claim funds)
-    if contract_state.status() == ContractStatus::CustomerClose
+    if contract_state.status()? == ContractStatus::CustomerClose
         && contract_state.timeout_expired().unwrap_or(false)
         && zkchannels_state::PendingClose.matches(&channel.state)
     {
@@ -203,7 +208,7 @@ async fn dispatch_channel(
     // The condition is:
     // - the contract is Closed
     // - the local state is PendingClose
-    if contract_state.status() == ContractStatus::Closed
+    if contract_state.status()? == ContractStatus::Closed
         && zkchannels_state::PendingClose.matches(&channel.state)
     {
         close::process_dispute(database, &channel.label)
@@ -219,7 +224,7 @@ async fn dispatch_channel(
     // - the contract is Closed
     // - the local state is PendingExpiry (the customer did not post corrected balances after
     //   the merchant posted expiry)
-    if contract_state.status() == ContractStatus::Closed
+    if contract_state.status()? == ContractStatus::Closed
         && zkchannels_state::PendingExpiry.matches(&channel.state)
     {
         close::finalize_expiry(database, &channel.label)

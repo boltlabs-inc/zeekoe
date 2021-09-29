@@ -207,6 +207,10 @@ pub mod establish {
         InvalidPayToken,
         #[error("Merchant funding not received")]
         FailedMerchantFunding,
+        #[error("Could not verify contract's origination on chain")]
+        FailedVerifyOrigination,
+        #[error("Could not verify contract was funded correctly on chain")]
+        FailedVerifyCustomerFunding,
     }
 
     pub type Establish = CustomerSupplyInfo;

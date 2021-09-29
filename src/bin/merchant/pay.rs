@@ -24,6 +24,7 @@ impl Method for Pay {
         client: &reqwest::Client,
         _tezos_key_material: TezosKeyMaterial,
         _tezos_uri: Uri,
+        _self_delay: u64,
         service: &Service,
         merchant_config: &MerchantConfig,
         database: &dyn QueryMerchant,

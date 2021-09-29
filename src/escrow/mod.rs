@@ -154,6 +154,23 @@ pub mod types {
         }
     }
 
+    /// A SHA3-256 hash of the contract's Micheline JSON encoding.
+    #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+    pub struct ContractHash([u8; 32]);
+
+    impl ContractHash {
+        pub fn new(micheline: &str) -> Self {
+            let contract_bytes = micheline.as_bytes();
+            let mut hasher = Sha3_256::new();
+
+            hasher.update(&contract_bytes);
+
+            let mut digested = [0; 32];
+            digested.copy_from_slice(hasher.finalize().as_ref());
+            Self(digested)
+        }
+    }
+
     /// A SHA3-256 hash of the merchant's public keys.
     #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
     pub struct KeyHash([u8; 32]);
@@ -220,16 +237,20 @@ pub mod types {
     #[derive(Debug, Clone, Copy, PartialEq)]
     pub enum ContractStatus {
         AwaitingCustomerFunding = 0,
-        AwaitingMerchantFunding,
-        Open,
-        Expiry,
-        CustomerClose,
-        Closed,
-        FundingReclaimed,
+        AwaitingMerchantFunding = 1,
+        Open = 2,
+        Expiry = 3,
+        CustomerClose = 4,
+        Closed = 5,
+        FundingReclaimed = 6,
     }
 
+    #[derive(Error, Debug)]
+    #[error("Failed to convert {0} to a ContractStatus")]
+    pub struct ParseContractStatusError(i32);
+
     impl TryFrom<i32> for ContractStatus {
-        type Error = anyhow::Error;
+        type Error = ParseContractStatusError;
 
         fn try_from(v: i32) -> Result<Self, Self::Error> {
             match v {
@@ -246,10 +267,7 @@ pub mod types {
                 x if x == ContractStatus::FundingReclaimed as i32 => {
                     Ok(ContractStatus::FundingReclaimed)
                 }
-                _ => Err(anyhow::anyhow!(
-                    "Failed to convert value {} to ContractStatus",
-                    v
-                )),
+                x => Err(ParseContractStatusError(x)),
             }
         }
     }
