@@ -320,7 +320,6 @@ impl Command for Establish {
                 Some(&config.tezos_uri),
                 &tezos_key_material,
                 &contract_id,
-                tezos::DEFAULT_CONFIRMATION_DEPTH,
             )
             .await
             .map_or_else(

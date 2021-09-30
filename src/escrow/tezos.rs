@@ -124,11 +124,10 @@ fn python_context() -> inline_python::Context {
             if min_confirmations > 0:
                 block_id = "head~{}".format(min_confirmations)
                 contract = cust_ci.using(block_id = block_id)
-                storage = contract.storage()
             else:
                 contract = cust_ci
-                storage = cust_ci.storage()
 
+            storage = contract.storage()
             storage["revocation_lock"] = storage["revocation_lock"].to_bytes(32, byteorder="little")
 
             contract_code = json.dumps(contract.to_micheline(), sort_keys = True)
@@ -795,28 +794,22 @@ pub mod establish {
         uri: Option<&http::Uri>,
         tezos_key_material: &TezosKeyMaterial,
         contract_id: &ContractId,
-        confirmation_depth: u64,
         self_delay: u64,
         expected_merchant_balance: MerchantBalance,
         expected_customer_balance: CustomerBalance,
         merchant_public_key: &PublicKey,
     ) -> Result<(), VerificationError> {
-        let contract_state =
-            get_contract_state(uri, tezos_key_material, contract_id, confirmation_depth).await?;
+        let contract_state = get_contract_state(uri, tezos_key_material, contract_id, 0).await?;
 
-        // TODO: Ensure contract status is as expected on-chain. We need to rework the flow to
-        // support this, because as things currently stand, we do not know at what depth the
-        // contract was originated.
-        //
-        // match contract_state.status()? {
-        //     ContractStatus::AwaitingCustomerFunding => Ok::<_, VerificationError>(()),
-        //     actual => {
-        //         return Err(VerificationError::UnexpectedContractStatus {
-        //             expected: ContractStatus::AwaitingCustomerFunding,
-        //             actual,
-        //         })
-        //     }
-        // };
+        match contract_state.status()? {
+            ContractStatus::AwaitingCustomerFunding => {}
+            actual => {
+                return Err(VerificationError::UnexpectedContractStatus {
+                    expected: ContractStatus::AwaitingCustomerFunding,
+                    actual,
+                })
+            }
+        };
 
         if contract_state.self_delay() != self_delay {
             return Err(VerificationError::UnexpectedSelfDelay {
@@ -876,7 +869,6 @@ pub mod establish {
         uri: Option<&http::Uri>,
         tezos_key_material: &TezosKeyMaterial,
         contract_id: &ContractId,
-        confirmation_depth: u64,
     ) -> Result<(), VerificationError> {
         let expected = if merchant_balance.into_inner() > 0 {
             ContractStatus::AwaitingMerchantFunding
@@ -884,8 +876,7 @@ pub mod establish {
             ContractStatus::Open
         };
 
-        let contract_state =
-            get_contract_state(uri, tezos_key_material, contract_id, confirmation_depth).await?;
+        let contract_state = get_contract_state(uri, tezos_key_material, contract_id, 0).await?;
         let actual = contract_state.status()?;
 
         if expected == actual {
@@ -900,10 +891,8 @@ pub mod establish {
         uri: Option<&http::Uri>,
         tezos_key_material: &TezosKeyMaterial,
         contract_id: &ContractId,
-        confirmation_depth: u64,
     ) -> Result<(), VerificationError> {
-        let contract_state =
-            get_contract_state(uri, tezos_key_material, contract_id, confirmation_depth).await?;
+        let contract_state = get_contract_state(uri, tezos_key_material, contract_id, 0).await?;
 
         match contract_state.status()? {
             ContractStatus::Open => Ok(()),

@@ -216,7 +216,6 @@ async fn approve_and_establish(
         Some(tezos_uri),
         merchant_key_material,
         &contract_id,
-        tezos::DEFAULT_CONFIRMATION_DEPTH,
         self_delay,
         merchant_deposit,
         customer_deposit,
@@ -255,7 +254,6 @@ async fn approve_and_establish(
         Some(tezos_uri),
         merchant_key_material,
         &contract_id,
-        tezos::DEFAULT_CONFIRMATION_DEPTH,
     )
     .await
     {
