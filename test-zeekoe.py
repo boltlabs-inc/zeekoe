@@ -51,7 +51,7 @@ certificate = "localhost.crt"
 address = "127.0.0.1"
 private_key = "localhost.key"
 certificate = "localhost.crt"    
-    """.format(merchant_db=merch_db, tezos_account=merch_account_keys, url=url_path)
+    """.format(merchant_db=merch_db, tezos_account=merch_account_keys, self_delay=self_delay, url=url_path)
     f = open(merch_config, "w")
     f.write(config_contents)
     f.close()
@@ -69,7 +69,7 @@ trust_certificate = "localhost.crt"
 {tezos_account}
 tezos_uri = "{url}"
 self_delay = {self_delay}
-    """.format(customer_db=cust_db, tezos_account=cust_account_keys, url=url_path)
+    """.format(customer_db=cust_db, tezos_account=cust_account_keys, self_delay=self_delay, url=url_path)
     f = open(cust_config, "w")
     f.write(config_contents)
     f.close()
