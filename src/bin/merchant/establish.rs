@@ -211,16 +211,11 @@ async fn approve_and_establish(
         .recv()
         .await
         .context("Failed to receive contract ID from customer")?;
-    let (origination_level, chan) = chan
-        .recv()
-        .await
-        .context("Failed to receive contract origination level from the customer")?;
 
     match tezos::establish::verify_origination(
         Some(tezos_uri),
         merchant_key_material,
         &contract_id,
-        tezos::DEFAULT_CONFIRMATION_DEPTH,
         self_delay,
         merchant_deposit,
         customer_deposit,
@@ -240,19 +235,25 @@ async fn approve_and_establish(
         .new_channel(
             &channel_id,
             &contract_id,
-            &origination_level,
             &merchant_deposit,
             &customer_deposit,
         )
         .await
         .context("Failed to insert new channel_id, contract_id in database")?;
 
+    // Move forward in the protocol
+    proceed!(in chan);
+
+    let (_contract_funded, chan) = chan
+        .recv()
+        .await
+        .context("Failed to receive notification that the customer funded the contract")?;
+
     match tezos::establish::verify_customer_funding(
         &merchant_deposit,
         Some(tezos_uri),
         merchant_key_material,
         &contract_id,
-        tezos::DEFAULT_CONFIRMATION_DEPTH,
     )
     .await
     {
@@ -294,7 +295,7 @@ async fn approve_and_establish(
         )
         .await
         {
-            Ok((tezos::OperationStatus::Applied, _)) => {}
+            Ok(tezos::OperationStatus::Applied) => {}
             _ => abort!(in chan return establish::Error::FailedMerchantFunding),
         }
     }

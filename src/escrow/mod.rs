@@ -5,7 +5,6 @@ pub mod types {
 
     use std::{borrow::Cow, convert::TryFrom, path::PathBuf};
 
-    use super::notify::Level;
     use tezedge::{
         crypto::base58check::ToBase58Check, OriginatedAddress, PrivateKey as TezosPrivateKey,
     };
@@ -144,8 +143,6 @@ pub mod types {
         pub merchant_tezos_public_key: TezosPublicKey,
         /// ID of Tezos contract originated on chain.
         pub contract_id: Option<ContractId>,
-        /// Level at which Tezos contract is originated.
-        pub contract_level: Option<Level>,
     }
 
     impl ContractDetails {

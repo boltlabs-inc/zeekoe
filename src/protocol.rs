@@ -186,10 +186,13 @@ pub mod parameters {
 
 pub mod establish {
     use super::*;
-    use crate::escrow::{notify::Level, types::*};
+    use crate::escrow::types::*;
     use zkabacus_crypto::{
         ClosingSignature, CustomerBalance, EstablishProof, MerchantBalance, PayToken,
     };
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct ContractFunded;
 
     #[derive(Debug, Clone, Error, Serialize, Deserialize)]
     pub enum Error {
@@ -238,6 +241,7 @@ pub mod establish {
     };
 
     pub type MerchantApproveEstablish = Session! {
+        // Merchant decides if they want to open the channel as described
         OfferAbort<MerchantSupplyInfo, Error>;
     };
 
@@ -250,21 +254,31 @@ pub mod establish {
 
     pub type CustomerSupplyProof = Session! {
         send EstablishProof;
+        // Merchant verifies the proof
         OfferAbort<MerchantSupplyClosingSignature, Error>;
     };
 
     pub type MerchantSupplyClosingSignature = Session! {
         recv ClosingSignature;
+        // Customer verifies the signature
         ChooseAbort<CustomerSupplyContractInfo, Error>;
     };
 
     pub type CustomerSupplyContractInfo = Session! {
         send ContractId;
-        send Level;
+        // Merchant ensures the contract was correctly originated
+        OfferAbort<MerchantVerifyCustomerFunding, Error>;
+    };
+
+    pub type MerchantVerifyCustomerFunding = Session! {
+        // Notify the merchant we've funded the contract.
+        send ContractFunded;
+        // Merchant ensures the contract was correctly funded
         OfferAbort<CustomerVerifyMerchantFunding, Error>;
     };
 
     pub type CustomerVerifyMerchantFunding = Session! {
+        // Customer ensures the merchant funded the contract
         ChooseAbort<Activate, Error>;
     };
 
@@ -304,12 +318,14 @@ pub mod close {
     pub type CustomerSendSignature = Session! {
         send CloseStateSignature;
         send CloseState;
+        // Merchant checks whether the `CloseState` is outdated
         OfferAbort<MerchantSendAuthorization, Error>
     };
 
     pub type MerchantSendAuthorization = Session! {
         // Tezos authorization signature
         recv MutualCloseAuthorizationSignature;
+        // Merchant verifies the signature
         ChooseAbort<Done, Error>
     };
 }
@@ -342,6 +358,7 @@ pub mod pay {
     pub type Pay = Session! {
         send PaymentAmount;
         send String; // Payment note
+        // Merchant decides if it wants to allow the described payment
         OfferAbort<CustomerStartPayment, Error>;
     };
 
@@ -349,11 +366,13 @@ pub mod pay {
     pub type CustomerStartPayment = Session! {
         send Nonce;
         send PayProof;
+        // Merchant checks that the `PayProof` is valid
         OfferAbort<MerchantAcceptPayment, Error>;
     };
 
     pub type MerchantAcceptPayment = Session! {
         recv ClosingSignature;
+        // Customer verifies the signature
         ChooseAbort<CustomerRevokePreviousPayToken, Error>;
     };
 
@@ -361,6 +380,7 @@ pub mod pay {
         send RevocationLock;
         send RevocationSecret;
         send RevocationLockBlindingFactor;
+        // Merchant verifies that the revocation information is valid
         OfferAbort<MerchantIssueNewPayToken, Error>;
     };
 

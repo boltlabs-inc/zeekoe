@@ -50,7 +50,7 @@ impl Method for Close {
             .context("Mutual close failed")?;
 
         // Get contract ID for this channel
-        let (contract_id, _) = database
+        let contract_id = database
             .contract_details(close_state.channel_id())
             .await
             .context(format!(
@@ -154,13 +154,13 @@ pub async fn process_customer_close(
                 })?;
 
             // Retrieve contract ID
-            let (contract_id, _) = database
+            let contract_id = database
                 .contract_details(channel_id)
                 .await
                 .context("Failed to retrieve contract details")?;
 
             // Call the merchDispute entrypoint and wait for it to be confirmed
-            let (_status, _dispute_level) = tezos::close::merch_dispute(
+            let _status = tezos::close::merch_dispute(
                 Some(tezos_uri),
                 &contract_id,
                 revocation_secret,
@@ -457,7 +457,7 @@ async fn expiry(
         ))?;
 
     // Retrieve contract details
-    let (contract_id, _) = database
+    let contract_id = database
         .contract_details(channel_id)
         .await
         .context(format!(
@@ -506,7 +506,7 @@ pub async fn claim_expiry_funds(
         ))?;
 
     // Retrieve contract details
-    let (contract_id, _) = database
+    let contract_id = database
         .contract_details(channel_id)
         .await
         .context(format!(
@@ -515,7 +515,7 @@ pub async fn claim_expiry_funds(
         ))?;
 
     // Call merchClaim entrypoint and retrieve final channel balances
-    let (_status, _claim_level) = tezos::close::merch_claim(
+    let _status = tezos::close::merch_claim(
         Some(tezos_uri),
         &contract_id,
         tezos_key_material,

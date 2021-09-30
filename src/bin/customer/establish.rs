@@ -102,6 +102,7 @@ impl Command for Establish {
         let (session_key, chan) = connect(&config, &address)
             .await
             .context("Failed to connect to merchant")?;
+
         let chan = chan
             .choose::<1>()
             .await
@@ -214,7 +215,7 @@ impl Command for Establish {
             public_key: tezos_public_key.clone(),
         };
 
-        let (contract_id, origination_status, origination_level) = if self.off_chain {
+        let (contract_id, origination_status) = if self.off_chain {
             // TODO: prompt user to submit the origination of the contract
             todo!("prompt user to submit contract origination details")
         } else {
@@ -252,14 +253,23 @@ impl Command for Establish {
             ))??;
 
         database
-            .initialize_contract_details(&actual_label, &contract_id, origination_level)
+            .initialize_contract_details(&actual_label, &contract_id)
             .await
             .context(format!(
                 "Failed to store contract details for {}",
                 &actual_label
             ))?;
 
-        let (customer_funding_status, _customer_funding_level) = if self.off_chain {
+        // Send the contract id to the merchant.
+        let chan = chan
+            .send(contract_id.clone())
+            .await
+            .context("Failed to send contract id to merchant")?;
+
+        // Allow the merchant to verify origination
+        offer_abort!(in chan as Customer);
+
+        let customer_funding_status = if self.off_chain {
             // TODO: prompt user to fund the contract on chain
             todo!("prompt user to fund contract on chain and submit details")
         } else {
@@ -294,14 +304,10 @@ impl Command for Establish {
                 )
             })??;
 
-        // Send the contract id and level to the merchant
         let chan = chan
-            .send(contract_id.clone())
+            .send(establish::ContractFunded)
             .await
-            .context("Failed to send contract id to merchant")?
-            .send(origination_level)
-            .await
-            .context("Failed to send contract origination level to merchant")?;
+            .context("Failed to notify merchant contract was funded")?;
 
         // Allow the merchant to indicate whether it funded the channel
         offer_abort!(in chan as Customer);
@@ -314,7 +320,6 @@ impl Command for Establish {
                 Some(&config.tezos_uri),
                 &tezos_key_material,
                 &contract_id,
-                tezos::DEFAULT_CONFIRMATION_DEPTH,
             )
             .await
             .map_or_else(
@@ -432,7 +437,6 @@ async fn get_parameters(
         ContractDetails {
             merchant_tezos_public_key,
             contract_id: None,
-            contract_level: None,
         },
     ))
 }
