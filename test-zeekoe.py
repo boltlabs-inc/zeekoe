@@ -120,10 +120,10 @@ def close_channel(cust_config, channel_name, verbose):
     cmd = ["./target/debug/zkchannel", "customer", "--config", cust_config, "close", "--force", channel_name]
     return run_command(cmd, verbose)
 
-def list_channels(cust_config, verbose):
+def list_channels(cust_config):
     info("List channels...")
     cmd = ["./target/debug/zkchannel", "customer", "--config", cust_config, "list"]
-    return run_command(cmd, verbose)
+    return run_command(cmd, True)
 
 def scenario_dispute_customer_close(config, channel_name, verbose):
     # TODO: take necessary steps to close on old state
@@ -135,10 +135,10 @@ def scenario_close_with_expiry(config, channel_name, verbose):
     # TODO: then customer should detect and respond with cust close
     pass
 
+COMMANDS = ["list", "setup", "scenario"]
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--setup", help="setup the config and merchant server", action="store_true")
-    parser.add_argument("--scenario", help="establish a channel, make payments and test closing scenarios", action="store_true")
+    parser.add_argument("command", help="", nargs="?", default="list")
     parser.add_argument("--path", help="path to create configs", default="./dev")
     parser.add_argument("--network", help="select the type of network", default="sandbox")
     parser.add_argument("--self-delay", "-t", type=int, help="self-delay for closing transactions", default="1")
@@ -150,14 +150,17 @@ def main():
 
     args = parser.parse_args()
 
-    cmd_is_setup = cmd_is_scenario = cmd_is_list_channels = False
-    if args.setup is False and args.scenario is False:
-        cmd_is_list_channels = True
+    if args.command not in COMMANDS:
+        fatal_error("'%s' not a recognized command. Here are the options: %s" % (args.command, COMMANDS))
+    
+    # cmd_is_setup = cmd_is_scenario = cmd_is_list_channels = False
+    # if args.setup is False and args.scenario is False:
+    #     cmd_is_list_channels = True
 
-    if args.setup:
-        cmd_is_setup = True
-    if args.scenario:
-        cmd_is_scenario = True
+    # if args.setup:
+    #     cmd_is_setup = True
+    # if args.scenario:
+    #     cmd_is_scenario = True
 
     verbose = args.verbose
     dev_path = args.path
@@ -188,7 +191,7 @@ def main():
     else:
         fatal_error("Not implemented yet: No tezos account for customer and merchant on '%s'" % network)
 
-    if cmd_is_setup:
+    if args.command == SETUP:
         # create configs as needed
         create_customer_config(cust_db, cust_config, cust_keys, self_delay, url)
         create_merchant_config(merch_db, merch_config, merch_keys, self_delay, url)
@@ -196,7 +199,7 @@ def main():
         start_merchant_server(merch_config, verbose)
         start_customer_watcher(cust_config, verbose)
 
-    elif cmd_is_scenario:
+    elif args.command == SCENARIO:
         info("Running basic scenario...")
         # now we can establish a channel
         create_new_channel(cust_config, channel_name, customer_deposit, verbose)
@@ -210,8 +213,8 @@ def main():
 
         # # let's close
         close_channel(cust_config, channel_name, verbose)
-    elif cmd_is_list_channels:
+    else:
         # list the available channels
-        list_channels(cust_config, verbose)
+        list_channels(cust_config)
 
 main()
