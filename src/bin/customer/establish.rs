@@ -19,7 +19,9 @@ use zeekoe::{
     customer::{
         cli::Establish,
         client::ZkChannelAddress,
-        database::{self, zkchannels_state, QueryCustomer, QueryCustomerExt, State},
+        database::{
+            zkchannels_state, Error as DatabaseError, QueryCustomer, QueryCustomerExt, State,
+        },
         Chan, ChannelName, Config,
     },
     escrow::types::{ContractDetails, KeyHash},
@@ -306,19 +308,16 @@ impl Command for Establish {
             // TODO: prompt user to check that the merchant funding was provided
             true
         } else {
-            tezos::establish::verify_merchant_funding(
-                Some(&config.tezos_uri),
-                &tezos_key_material,
-                &contract_id,
-            )
-            .await
-            .map_or_else(
-                |err| {
-                    eprintln!("Could not verify merchant funding: {}", err);
-                    false
-                },
-                |_| true,
-            )
+            let tezos_client = load_tezos_client(&config, &actual_label, database.as_ref()).await?;
+            tezos::establish::verify_merchant_funding(&tezos_client)
+                .await
+                .map_or_else(
+                    |err| {
+                        eprintln!("Could not verify merchant funding: {}", err);
+                        false
+                    },
+                    |_| true,
+                )
         };
 
         // Abort if merchant funding was not successful
@@ -519,7 +518,7 @@ async fn store_inactive_local(
             .await
         {
             Ok(()) => break actual_label, // report the label that worked
-            Err((returned_inactive, database::Error::ChannelExists(_))) => {
+            Err((returned_inactive, DatabaseError::ChannelExists(_))) => {
                 inactive = returned_inactive; // restore the inactive state, try again
             }
             Err((_returned_inactive, error)) => {

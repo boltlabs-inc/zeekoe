@@ -589,14 +589,10 @@ impl FromStr for OperationStatus {
 /// is, the state of the the contract, but not accounting for the latest
 /// `DEFAULT_CONFIRMATION_DEPTH` blocks.
 pub fn get_contract_state(
-    uri: Option<&http::Uri>,
-    originator_key_pair: &TezosKeyMaterial,
-    contract_id: &ContractId,
-    confirmation_depth: u64,
+    tezos_client: &TezosClient,
 ) -> impl Future<Output = Result<ContractState, ContractStateError>> + Send + 'static {
-    let uri = uri.map(|uri| uri.to_string());
-    let customer_account_key = originator_key_pair.private_key().to_base58check();
-    let contract_id = contract_id.clone().to_originated_address().to_base58check();
+    let (uri, client_private_key, contract_id) = tezos_client.into_python_types();
+    let confirmation_depth = tezos_client.confirmation_depth;
 
     async move {
         tokio::task::spawn_blocking(move || {
@@ -604,7 +600,7 @@ pub fn get_contract_state(
             context.run(python! {
                 out = contract_state(
                     'uri,
-                    'customer_account_key,
+                    'client_private_key,
                     'contract_id,
                     'confirmation_depth
                 )
@@ -781,17 +777,13 @@ pub mod establish {
     ///
     /// This function will return [`VerificationError`] if the contract is not a valid
     /// zkChannels contract or it does not have the expected storage.
-    #[allow(clippy::too_many_arguments)]
     pub async fn verify_origination(
-        uri: Option<&http::Uri>,
-        tezos_key_material: &TezosKeyMaterial,
-        contract_id: &ContractId,
-        self_delay: u64,
+        tezos_client: &TezosClient,
         expected_merchant_balance: MerchantBalance,
         expected_customer_balance: CustomerBalance,
         merchant_public_key: &PublicKey,
     ) -> Result<(), VerificationError> {
-        let contract_state = get_contract_state(uri, tezos_key_material, contract_id, 0).await?;
+        let contract_state = get_contract_state(tezos_client).await?;
 
         match contract_state.status()? {
             ContractStatus::AwaitingCustomerFunding => {}
@@ -803,9 +795,9 @@ pub mod establish {
             }
         };
 
-        if contract_state.self_delay() != self_delay {
+        if contract_state.self_delay() != tezos_client.self_delay {
             return Err(VerificationError::UnexpectedSelfDelay {
-                expected: self_delay,
+                expected: tezos_client.self_delay,
                 actual: contract_state.self_delay(),
             });
         }
@@ -857,10 +849,8 @@ pub mod establish {
     /// This function will wait until the customer's funding operation is confirmed at depth
     /// and is called by the merchant.
     pub async fn verify_customer_funding(
+        tezos_client: &TezosClient,
         merchant_balance: &MerchantBalance,
-        uri: Option<&http::Uri>,
-        tezos_key_material: &TezosKeyMaterial,
-        contract_id: &ContractId,
     ) -> Result<(), VerificationError> {
         let expected = if merchant_balance.into_inner() > 0 {
             ContractStatus::AwaitingMerchantFunding
@@ -868,7 +858,7 @@ pub mod establish {
             ContractStatus::Open
         };
 
-        let contract_state = get_contract_state(uri, tezos_key_material, contract_id, 0).await?;
+        let contract_state = get_contract_state(tezos_client).await?;
         let actual = contract_state.status()?;
 
         if expected == actual {
@@ -880,11 +870,9 @@ pub mod establish {
 
     /// Verify that the contract storage status has been open for ``required_confirmations`.
     pub async fn verify_merchant_funding(
-        uri: Option<&http::Uri>,
-        tezos_key_material: &TezosKeyMaterial,
-        contract_id: &ContractId,
+        tezos_client: &TezosClient,
     ) -> Result<(), VerificationError> {
-        let contract_state = get_contract_state(uri, tezos_key_material, contract_id, 0).await?;
+        let contract_state = get_contract_state(tezos_client).await?;
 
         match contract_state.status()? {
             ContractStatus::Open => Ok(()),

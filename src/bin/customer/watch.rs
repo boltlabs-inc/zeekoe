@@ -14,7 +14,7 @@ use zeekoe::{
     escrow::{tezos, types::ContractStatus},
 };
 
-use super::{close, database, Command};
+use super::{close, database, load_tezos_client, Command, TezosClientError};
 
 #[async_trait]
 impl Command for Watch {
@@ -134,26 +134,12 @@ async fn dispatch_channel(
     channel: &ChannelDetails,
     off_chain: bool,
 ) -> Result<(), anyhow::Error> {
-    // Load keys from disk
-    let tezos_key_material = config.load_tezos_key_material()?;
-
-    // Retrieve on-chain contract status
-    let contract_state = match &channel.contract_details.contract_id {
-        Some(contract_id) => tezos::get_contract_state(
-            Some(&config.tezos_uri),
-            &tezos_key_material,
-            contract_id,
-            tezos::DEFAULT_CONFIRMATION_DEPTH,
-        )
-        .await
-        .with_context(|| {
-            format!(
-                "Chain watcher failed to retrieve contract state for {}",
-                &channel.label
-            )
-        })?,
-        None => return Ok(()),
+    let tezos_client = match load_tezos_client(config, &channel.label, database).await {
+        Ok(tezos_client) => tezos_client,
+        Err(TezosClientError::ContractDetailsNotSet(_)) => return Ok(()),
+        error => error?,
     };
+    let contract_state = tezos::get_contract_state(&tezos_client).await?;
 
     // The channel has not reacted to an expiry transaction being posted
     // The condition is

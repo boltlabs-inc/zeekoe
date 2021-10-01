@@ -9,7 +9,7 @@ use zeekoe::{
     abort,
     escrow::{
         tezos,
-        types::{KeyHash, TezosKeyMaterial, TezosPublicKey},
+        types::{KeyHash, TezosClient, TezosKeyMaterial, TezosPublicKey},
     },
     merchant::{config::Service, database::QueryMerchant, server::SessionKey, Chan, Config},
     offer_abort, proceed,
@@ -207,11 +207,15 @@ async fn approve_and_establish(
         .await
         .context("Failed to receive contract ID from customer")?;
 
+    let proposed_tezos_client = TezosClient {
+        uri: Some(config.tezos_uri.clone()),
+        contract_id: contract_id.clone(),
+        client_key_pair: config.load_tezos_key_material()?,
+        confirmation_depth: tezos::DEFAULT_CONFIRMATION_DEPTH,
+        self_delay: config.self_delay,
+    };
     match tezos::establish::verify_origination(
-        Some(&config.tezos_uri),
-        merchant_key_material,
-        &contract_id,
-        config.self_delay,
+        &proposed_tezos_client,
         merchant_deposit,
         customer_deposit,
         zkabacus_merchant_config.signing_keypair().public_key(),
@@ -244,14 +248,8 @@ async fn approve_and_establish(
         .await
         .context("Failed to receive notification that the customer funded the contract")?;
 
-    match tezos::establish::verify_customer_funding(
-        &merchant_deposit,
-        Some(&config.tezos_uri),
-        merchant_key_material,
-        &contract_id,
-    )
-    .await
-    {
+    let tezos_client = load_tezos_client(config, &channel_id, database).await?;
+    match tezos::establish::verify_customer_funding(&tezos_client, &merchant_deposit).await {
         Ok(()) => {}
         Err(err) => {
             eprintln!("Warning: {}", err);
@@ -277,7 +275,6 @@ async fn approve_and_establish(
     // If the merchant contribution was greater than zero, fund the channel on chain, and await
     // confirmation that the funding has gone through to the required confirmation depth
     if merchant_deposit.into_inner() > 0 {
-        let tezos_client = load_tezos_client(config, &channel_id, database).await?;
         match tezos::establish::add_merchant_funding(
             &tezos_client,
             &tezos::establish::MerchantFundingInformation {

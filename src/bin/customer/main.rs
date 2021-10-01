@@ -6,6 +6,7 @@ use {
     sqlx::SqlitePool,
     std::{convert::identity, sync::Arc, time::Duration},
     structopt::StructOpt,
+    thiserror::Error,
     webpki::DNSNameRef,
 };
 
@@ -13,7 +14,7 @@ use zeekoe::{
     customer::{
         cli::{self, Customer::*},
         client::{Backoff, SessionKey, ZkChannelAddress},
-        database::{connect_sqlite, QueryCustomer},
+        database::{self, connect_sqlite, QueryCustomer},
         defaults::config_path,
         Chan, ChannelName, Cli, Client, Config,
     },
@@ -148,16 +149,26 @@ pub async fn database(config: &Config) -> Result<Arc<dyn QueryCustomer>, anyhow:
     Ok(database)
 }
 
+#[derive(Debug, Error)]
+pub enum TezosClientError {
+    #[error("Contract details for {0} are not set")]
+    ContractDetailsNotSet(ChannelName),
+    #[error("Failed to  load key material: {0}")]
+    InvalidKeyMaterial(#[from] anyhow::Error),
+    #[error(transparent)]
+    DatabaseError(#[from] database::Error),
+}
+
 pub async fn load_tezos_client(
     config: &Config,
     channel_name: &ChannelName,
     database: &dyn QueryCustomer,
-) -> Result<TezosClient, anyhow::Error> {
+) -> Result<TezosClient, TezosClientError> {
     let contract_id = match database.contract_details(channel_name).await?.contract_id {
         Some(contract_id) => contract_id,
         None => {
-            return Err(anyhow::anyhow!(
-                "Cannot load TezosClient for channel that has not set contract details"
+            return Err(TezosClientError::ContractDetailsNotSet(
+                channel_name.clone(),
             ))
         }
     };
