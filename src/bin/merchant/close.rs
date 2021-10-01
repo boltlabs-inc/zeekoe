@@ -419,6 +419,10 @@ async fn expiry(
 /// **Usage**: this is called in response to an on-chain event: when the expiry operation
 /// is confirmed on chain _and_ the timelock period has passed without
 /// any other operation to the contract (i.e., a custClose entrypoint call) confirmed on chain.
+//
+// Note to developers: This function reverts the status update if the `merch_claim` entrypoint call
+// fails. This revert is only valid if no other state changes in this function!
+// DO NOT ADD STATE CHANGES without first removing the status update.
 pub async fn claim_expiry_funds(
     config: &Config,
     database: &dyn QueryMerchant,
@@ -439,12 +443,23 @@ pub async fn claim_expiry_funds(
 
     // Call merchClaim entrypoint
     let tezos_client = load_tezos_client(config, channel_id, database).await?;
-    let _status = tezos_client.merch_claim().await.context(format!(
+    match tezos_client.merch_claim().await.context(format!(
         "Failed to claim merchant funds (id: {})",
         &channel_id
-    ))?;
-
-    Ok(())
+    )) {
+        Ok(_status) => Ok(()),
+        Err(e) => {
+            // If `merchClaim` didn't post correctly, revert state back to PendingExpiry
+            database
+                .compare_and_swap_channel_status(
+                    channel_id,
+                    &ChannelStatus::PendingMerchantClaim,
+                    &ChannelStatus::PendingExpiry,
+                )
+                .await?;
+            Err(e)
+        }
+    }
 }
 
 /// Finalize the channel balances. This is called during a unilateral merchant close flow if the
