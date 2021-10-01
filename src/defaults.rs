@@ -30,9 +30,15 @@ pub(crate) mod shared {
         2611
     }
 
+    /// Length of time a party must wait before claiming funds.
     pub const fn self_delay() -> u64 {
         // 2 days, in seconds.
         2 * 24 * 60 * 60
+    }
+
+    /// Depth at which on-chain transactions can be considered finalized.
+    pub const fn confirmation_depth() -> u64 {
+        20
     }
 }
 

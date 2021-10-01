@@ -337,7 +337,7 @@ pub async fn load_tezos_client(
         uri: Some(config.tezos_uri.clone()),
         contract_id,
         client_key_pair: TezosKeyMaterial::read_key_pair(&config.tezos_account)?,
-        confirmation_depth: tezos::DEFAULT_CONFIRMATION_DEPTH,
+        confirmation_depth: config.confirmation_depth,
         self_delay: config.self_delay,
     })
 }

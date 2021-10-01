@@ -146,9 +146,6 @@ impl Establish {
 /// Signal to the customer that the channel has been approved to be established, and continue to the
 /// end of the channel establishment protocol.
 #[allow(clippy::too_many_arguments)]
-#[allow(unused)]
-#[allow(clippy::unreachable)]
-#[allow(clippy::diverging_sub_expression)]
 async fn approve_and_establish(
     rng: &mut StdRng,
     database: &dyn QueryMerchant,
@@ -211,7 +208,7 @@ async fn approve_and_establish(
         uri: Some(config.tezos_uri.clone()),
         contract_id: contract_id.clone(),
         client_key_pair: config.load_tezos_key_material()?,
-        confirmation_depth: tezos::DEFAULT_CONFIRMATION_DEPTH,
+        confirmation_depth: 0,
         self_delay: config.self_delay,
     };
     match tezos::establish::verify_origination(

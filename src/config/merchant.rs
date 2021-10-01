@@ -22,6 +22,8 @@ pub struct Config {
     pub tezos_uri: Uri,
     #[serde(default = "defaults::self_delay")]
     pub self_delay: u64,
+    #[serde(default = "defaults::confirmation_depth")]
+    pub confirmation_depth: u64,
     #[serde(rename = "service")]
     pub services: Vec<Service>,
 }

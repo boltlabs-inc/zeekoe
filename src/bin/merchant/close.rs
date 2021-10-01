@@ -492,7 +492,6 @@ pub async fn finalize_expiry_close(
 
 /// Compute the new balances if the merchant is called upon to claim all (in case of dispute or
 /// expiry without a close in time).
-#[allow(unused, clippy::diverging_sub_expression)]
 async fn merchant_take_all_balances(
     database: &dyn QueryMerchant,
     channel_id: &ChannelId,

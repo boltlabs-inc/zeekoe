@@ -18,7 +18,7 @@ use zeekoe::{
         defaults::config_path,
         Chan, ChannelName, Cli, Client, Config,
     },
-    escrow::{tezos, types::TezosClient},
+    escrow::types::TezosClient,
     protocol,
 };
 
@@ -177,7 +177,7 @@ pub async fn load_tezos_client(
         uri: Some(config.tezos_uri.clone()),
         contract_id,
         client_key_pair: config.load_tezos_key_material()?,
-        confirmation_depth: tezos::DEFAULT_CONFIRMATION_DEPTH,
+        confirmation_depth: config.confirmation_depth,
         self_delay: config.self_delay,
     })
 }

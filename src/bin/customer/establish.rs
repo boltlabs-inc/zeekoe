@@ -226,7 +226,7 @@ impl Command for Establish {
                 &establishment.merchant_ps_public_key,
                 &tezos_key_material,
                 &channel_id,
-                tezos::DEFAULT_CONFIRMATION_DEPTH,
+                config.confirmation_depth,
                 config.self_delay,
             )
             .await

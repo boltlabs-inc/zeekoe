@@ -22,9 +22,6 @@ lazy_static::lazy_static! {
     static ref CONTRACT_CODE_HASH: ContractHash = ContractHash::new(&*CONTRACT_CODE);
 }
 
-/// The default confirmation depth to consider chain operations to be final.
-pub const DEFAULT_CONFIRMATION_DEPTH: u64 = 20;
-
 /// The default `revocation_lock`: a hex-encoded string which pytezos reads as a scalar 0.
 const DEFAULT_REVOCATION_LOCK: &str = "0x00";
 
@@ -585,9 +582,8 @@ impl FromStr for OperationStatus {
 
 /// Query the chain to retrieve the confirmed state of the contract with the given [`ContractId`].
 ///
-/// This function should query the state of the contract at the given confirmation depth -- that
-/// is, the state of the the contract, but not accounting for the latest
-/// `DEFAULT_CONFIRMATION_DEPTH` blocks.
+/// This function should query the state of the contract at the confirmation depth described in
+/// the `TezosClient`, which may not be the default or "fully confirmed" depth.
 pub fn get_contract_state(
     tezos_client: &TezosClient,
 ) -> impl Future<Output = Result<ContractState, ContractStateError>> + Send + 'static {
