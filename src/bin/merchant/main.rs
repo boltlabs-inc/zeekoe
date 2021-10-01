@@ -169,8 +169,9 @@ impl Command for Run {
             })
             .collect();
 
-        // Set the polling service interval to run every 60 seconds
-        let mut polling_interval = tokio::time::interval(Duration::from_secs(60));
+        // Set the polling service interval to run every 60 seconds or every self-delay interval
+        let interval_seconds = std::cmp::min(60, config.self_delay - 1);
+        let mut polling_interval = tokio::time::interval(Duration::from_secs(interval_seconds));
 
         // Get a join handle for the polling service
         let polling_service_join_handle = tokio::spawn(async move {
