@@ -1,11 +1,14 @@
 
 #
 # To setup the sandbox configs and start the merchant server, run the following:
-# $: python3 test-zeekoe.py --setup --url "http://localhost:20000" -v
+# $: python3 test-zeekoe.py setup --url "http://localhost:20000" -v
 # 
 # Then test the life cycle of a few channels (ideally in parallel): establish a channel, make a payment and run cust close
-# $: python3 test-zeekoe.py --scenario --channel 1 --num-payments 5 -v
-# $: python3 test-zeekoe.py --scenario --channel 2 --num-payments 7 -v
+# $: python3 test-zeekoe.py scenario --channel 1 --num-payments 5 -v
+# $: python3 test-zeekoe.py scenario --channel 2 --num-payments 7 -v
+#
+# List the channels
+# $: python3 test-zeekoe.py list
 #
 
 import argparse
@@ -153,15 +156,6 @@ def main():
     if args.command not in COMMANDS:
         fatal_error("'%s' not a recognized command. Here are the options: %s" % (args.command, COMMANDS))
     
-    # cmd_is_setup = cmd_is_scenario = cmd_is_list_channels = False
-    # if args.setup is False and args.scenario is False:
-    #     cmd_is_list_channels = True
-
-    # if args.setup:
-    #     cmd_is_setup = True
-    # if args.scenario:
-    #     cmd_is_scenario = True
-
     verbose = args.verbose
     dev_path = args.path
     url = args.url.lower()
