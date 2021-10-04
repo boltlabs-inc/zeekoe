@@ -27,10 +27,6 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - uses: webfactory/ssh-agent@v0.5.3
-        with:
-          ssh-private-key: ${{ secrets.BOLT_CI_SSH_PRIVATEKEY }}
-
       - name: Install dependencies
         run: sudo apt install libudev-dev
 
