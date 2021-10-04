@@ -142,6 +142,45 @@ def scenario_close_with_expiry(config, channel_name, verbose):
     # TODO: then customer should detect and respond with cust close
     pass
 
+class TestScenario():
+    def __init__(self, cust_config, channel_name, customer_deposit, verbose):
+        self.cust_config = cust_config
+        self.channel_name = channel_name
+        self.customer_deposit = float(customer_deposit)
+        self.balance_remaining = float(customer_deposit)
+        self.verbose = verbose
+    
+    def establish(self):
+        create_new_channel(self.cust_config, self.channel_name, self.customer_deposit, self.verbose)
+
+    def pay(self):
+        max_pay_amount = self.balance_remaining / 2 # save money for future payments
+        pay_amount = round(random.uniform(0, max_pay_amount), 4)
+        make_payment(self.cust_config, self.channel_name, pay_amount, self.verbose)
+        self.balance_remaining -= pay_amount
+
+    def pay_all(self):
+        pay_amount = self.balance_remaining
+        make_payment(self.cust_config, self.channel_name, pay_amount, self.verbose)
+        self.balance_remaining = 0
+
+    def close(self):
+        close_channel(self.cust_config, self.channel_name, self.verbose)
+
+    def run_command_list(self, command_list):
+        for command in command_list:
+            if command == "establish":
+                self.establish()
+            elif command == "pay":
+                self.pay()
+            elif command == "pay_all":
+                self.pay_all()
+            elif command == "close":
+                self.close()
+            else:
+                fatal_error(f"{command} not a recognized command.")
+
+
 COMMANDS = ["list", "merch-setup", "cust-setup", "scenario"]
 def main():
     parser = argparse.ArgumentParser()
@@ -153,7 +192,7 @@ def main():
     parser.add_argument("--amount", "-a", help="starting balance for each channel", default="10")
     parser.add_argument("--verbose", "-v", help="increase output verbosity", action="store_true")
     parser.add_argument("--channel", type=int, help="desired starting channel counter", default="1")
-    parser.add_argument("--num-payments", "-p", type=int, help="the number of payments to make on a channel", default="5")
+    parser.add_argument('--command-list','-c', nargs='+', help='commands to be tested, e.g. establish pay close')
 
     args = parser.parse_args()
 
@@ -168,7 +207,7 @@ def main():
     self_delay = args.self_delay
     customer_deposit = args.amount
     channel_count = args.channel
-    num_payments = args.num_payments
+    command_list = args.command_list
 
     if int(channel_count) <= 0:
         fatal_error("Expected '--channel' to be > 0")
@@ -198,19 +237,9 @@ def main():
         start_customer_watcher(cust_config, verbose)
 
     elif args.command == SCENARIO:
-        info("Running basic scenario...")
-        # now we can establish a channel
-        create_new_channel(cust_config, channel_name, customer_deposit, verbose)
-        # set maximum payment amount so that the customer doesn't run out of money
-        max_pay_amount = float(customer_deposit)/num_payments
-
-        # let's make some payments
-        for _ in range(0, num_payments):
-            pay_amount = str(round(random.uniform(0, max_pay_amount), 4))
-            make_payment(cust_config, channel_name, pay_amount, verbose)
-
-        # # let's close
-        close_channel(cust_config, channel_name, verbose)
+        info("Running scenario: %s" % ', '.join(command_list))
+        t = TestScenario(cust_config, channel_name, customer_deposit, verbose)
+        t.run_command_list(command_list)
     else:
         # list the available channels
         list_channels(cust_config)
