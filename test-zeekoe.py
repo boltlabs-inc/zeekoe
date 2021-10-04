@@ -1,11 +1,13 @@
 
 #
-# To setup the sandbox configs and start the merchant server, run the following:
-# $: python3 test-zeekoe.py setup --url "http://localhost:20000" -v
+# To setup the merchant's sandbox config and start the merchant server, run the following:
+# $: python3 test-zeekoe.py merch-setup --url "http://localhost:20000" -v
+# 
+# Then setup the customer's sandbox config and start the chain watcher, run the following:
+# $: python3 test-zeekoe.py cust-setup --url "http://localhost:20000" -v
 # 
 # Then test the life cycle of a few channels (ideally in parallel): establish a channel, make a payment and run cust close
-# $: python3 test-zeekoe.py scenario --channel 1 --num-payments 5 -v
-# $: python3 test-zeekoe.py scenario --channel 2 --num-payments 7 -v
+# $: python3 test-zeekoe.py scenario --channel 1 -v --command_list establish pay pay pay_all close
 #
 # List the channels
 # $: python3 test-zeekoe.py list
