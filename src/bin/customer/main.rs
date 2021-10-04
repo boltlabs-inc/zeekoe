@@ -18,7 +18,7 @@ use zeekoe::{
         defaults::config_path,
         Chan, ChannelName, Cli, Client, Config,
     },
-    escrow::types::TezosClient,
+    escrow::tezos::TezosClient,
     protocol,
 };
 

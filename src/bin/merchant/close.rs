@@ -5,7 +5,6 @@ use super::{database, load_tezos_client, Command};
 
 use zeekoe::{
     abort,
-    escrow::tezos,
     merchant::{
         cli,
         database::{Error, QueryMerchant},
@@ -46,10 +45,10 @@ impl Close {
 
         // Generate an authorization signature under the merchant's EdDSA Tezos key
         let tezos_client = load_tezos_client(config, close_state.channel_id(), database).await?;
-        let authorization_signature =
-            tezos::close::authorize_mutual_close(&tezos_client, &close_state)
-                .context("Failed to post mutualClose entrypoint")?
-                .into();
+        let authorization_signature = tezos_client
+            .authorize_mutual_close(&close_state)
+            .context("Failed to post mutualClose entrypoint")?
+            .into();
 
         let chan = chan
             .send(authorization_signature)
@@ -63,7 +62,8 @@ impl Close {
         chan.close();
 
         // Wait for the contract to be closed on chain
-        tezos::close::verify_contract_closed(&contract_id)
+        tezos_client
+            .verify_contract_closed(&contract_id)
             .await
             .context(format!(
                 "Failed to confirm that the contract closed in mutual close protocol (id: {})",
@@ -136,7 +136,8 @@ pub async fn process_customer_close(
 
             // Call the merchDispute entrypoint and wait for it to be confirmed
             let tezos_client = load_tezos_client(config, channel_id, database).await?;
-            let _status = tezos::close::merch_dispute(&tezos_client, revocation_secret)
+            let _status = tezos_client
+                .merch_dispute(revocation_secret)
                 .await
                 .context(format!(
                     "Failed to post merchDispute entrypoint (id: {})",
@@ -405,7 +406,7 @@ async fn expiry(
 
     // Call expiry entrypoint
     let tezos_client = load_tezos_client(config, channel_id, database).await?;
-    tezos::close::expiry(&tezos_client).await.context(format!(
+    tezos_client.expiry().await.context(format!(
         "Failed to initiate expiry close flow (id: {})",
         &channel_id
     ))?;
@@ -438,12 +439,10 @@ pub async fn claim_expiry_funds(
 
     // Call merchClaim entrypoint
     let tezos_client = load_tezos_client(config, channel_id, database).await?;
-    let _status = tezos::close::merch_claim(&tezos_client)
-        .await
-        .context(format!(
-            "Failed to claim merchant funds (id: {})",
-            &channel_id
-        ))?;
+    let _status = tezos_client.merch_claim().await.context(format!(
+        "Failed to claim merchant funds (id: {})",
+        &channel_id
+    ))?;
 
     Ok(())
 }

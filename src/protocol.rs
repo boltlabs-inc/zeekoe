@@ -292,9 +292,7 @@ pub mod close {
         zkabacus_crypto::{CloseState, CloseStateSignature},
     };
 
-    use crate::{
-        database::customer::StateName, escrow::tezos::close::MutualCloseAuthorizationSignature,
-    };
+    use crate::{database::customer::StateName, escrow::tezos::MutualCloseAuthorizationSignature};
 
     use super::*;
 

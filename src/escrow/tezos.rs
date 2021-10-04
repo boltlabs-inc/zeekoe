@@ -3,15 +3,19 @@ use {
     canonicalize_json_micheline::{canonicalize_json_micheline, CanonicalizeError},
     futures::Future,
     inline_python::{pyo3, pyo3::conversion::FromPyObject, python},
+    serde::{Deserialize, Serialize},
     std::{
         convert::{TryFrom, TryInto},
         str::FromStr,
         sync::Mutex,
         time::{Duration, SystemTime},
     },
-    tezedge::{OriginatedAddress, ToBase58Check},
+    tezedge::{signer::OperationSignatureInfo, OriginatedAddress, ToBase58Check},
     tokio::task::JoinError,
-    zkabacus_crypto::{CustomerBalance, MerchantBalance, RevocationLock},
+    zkabacus_crypto::{
+        customer::ClosingMessage, revlock::RevocationSecret, ChannelId, CloseState,
+        CustomerBalance, MerchantBalance, PublicKey, RevocationLock,
+    },
 };
 
 /// The Micheline JSON for the ZkChannels contract.
@@ -580,144 +584,232 @@ impl FromStr for OperationStatus {
     }
 }
 
-/// Query the chain to retrieve the confirmed state of the contract with the given [`ContractId`].
+pub struct CustomerFundingInformation {
+    /// Initial balance for the customer in the channel.
+    pub balance: CustomerBalance,
+
+    /// Funding source which will support the balance. This address is the hash of
+    /// the `public_key`.
+    pub address: TezosFundingAddress,
+
+    /// Public key associated with the funding address. The customer must have access to the
+    /// corresponding [`tezedge::PrivateKey`].
+    pub public_key: TezosPublicKey,
+}
+
+pub struct MerchantFundingInformation {
+    /// Initial balance for the merchant in the channel.
+    pub balance: MerchantBalance,
+
+    /// Funding source which will support the balance. This address is the hash of
+    /// the `public_key`.
+    pub address: TezosFundingAddress,
+
+    /// Public key associated with the funding address. The merchant must have access to the
+    /// corresponding [`tezedge::PrivateKey`].
+    pub public_key: TezosPublicKey,
+}
+
+/// An error while attempting to originate the contract.
+#[derive(Debug, thiserror::Error)]
+#[error("Could not originate contract: {0}")]
+pub struct OriginateError(#[from] JoinError);
+
+/// An error while attempting to fund the contract.
+#[derive(Debug, thiserror::Error)]
+#[error("Could not fund contract: {0}")]
+pub struct CustomerFundError(#[from] JoinError);
+
+/// An error while attempting to fund the contract.
+#[derive(Debug, thiserror::Error)]
+#[error("Could not reclaim funding from contract: {0}")]
+pub struct ReclaimFundingError(#[from] JoinError);
+
+#[derive(Debug, thiserror::Error)]
+#[error("Could not issue expiry: {0}")]
+pub struct ExpiryError(#[from] JoinError);
+
+#[derive(Debug, thiserror::Error)]
+#[error("Could not issue merchant claim: {0}")]
+pub struct MerchantClaimError(#[from] JoinError);
+
+#[derive(Debug, thiserror::Error)]
+#[error("Could not issue customer close: {0}")]
+pub struct CustomerCloseError(#[from] JoinError);
+
+#[derive(Debug, thiserror::Error)]
+#[error("Could not issue merchant dispute: {0}")]
+pub struct MerchantDisputeError(#[from] JoinError);
+
+#[derive(Debug, thiserror::Error)]
+#[error("Could not issue customer claim: {0}")]
+pub struct CustomerClaimError(#[from] JoinError);
+/// Merchant authorization signature for a mutual close operation.
 ///
-/// This function should query the state of the contract at the confirmation depth described in
-/// the `TezosClient`, which may not be the default or "fully confirmed" depth.
-pub fn get_contract_state(
-    tezos_client: &TezosClient,
-) -> impl Future<Output = Result<ContractState, ContractStateError>> + Send + 'static {
-    let (uri, client_private_key, contract_id) = tezos_client.into_python_types();
-    let confirmation_depth = tezos_client.confirmation_depth;
+/// The internals of this type are a dupe for the tezedge [`OperationSigantureInfo`] type.
+/// We're not reusing that type because it isn't serializable, and because we may want to
+/// change the internal storage here.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MutualCloseAuthorizationSignature {
+    /// base58check with prefix (`Prefix::operation`) encoded operation hash.
+    operation_hash: String,
+    /// forged operation (hex) concatenated with signature('hex').
+    operation_with_signature: String,
+    /// operation signature encoded with base58check with prefix (`Prefix::edsig`).
+    signature: String,
+}
+
+impl MutualCloseAuthorizationSignature {
+    /// Get the operation hash.
+    pub fn operation_hash(&self) -> &String {
+        &self.operation_hash
+    }
+
+    /// Get the forged operation hash concatenated with the signature.
+    pub fn operation_with_signature(&self) -> &String {
+        &self.operation_with_signature
+    }
+
+    /// Get the signature by itself.
+    pub fn signature(&self) -> &String {
+        &self.signature
+    }
+}
+
+impl From<OperationSignatureInfo> for MutualCloseAuthorizationSignature {
+    fn from(info: OperationSignatureInfo) -> Self {
+        let OperationSignatureInfo {
+            operation_hash,
+            operation_with_signature,
+            signature,
+        } = info;
+        Self {
+            operation_hash,
+            operation_with_signature,
+            signature,
+        }
+    }
+}
+
+/// Originate a contract on chain.
+///
+/// This call will wait until the contract is confirmed at depth. It returns the new
+/// [`ContractId`].
+///
+/// The `originator_key_pair` should belong to whichever party originates the contract.
+/// Currently, this must be called by the customer. Its public key must be the same as the one
+/// in the provided [`CustomerFundingInformation`].
+///
+/// By default, this uses the Tezos mainnet; however, another URI may be specified to point to a
+/// sandbox or testnet node.
+#[allow(clippy::too_many_arguments)]
+pub fn originate(
+    uri: Option<&http::Uri>,
+    merchant_funding_info: &MerchantFundingInformation,
+    customer_funding_info: &CustomerFundingInformation,
+    merchant_public_key: &PublicKey,
+    originator_key_pair: &TezosKeyMaterial,
+    channel_id: &ChannelId,
+    confirmation_depth: u64,
+    self_delay: u64,
+) -> impl Future<Output = Result<(ContractId, OperationStatus), OriginateError>> + Send + 'static {
+    let (g2, y2s, x2) = pointcheval_sanders_public_key_to_python_input(merchant_public_key);
+    let merchant_funding = merchant_funding_info.balance.into_inner();
+    let merchant_address = merchant_funding_info.address.to_base58check();
+    let merchant_pubkey = merchant_funding_info.public_key.to_base58check();
+
+    let customer_account_key = originator_key_pair.private_key().to_base58check();
+    let customer_funding = customer_funding_info.balance.into_inner();
+    let customer_address = customer_funding_info.address.to_base58check();
+    let channel_id = hex_string(&channel_id.to_bytes());
+    let uri = uri.map(|uri| uri.to_string());
 
     async move {
         tokio::task::spawn_blocking(move || {
             let context = python_context();
             context.run(python! {
-                out = contract_state(
+                out = originate(
                     'uri,
-                    'client_private_key,
-                    'contract_id,
-                    'confirmation_depth
+                    'customer_address, 'merchant_address,
+                    'customer_account_key,
+                    'merchant_pubkey,
+                    'channel_id,
+                    'g2, 'y2s, 'x2,
+                    'customer_funding, 'merchant_funding,
+                    'confirmation_depth,
+                    'self_delay
                 )
             });
 
-            context.get::<ContractState>("out")
+            let (contract_id, status) = context.get::<(String, String)>("out");
+            let contract_id = ContractId::new(
+                OriginatedAddress::from_base58check(&contract_id)
+                    .expect("Contract id returned from pytezos must be valid base58"),
+            );
+            (contract_id, status.parse().unwrap())
         })
         .await
-        .map_err(ContractStateError::PythonError)
+        .map_err(OriginateError)
     }
 }
 
-pub mod establish {
-    use futures::Future;
-    use tokio::task::JoinError;
+/// Information used by a Tezos node to post an operation on chain.
+pub struct TezosClient {
+    /// Link to the Tezos network.
+    pub uri: Option<http::Uri>,
+    /// ID of the contract for which the client will post an operation.
+    pub contract_id: ContractId,
+    /// Key material for the client.
+    pub client_key_pair: TezosKeyMaterial,
+    /// Block depth for which the client will wait for their operation to reach.
+    pub confirmation_depth: u64,
+    /// Mutually-agreed delay period for which a client must wait before claiming funds.
+    pub self_delay: u64,
+}
 
-    use super::*;
-    use zkabacus_crypto::{ChannelId, PublicKey};
+impl TezosClient {
+    /// Transform the Tezos client fields into the correct Python representations, for use in
+    /// inline-python calls to the PyTezos API.
+    ///
+    /// Returns tuple of `(URI, private key, contract_id)`
+    fn as_python_types(&self) -> (Option<String>, String, String) {
+        let private_key = self.client_key_pair.private_key().to_base58check();
+        let contract_id = self
+            .contract_id
+            .clone()
+            .to_originated_address()
+            .to_base58check();
+        let uri = self.uri.as_ref().map(|uri| uri.to_string());
 
-    pub struct CustomerFundingInformation {
-        /// Initial balance for the customer in the channel.
-        pub balance: CustomerBalance,
-
-        /// Funding source which will support the balance. This address is the hash of
-        /// the `public_key`.
-        pub address: TezosFundingAddress,
-
-        /// Public key associated with the funding address. The customer must have access to the
-        /// corresponding [`tezedge::PrivateKey`].
-        pub public_key: TezosPublicKey,
+        (uri, private_key, contract_id)
     }
 
-    pub struct MerchantFundingInformation {
-        /// Initial balance for the merchant in the channel.
-        pub balance: MerchantBalance,
-
-        /// Funding source which will support the balance. This address is the hash of
-        /// the `public_key`.
-        pub address: TezosFundingAddress,
-
-        /// Public key associated with the funding address. The merchant must have access to the
-        /// corresponding [`tezedge::PrivateKey`].
-        pub public_key: TezosPublicKey,
-    }
-
-    /// An error while attempting to originate the contract.
-    #[derive(Debug, thiserror::Error)]
-    #[error("Could not originate contract: {0}")]
-    pub struct OriginateError(#[from] JoinError);
-
-    /// An error while attempting to fund the contract.
-    #[derive(Debug, thiserror::Error)]
-    #[error("Could not fund contract: {0}")]
-    pub struct CustomerFundError(#[from] JoinError);
-
-    /// An error while attempting to fund the contract.
-    #[derive(Debug, thiserror::Error)]
-    #[error("Could not reclaim funding from contract: {0}")]
-    pub struct ReclaimFundingError(#[from] JoinError);
-
-    /// Originate a contract on chain.
+    /// Query the chain to retrieve the confirmed state of the contract with the given [`ContractId`].
     ///
-    /// This call will wait until the contract is confirmed at depth. It returns the new
-    /// [`ContractId`].
-    ///
-    /// The `originator_key_pair` should belong to whichever party originates the contract.
-    /// Currently, this must be called by the customer. Its public key must be the same as the one
-    /// in the provided [`CustomerFundingInformation`].
-    ///
-    /// By default, this uses the Tezos mainnet; however, another URI may be specified to point to a
-    /// sandbox or testnet node.
-    #[allow(clippy::too_many_arguments)]
-    pub fn originate(
-        uri: Option<&http::Uri>,
-        merchant_funding_info: &MerchantFundingInformation,
-        customer_funding_info: &CustomerFundingInformation,
-        merchant_public_key: &PublicKey,
-        originator_key_pair: &TezosKeyMaterial,
-        channel_id: &ChannelId,
-        confirmation_depth: u64,
-        self_delay: u64,
-    ) -> impl Future<Output = Result<(ContractId, OperationStatus), OriginateError>> + Send + 'static
-    {
-        let (g2, y2s, x2) =
-            super::pointcheval_sanders_public_key_to_python_input(merchant_public_key);
-        let merchant_funding = merchant_funding_info.balance.into_inner();
-        let merchant_address = merchant_funding_info.address.to_base58check();
-        let merchant_pubkey = merchant_funding_info.public_key.to_base58check();
-
-        let customer_account_key = originator_key_pair.private_key().to_base58check();
-        let customer_funding = customer_funding_info.balance.into_inner();
-        let customer_address = customer_funding_info.address.to_base58check();
-        let channel_id = hex_string(&channel_id.to_bytes());
-        let uri = uri.map(|uri| uri.to_string());
+    /// This function should query the state of the contract at the confirmation depth described in
+    /// the `TezosClient`, which may not be the default or "fully confirmed" depth.
+    pub fn get_contract_state(
+        &self,
+    ) -> impl Future<Output = Result<ContractState, ContractStateError>> + Send + 'static {
+        let (uri, client_private_key, contract_id) = self.as_python_types();
+        let confirmation_depth = self.confirmation_depth;
 
         async move {
             tokio::task::spawn_blocking(move || {
                 let context = python_context();
                 context.run(python! {
-                    out = originate(
+                    out = contract_state(
                         'uri,
-                        'customer_address, 'merchant_address,
-                        'customer_account_key,
-                        'merchant_pubkey,
-                        'channel_id,
-                        'g2, 'y2s, 'x2,
-                        'customer_funding, 'merchant_funding,
-                        'confirmation_depth,
-                        'self_delay
+                        'client_private_key,
+                        'contract_id,
+                        'confirmation_depth
                     )
                 });
 
-                let (contract_id, status) = context.get::<(String, String)>("out");
-                let contract_id = ContractId::new(
-                    OriginatedAddress::from_base58check(&contract_id)
-                        .expect("Contract id returned from pytezos must be valid base58"),
-                );
-                (contract_id, status.parse().unwrap())
+                context.get::<ContractState>("out")
             })
             .await
-            .map_err(OriginateError)
+            .map_err(ContractStateError::PythonError)
         }
     }
 
@@ -732,12 +824,12 @@ pub mod establish {
     /// - the specified funding information does not match the `custFunding` amount in the contract
     /// - the `addFunding` entrypoint has not been called by the customer address before.
     pub fn add_customer_funding(
-        tezos_client: &TezosClient,
+        &self,
         customer_funding_info: &CustomerFundingInformation,
     ) -> impl Future<Output = Result<OperationStatus, CustomerFundError>> + Send + 'static {
         let customer_funding = customer_funding_info.balance.into_inner();
-        let (uri, customer_private_key, contract_id) = tezos_client.into_python_types();
-        let confirmation_depth = tezos_client.confirmation_depth;
+        let (uri, customer_private_key, contract_id) = self.as_python_types();
+        let confirmation_depth = self.confirmation_depth;
 
         async move {
             tokio::task::spawn_blocking(move || {
@@ -774,12 +866,12 @@ pub mod establish {
     /// This function will return [`VerificationError`] if the contract is not a valid
     /// zkChannels contract or it does not have the expected storage.
     pub async fn verify_origination(
-        tezos_client: &TezosClient,
+        &self,
         expected_merchant_balance: MerchantBalance,
         expected_customer_balance: CustomerBalance,
         merchant_public_key: &PublicKey,
     ) -> Result<(), VerificationError> {
-        let contract_state = get_contract_state(tezos_client).await?;
+        let contract_state = self.get_contract_state().await?;
 
         match contract_state.status()? {
             ContractStatus::AwaitingCustomerFunding => {}
@@ -791,9 +883,9 @@ pub mod establish {
             }
         };
 
-        if contract_state.self_delay() != tezos_client.self_delay {
+        if contract_state.self_delay() != self.self_delay {
             return Err(VerificationError::UnexpectedSelfDelay {
-                expected: tezos_client.self_delay,
+                expected: self.self_delay,
                 actual: contract_state.self_delay(),
             });
         }
@@ -816,7 +908,7 @@ pub mod establish {
         }
 
         let (expected_g2, expected_y2s, expected_x2) =
-            super::pointcheval_sanders_public_key_to_python_input(merchant_public_key);
+            pointcheval_sanders_public_key_to_python_input(merchant_public_key);
         let (g2, y2s, x2) = contract_state.merchant_public_key();
         let (g2, y2s, x2) = (
             hex_string(g2),
@@ -845,7 +937,7 @@ pub mod establish {
     /// This function will wait until the customer's funding operation is confirmed at depth
     /// and is called by the merchant.
     pub async fn verify_customer_funding(
-        tezos_client: &TezosClient,
+        &self,
         merchant_balance: &MerchantBalance,
     ) -> Result<(), VerificationError> {
         let expected = if merchant_balance.into_inner() > 0 {
@@ -854,7 +946,7 @@ pub mod establish {
             ContractStatus::Open
         };
 
-        let contract_state = get_contract_state(tezos_client).await?;
+        let contract_state = self.get_contract_state().await?;
         let actual = contract_state.status()?;
 
         if expected == actual {
@@ -865,10 +957,8 @@ pub mod establish {
     }
 
     /// Verify that the contract storage status has been open for ``required_confirmations`.
-    pub async fn verify_merchant_funding(
-        tezos_client: &TezosClient,
-    ) -> Result<(), VerificationError> {
-        let contract_state = get_contract_state(tezos_client).await?;
+    pub async fn verify_merchant_funding(&self) -> Result<(), VerificationError> {
+        let contract_state = self.get_contract_state().await?;
 
         match contract_state.status()? {
             ContractStatus::Open => Ok(()),
@@ -897,12 +987,12 @@ pub mod establish {
     /// If the expected merchant funding is 0, this operation is invalid if:
     /// - the contract status is not OPEN
     pub fn add_merchant_funding(
-        tezos_client: &TezosClient,
+        &self,
         merchant_funding_info: &MerchantFundingInformation,
     ) -> impl Future<Output = Result<OperationStatus, CustomerFundError>> + Send + 'static {
         let merchant_funding = merchant_funding_info.balance.into_inner();
-        let (uri, merchant_private_key, contract_id) = tezos_client.into_python_types();
-        let confirmation_depth = tezos_client.confirmation_depth;
+        let (uri, merchant_private_key, contract_id) = self.as_python_types();
+        let confirmation_depth = self.confirmation_depth;
 
         async move {
             tokio::task::spawn_blocking(move || {
@@ -935,10 +1025,10 @@ pub mod establish {
     /// - the `addFunding` entrypoint has not been called by the customer address
     #[allow(unused)]
     pub fn reclaim_customer_funding(
-        tezos_client: &TezosClient,
+        &self,
     ) -> impl Future<Output = Result<OperationStatus, ReclaimFundingError>> + Send + 'static {
-        let (uri, customer_private_key, contract_id) = tezos_client.into_python_types();
-        let confirmation_depth = tezos_client.confirmation_depth;
+        let (uri, customer_private_key, contract_id) = self.as_python_types();
+        let confirmation_depth = self.confirmation_depth;
 
         async move {
             tokio::task::spawn_blocking(move || {
@@ -959,93 +1049,6 @@ pub mod establish {
             .map_err(ReclaimFundingError)
         }
     }
-}
-
-pub mod close {
-    use super::python_context;
-    use crate::escrow::{
-        tezos::{hex_string, OperationStatus},
-        types::*,
-    };
-    use futures::Future;
-    use inline_python::python;
-    use tokio::task::JoinError;
-    use zkabacus_crypto::ChannelId;
-
-    use {
-        serde::{Deserialize, Serialize},
-        tezedge::signer::OperationSignatureInfo,
-        zkabacus_crypto::{
-            customer::ClosingMessage, revlock::RevocationSecret, CloseState, CustomerBalance,
-            MerchantBalance,
-        },
-    };
-
-    #[derive(Debug, thiserror::Error)]
-    #[error("Could not issue expiry: {0}")]
-    pub struct ExpiryError(#[from] JoinError);
-
-    #[derive(Debug, thiserror::Error)]
-    #[error("Could not issue merchant claim: {0}")]
-    pub struct MerchantClaimError(#[from] JoinError);
-
-    #[derive(Debug, thiserror::Error)]
-    #[error("Could not issue customer close: {0}")]
-    pub struct CustomerCloseError(#[from] JoinError);
-
-    #[derive(Debug, thiserror::Error)]
-    #[error("Could not issue merchant dispute: {0}")]
-    pub struct MerchantDisputeError(#[from] JoinError);
-
-    #[derive(Debug, thiserror::Error)]
-    #[error("Could not issue customer claim: {0}")]
-    pub struct CustomerClaimError(#[from] JoinError);
-    /// Merchant authorization signature for a mutual close operation.
-    ///
-    /// The internals of this type are a dupe for the tezedge [`OperationSigantureInfo`] type.
-    /// We're not reusing that type because it isn't serializable, and because we may want to
-    /// change the internal storage here.
-    #[derive(Debug, Clone, Serialize, Deserialize)]
-    pub struct MutualCloseAuthorizationSignature {
-        /// base58check with prefix (`Prefix::operation`) encoded operation hash.
-        operation_hash: String,
-        /// forged operation (hex) concatenated with signature('hex').
-        operation_with_signature: String,
-        /// operation signature encoded with base58check with prefix (`Prefix::edsig`).
-        signature: String,
-    }
-
-    impl MutualCloseAuthorizationSignature {
-        /// Get the operation hash.
-        pub fn operation_hash(&self) -> &String {
-            &self.operation_hash
-        }
-
-        /// Get the forged operation hash concatenated with the signature.
-        pub fn operation_with_signature(&self) -> &String {
-            &self.operation_with_signature
-        }
-
-        /// Get the signature by itself.
-        pub fn signature(&self) -> &String {
-            &self.signature
-        }
-    }
-
-    impl From<OperationSignatureInfo> for MutualCloseAuthorizationSignature {
-        fn from(info: OperationSignatureInfo) -> Self {
-            let OperationSignatureInfo {
-                operation_hash,
-                operation_with_signature,
-                signature,
-            } = info;
-            Self {
-                operation_hash,
-                operation_with_signature,
-                signature,
-            }
-        }
-    }
 
     /// Initiate expiry close flow via the `expiry` entrypoint on the given [`ContractId`].
     ///
@@ -1057,10 +1060,10 @@ pub mod close {
     /// - the [`TezosFundingAddress`] specified does not match the `merch_addr` field in the
     ///   the specified contract
     pub fn expiry(
-        tezos_client: &TezosClient,
+        &self,
     ) -> impl Future<Output = Result<OperationStatus, ExpiryError>> + Send + 'static {
-        let (uri, merchant_private_key, contract_id) = tezos_client.into_python_types();
-        let confirmation_depth = tezos_client.confirmation_depth;
+        let (uri, merchant_private_key, contract_id) = self.as_python_types();
+        let confirmation_depth = self.confirmation_depth;
 
         async move {
             tokio::task::spawn_blocking(move || {
@@ -1089,10 +1092,10 @@ pub mod close {
     /// - the [`TezosKeyPair`] does not match the `merch_addr` field in the specified
     ///   contract
     pub fn merch_claim(
-        tezos_client: &TezosClient,
+        &self,
     ) -> impl Future<Output = Result<OperationStatus, MerchantClaimError>> + Send + 'static {
-        let (uri, merchant_private_key, contract_id) = tezos_client.into_python_types();
-        let confirmation_depth = tezos_client.confirmation_depth;
+        let (uri, merchant_private_key, contract_id) = self.as_python_types();
+        let confirmation_depth = self.confirmation_depth;
 
         async move {
             tokio::task::spawn_blocking(move || {
@@ -1128,11 +1131,11 @@ pub mod close {
     /// - the signature in the [`ClosingMessage`] is not a valid signature under the merchant
     ///   public key on the expected tuple
     pub fn cust_close(
-        tezos_client: &TezosClient,
+        &self,
         close_message: &ClosingMessage,
     ) -> impl Future<Output = Result<OperationStatus, CustomerCloseError>> + Send + 'static {
-        let (uri, customer_private_key, contract_id) = tezos_client.into_python_types();
-        let confirmation_depth = tezos_client.confirmation_depth;
+        let (uri, customer_private_key, contract_id) = self.as_python_types();
+        let confirmation_depth = self.confirmation_depth;
 
         let customer_balance = close_message.customer_balance().into_inner();
         let merchant_balance = close_message.merchant_balance().into_inner();
@@ -1176,11 +1179,11 @@ pub mod close {
     /// - the [`TezosKeyPair`] does not match the `merch_addr` field in the specified contract
     /// - the [`RevocationSecret`] does not hash to the `rev_lock` field in the specified contract
     pub fn merch_dispute(
-        tezos_client: &TezosClient,
+        &self,
         revocation_secret: &RevocationSecret,
     ) -> impl Future<Output = Result<OperationStatus, MerchantDisputeError>> + Send + 'static {
-        let (uri, merchant_private_key, contract_id) = tezos_client.into_python_types();
-        let confirmation_depth = tezos_client.confirmation_depth;
+        let (uri, merchant_private_key, contract_id) = self.as_python_types();
+        let confirmation_depth = self.confirmation_depth;
 
         let revocation_secret = hex_string(&revocation_secret.as_bytes());
 
@@ -1216,10 +1219,10 @@ pub mod close {
     /// - the contract status is not CUST_CLOSE
     /// - the [`TezosKeyPair`] does not match the `cust_addr` field in the specified contract
     pub fn cust_claim(
-        tezos_client: &TezosClient,
+        &self,
     ) -> impl Future<Output = Result<OperationStatus, CustomerClaimError>> + Send + 'static {
-        let (uri, customer_private_key, contract_id) = tezos_client.into_python_types();
-        let confirmation_depth = tezos_client.confirmation_depth;
+        let (uri, customer_private_key, contract_id) = self.as_python_types();
+        let confirmation_depth = self.confirmation_depth;
 
         async move {
             tokio::task::spawn_blocking(move || {
@@ -1248,7 +1251,7 @@ pub mod close {
     /// This is called by the merchant.
     #[allow(unused)]
     pub fn authorize_mutual_close(
-        tezos_client: &TezosClient,
+        &self,
         close_state: &CloseState,
     ) -> Result<OperationSignatureInfo, Error> {
         todo!()
@@ -1267,7 +1270,7 @@ pub mod close {
     ///   on the expected tuple
     #[allow(unused)]
     pub fn mutual_close(
-        tezos_client: &TezosClient,
+        &self,
         channel_id: &ChannelId,
         customer_balance: &CustomerBalance,
         merchant_balance: &MerchantBalance,
@@ -1281,7 +1284,7 @@ pub mod close {
     /// This function will wait until the contract status is CLOSED at the expected confirmation
     /// depth and is called by the merchant.
     #[allow(unused)]
-    pub async fn verify_contract_closed(contract_id: &ContractId) -> Result<(), Error> {
+    pub async fn verify_contract_closed(&self, contract_id: &ContractId) -> Result<(), Error> {
         todo!()
     }
 }

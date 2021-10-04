@@ -18,8 +18,8 @@ use std::time::Duration;
 
 use zeekoe::{
     escrow::{
-        tezos,
-        types::{ContractStatus, TezosClient, TezosKeyMaterial},
+        tezos::TezosClient,
+        types::{ContractStatus, TezosKeyMaterial},
     },
     merchant::{
         cli::{self, Run},
@@ -230,7 +230,7 @@ async fn dispatch_channel(
     config: &Config,
 ) -> Result<(), anyhow::Error> {
     let tezos_client = load_tezos_client(config, &channel.channel_id, database).await?;
-    let contract_state = tezos::get_contract_state(&tezos_client).await?;
+    let contract_state = tezos_client.get_contract_state().await?;
 
     // The channel has not claimed funds after the expiry timeout expired
     // The condition is

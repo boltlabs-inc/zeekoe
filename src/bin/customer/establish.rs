@@ -203,12 +203,12 @@ impl Command for Establish {
         }
 
         // The customer and merchant funding information
-        let merchant_funding_info = tezos::establish::MerchantFundingInformation {
+        let merchant_funding_info = tezos::MerchantFundingInformation {
             balance: merchant_balance,
             address: contract_details.merchant_funding_address(),
             public_key: contract_details.merchant_tezos_public_key.clone(),
         };
-        let customer_funding_info = tezos::establish::CustomerFundingInformation {
+        let customer_funding_info = tezos::CustomerFundingInformation {
             balance: customer_balance,
             address: tezos_address.clone(),
             public_key: tezos_public_key.clone(),
@@ -219,7 +219,7 @@ impl Command for Establish {
             todo!("prompt user to submit contract origination details")
         } else {
             // Originate the contract on-chain
-            tezos::establish::originate(
+            tezos::originate(
                 Some(&config.tezos_uri),
                 &merchant_funding_info,
                 &customer_funding_info,
@@ -273,7 +273,9 @@ impl Command for Establish {
             todo!("prompt user to fund contract on chain and submit details")
         } else {
             let tezos_client = load_tezos_client(&config, &actual_label, database.as_ref()).await?;
-            tezos::establish::add_customer_funding(&tezos_client, &customer_funding_info).await?
+            tezos_client
+                .add_customer_funding(&customer_funding_info)
+                .await?
         };
 
         // Check to make sure funding succeeded
@@ -309,15 +311,13 @@ impl Command for Establish {
             true
         } else {
             let tezos_client = load_tezos_client(&config, &actual_label, database.as_ref()).await?;
-            tezos::establish::verify_merchant_funding(&tezos_client)
-                .await
-                .map_or_else(
-                    |err| {
-                        eprintln!("Could not verify merchant funding: {}", err);
-                        false
-                    },
-                    |_| true,
-                )
+            tezos_client.verify_merchant_funding().await.map_or_else(
+                |err| {
+                    eprintln!("Could not verify merchant funding: {}", err);
+                    false
+                },
+                |_| true,
+            )
         };
 
         // Abort if merchant funding was not successful

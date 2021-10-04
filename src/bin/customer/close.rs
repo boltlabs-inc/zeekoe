@@ -20,8 +20,7 @@ use zeekoe::{
         database::{zkchannels_state, QueryCustomer, QueryCustomerExt, State},
         Chan, ChannelName, Config,
     },
-    escrow::{self, tezos},
-    offer_abort, proceed,
+    escrow, offer_abort, proceed,
     protocol::{close, Party::Customer},
 };
 use zkabacus_crypto::{
@@ -107,7 +106,7 @@ pub async fn unilateral_close(
     if !off_chain {
         // Call the custClose entrypoint and wait for it to be confirmed on chain
         let tezos_client = load_tezos_client(config, channel_name, database).await?;
-        tezos::close::cust_close(&tezos_client, &close_message).await?;
+        tezos_client.cust_close(&close_message).await?;
     } else {
         // TODO: Print out information necessary to produce custClose transaction
         // Wait for customer confirmation that it posted
@@ -202,12 +201,10 @@ pub async fn claim_funds(
 
     // Post custClaim entrypoint on chain and wait for it to be confirmed
     let tezos_client = load_tezos_client(config, channel_name, database).await?;
-    match tezos::close::cust_claim(&tezos_client)
-        .await
-        .context(format!(
-            "Failed to claim customer funds for {}",
-            channel_name.clone()
-        )) {
+    match tezos_client.cust_claim().await.context(format!(
+        "Failed to claim customer funds for {}",
+        channel_name.clone()
+    )) {
         Ok(_) => Ok(()),
         Err(e) => {
             // If `custClaim` didn't post correctly, revert state back to PendingClose
@@ -405,14 +402,14 @@ async fn mutual_close(
 
     // Call the mutual close entrypoint
     let tezos_client = load_tezos_client(&config, &close.label, database.as_ref()).await?;
-    let mutual_close_result = tezos::close::mutual_close(
-        &tezos_client,
-        close_state.channel_id(),
-        close_state.customer_balance(),
-        close_state.merchant_balance(),
-        &authorization_signature,
-    )
-    .await;
+    let mutual_close_result = tezos_client
+        .mutual_close(
+            close_state.channel_id(),
+            close_state.customer_balance(),
+            close_state.merchant_balance(),
+            &authorization_signature,
+        )
+        .await;
 
     // If the mutual close entrypoint call fails due to invalid authorization signature, abort!()
     if let Err(escrow::types::Error::InvalidAuthorizationSignature(_)) = mutual_close_result {

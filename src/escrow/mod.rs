@@ -294,38 +294,6 @@ pub mod types {
         KeyFileInvalid(String),
     }
 
-    /// Information that describes a Tezos client that can post a operation on chain.
-    pub struct TezosClient {
-        /// Link to the Tezos network.
-        pub uri: Option<http::Uri>,
-        /// ID of the contract for which the client will post an operation.
-        pub contract_id: ContractId,
-        /// Key material for the client.
-        pub client_key_pair: TezosKeyMaterial,
-        /// Block depth for which the client will wait for their operation to reach.
-        pub confirmation_depth: u64,
-        /// Mutually-agreed delay period for which a client must wait before claiming funds.
-        pub self_delay: u64,
-    }
-
-    impl TezosClient {
-        /// Transforms the Tezos client fields into the correct Python representations, for use in
-        /// inline-python calls to the PyTezos API.
-        ///
-        /// Returns tuple of `(URI, private key, contract_id)`
-        pub fn into_python_types(&self) -> (Option<String>, String, String) {
-            let private_key = self.client_key_pair.private_key().to_base58check();
-            let contract_id = self
-                .contract_id
-                .clone()
-                .to_originated_address()
-                .to_base58check();
-            let uri = self.uri.as_ref().map(|uri| uri.to_string());
-
-            (uri, private_key, contract_id)
-        }
-    }
-
     #[cfg(test)]
     mod test {
         use super::*;

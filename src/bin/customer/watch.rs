@@ -11,7 +11,7 @@ use zeekoe::{
         database::{ChannelDetails, QueryCustomer},
         Config,
     },
-    escrow::{tezos, types::ContractStatus},
+    escrow::types::ContractStatus,
 };
 
 use super::{close, database, load_tezos_client, Command, TezosClientError};
@@ -139,7 +139,7 @@ async fn dispatch_channel(
         Err(TezosClientError::ContractDetailsNotSet(_)) => return Ok(()),
         error => error?,
     };
-    let contract_state = tezos::get_contract_state(&tezos_client).await?;
+    let contract_state = tezos_client.get_contract_state().await?;
 
     // The channel has not reacted to an expiry transaction being posted
     // The condition is
