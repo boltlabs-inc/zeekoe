@@ -25,7 +25,8 @@ BBlack='\033[1;30m'
 TESTNET = "testnet"
 SANDBOX = "sandbox"
 
-SETUP = "setup"
+MERCH_SETUP = "merch-setup"
+CUST_SETUP = "cust-setup"
 SCENARIO = "scenario"
 
 def info(msg):
@@ -86,11 +87,14 @@ self_delay = {self_delay}
 def run_command(cmd, verbose):
     process = subprocess.Popen(cmd, start_new_session=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     while True:
-        output = process.stdout.readline()
-        if process.poll() is not None:
-            break
-        if output:
-            log("-> %s" % output.strip().decode('utf-8'), verbose)
+        try:
+            output = process.stdout.readline()
+            if process.poll() is not None:
+                break
+            if output:
+                log("-> %s" % output.strip().decode('utf-8'), verbose)
+        except KeyboardInterrupt:
+            process.terminate()
     rc = process.poll()
     error = process.stderr.readline()
     log("-> %s" % error.strip().decode('utf-8'), verbose)
@@ -138,7 +142,7 @@ def scenario_close_with_expiry(config, channel_name, verbose):
     # TODO: then customer should detect and respond with cust close
     pass
 
-COMMANDS = ["list", "setup", "scenario"]
+COMMANDS = ["list", "merch-setup", "cust-setup", "scenario"]
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("command", help="", nargs="?", default="list")
@@ -185,12 +189,12 @@ def main():
     else:
         fatal_error("Not implemented yet: No tezos account for customer and merchant on '%s'" % network)
 
-    if args.command == SETUP:
-        # create configs as needed
-        create_customer_config(cust_db, cust_config, cust_keys, self_delay, url)
+    if args.command == MERCH_SETUP:
         create_merchant_config(merch_db, merch_config, merch_keys, self_delay, url)
-
         start_merchant_server(merch_config, verbose)
+
+    elif args.command == CUST_SETUP:
+        create_customer_config(cust_db, cust_config, cust_keys, self_delay, url)
         start_customer_watcher(cust_config, verbose)
 
     elif args.command == SCENARIO:
