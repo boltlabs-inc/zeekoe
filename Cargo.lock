@@ -327,7 +327,7 @@ dependencies = [
 [[package]]
 name = "crypto"
 version = "0.1.0"
-source = "git+ssh://git@github.com/boltlabs-inc/tezedge-client?branch=develop#82d6640f902b6bc7b962a1425c086cedd6eeee3f"
+source = "git+https://github.com/boltlabs-inc/tezedge-client?branch=develop#82d6640f902b6bc7b962a1425c086cedd6eeee3f"
 dependencies = [
  "base58",
  "sodiumoxide",
@@ -393,7 +393,7 @@ dependencies = [
 [[package]]
 name = "dialectic"
 version = "0.4.1"
-source = "git+ssh://git@github.com/boltlabs-inc/dialectic.git?branch=main#0d545aceb4a204b4d412e8fcf877ff2a41e35c3b"
+source = "git+https://github.com/boltlabs-inc/dialectic.git?branch=main#0d545aceb4a204b4d412e8fcf877ff2a41e35c3b"
 dependencies = [
  "call-by",
  "derivative",
@@ -408,7 +408,7 @@ dependencies = [
 [[package]]
 name = "dialectic-compiler"
 version = "0.1.0"
-source = "git+ssh://git@github.com/boltlabs-inc/dialectic.git?branch=main#0d545aceb4a204b4d412e8fcf877ff2a41e35c3b"
+source = "git+https://github.com/boltlabs-inc/dialectic.git?branch=main#0d545aceb4a204b4d412e8fcf877ff2a41e35c3b"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -421,7 +421,7 @@ dependencies = [
 [[package]]
 name = "dialectic-macro"
 version = "0.1.0"
-source = "git+ssh://git@github.com/boltlabs-inc/dialectic.git?branch=main#0d545aceb4a204b4d412e8fcf877ff2a41e35c3b"
+source = "git+https://github.com/boltlabs-inc/dialectic.git?branch=main#0d545aceb4a204b4d412e8fcf877ff2a41e35c3b"
 dependencies = [
  "dialectic-compiler",
  "proc-macro2",
@@ -432,7 +432,7 @@ dependencies = [
 [[package]]
 name = "dialectic-reconnect"
 version = "0.1.0"
-source = "git+ssh://git@github.com/boltlabs-inc/dialectic.git?branch=main#0d545aceb4a204b4d412e8fcf877ff2a41e35c3b"
+source = "git+https://github.com/boltlabs-inc/dialectic.git?branch=main#0d545aceb4a204b4d412e8fcf877ff2a41e35c3b"
 dependencies = [
  "call-by",
  "dashmap",
@@ -447,7 +447,7 @@ dependencies = [
 [[package]]
 name = "dialectic-tokio-serde"
 version = "0.1.0"
-source = "git+ssh://git@github.com/boltlabs-inc/dialectic.git?branch=main#0d545aceb4a204b4d412e8fcf877ff2a41e35c3b"
+source = "git+https://github.com/boltlabs-inc/dialectic.git?branch=main#0d545aceb4a204b4d412e8fcf877ff2a41e35c3b"
 dependencies = [
  "dialectic",
  "futures",
@@ -460,7 +460,7 @@ dependencies = [
 [[package]]
 name = "dialectic-tokio-serde-bincode"
 version = "0.1.0"
-source = "git+ssh://git@github.com/boltlabs-inc/dialectic.git?branch=main#0d545aceb4a204b4d412e8fcf877ff2a41e35c3b"
+source = "git+https://github.com/boltlabs-inc/dialectic.git?branch=main#0d545aceb4a204b4d412e8fcf877ff2a41e35c3b"
 dependencies = [
  "bincode",
  "bytes",
@@ -536,7 +536,7 @@ dependencies = [
 [[package]]
 name = "explorer_api"
 version = "0.1.0"
-source = "git+ssh://git@github.com/boltlabs-inc/tezedge-client?branch=develop#82d6640f902b6bc7b962a1425c086cedd6eeee3f"
+source = "git+https://github.com/boltlabs-inc/tezedge-client?branch=develop#82d6640f902b6bc7b962a1425c086cedd6eeee3f"
 dependencies = [
  "serde",
  "serde_json",
@@ -1060,7 +1060,7 @@ dependencies = [
 [[package]]
 name = "ledger_api"
 version = "0.1.0"
-source = "git+ssh://git@github.com/boltlabs-inc/tezedge-client?branch=develop#82d6640f902b6bc7b962a1425c086cedd6eeee3f"
+source = "git+https://github.com/boltlabs-inc/tezedge-client?branch=develop#82d6640f902b6bc7b962a1425c086cedd6eeee3f"
 dependencies = [
  "crypto",
  "hidapi",
@@ -1074,7 +1074,7 @@ dependencies = [
 [[package]]
 name = "lib"
 version = "0.1.0"
-source = "git+ssh://git@github.com/boltlabs-inc/tezedge-client?branch=develop#82d6640f902b6bc7b962a1425c086cedd6eeee3f"
+source = "git+https://github.com/boltlabs-inc/tezedge-client?branch=develop#82d6640f902b6bc7b962a1425c086cedd6eeee3f"
 dependencies = [
  "base58",
  "crypto",
@@ -1850,7 +1850,7 @@ dependencies = [
 [[package]]
 name = "rpc_api"
 version = "0.1.0"
-source = "git+ssh://git@github.com/boltlabs-inc/tezedge-client?branch=develop#82d6640f902b6bc7b962a1425c086cedd6eeee3f"
+source = "git+https://github.com/boltlabs-inc/tezedge-client?branch=develop#82d6640f902b6bc7b962a1425c086cedd6eeee3f"
 dependencies = [
  "crypto",
  "futures-core",
@@ -2142,7 +2142,7 @@ dependencies = [
 [[package]]
 name = "signer"
 version = "0.1.0"
-source = "git+ssh://git@github.com/boltlabs-inc/tezedge-client?branch=develop#82d6640f902b6bc7b962a1425c086cedd6eeee3f"
+source = "git+https://github.com/boltlabs-inc/tezedge-client?branch=develop#82d6640f902b6bc7b962a1425c086cedd6eeee3f"
 dependencies = [
  "crypto",
  "sodiumoxide",
@@ -2593,7 +2593,7 @@ dependencies = [
 [[package]]
 name = "trezor_api"
 version = "0.1.0"
-source = "git+ssh://git@github.com/boltlabs-inc/tezedge-client?branch=develop#82d6640f902b6bc7b962a1425c086cedd6eeee3f"
+source = "git+https://github.com/boltlabs-inc/tezedge-client?branch=develop#82d6640f902b6bc7b962a1425c086cedd6eeee3f"
 dependencies = [
  "byteorder",
  "protobuf",
@@ -2618,7 +2618,7 @@ checksum = "b63708a265f51345575b27fe43f9500ad611579e764c79edbc2037b1121959ec"
 [[package]]
 name = "types"
 version = "0.1.0"
-source = "git+ssh://git@github.com/boltlabs-inc/tezedge-client?branch=develop#82d6640f902b6bc7b962a1425c086cedd6eeee3f"
+source = "git+https://github.com/boltlabs-inc/tezedge-client?branch=develop#82d6640f902b6bc7b962a1425c086cedd6eeee3f"
 dependencies = [
  "crypto",
  "serde",
@@ -2713,7 +2713,7 @@ dependencies = [
 [[package]]
 name = "utils"
 version = "0.1.0"
-source = "git+ssh://git@github.com/boltlabs-inc/tezedge-client?branch=develop#82d6640f902b6bc7b962a1425c086cedd6eeee3f"
+source = "git+https://github.com/boltlabs-inc/tezedge-client?branch=develop#82d6640f902b6bc7b962a1425c086cedd6eeee3f"
 dependencies = [
  "rust_decimal",
  "serde",
@@ -3028,7 +3028,7 @@ dependencies = [
 [[package]]
 name = "zkabacus-crypto"
 version = "0.1.0"
-source = "git+ssh://git@github.com/boltlabs-inc/libzkchannels-crypto.git?branch=main#9f6f125c3bedfaae6092b724d355fc15171de877"
+source = "git+https://github.com/boltlabs-inc/libzkchannels-crypto.git?branch=main#00ad7c266678fc4c866cc520b079762ccec4b626"
 dependencies = [
  "base64",
  "bincode",
@@ -3046,7 +3046,7 @@ dependencies = [
 [[package]]
 name = "zkchannels-crypto"
 version = "0.1.0"
-source = "git+ssh://git@github.com/boltlabs-inc/libzkchannels-crypto.git?branch=main#9f6f125c3bedfaae6092b724d355fc15171de877"
+source = "git+https://github.com/boltlabs-inc/libzkchannels-crypto.git?branch=main#00ad7c266678fc4c866cc520b079762ccec4b626"
 dependencies = [
  "arrayvec 0.7.1",
  "bincode",
