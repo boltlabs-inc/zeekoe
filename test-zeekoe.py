@@ -41,12 +41,13 @@ def fatal_error(msg):
     print("%sERROR:%s %s%s%s" % (BBlack, NC, RED, msg, NC))
     sys.exit(-1)
 
-def create_merchant_config(merch_db, merch_config, merch_account_keys, self_delay, url_path, verbose=False):
+def create_merchant_config(merch_db, merch_config, merch_account_keys, self_delay, confirmation_depth, url_path, verbose=False):
     config_contents = """
 database = {{ sqlite = "{merchant_db}" }}
 {tezos_account}
 tezos_uri = "{url}"
 self_delay = {self_delay}
+confirmation_depth = {confirmation_depth}
 
 [[service]]
 address = "::1"
@@ -57,7 +58,7 @@ certificate = "localhost.crt"
 address = "127.0.0.1"
 private_key = "localhost.key"
 certificate = "localhost.crt"    
-    """.format(merchant_db=merch_db, tezos_account=merch_account_keys, self_delay=self_delay, url=url_path)
+    """.format(merchant_db=merch_db, tezos_account=merch_account_keys, self_delay=self_delay, confirmation_depth=confirmation_depth, url=url_path)
     f = open(merch_config, "w")
     f.write(config_contents)
     f.close()
@@ -68,14 +69,15 @@ certificate = "localhost.crt"
         print("============")
     return
     
-def create_customer_config(cust_db, cust_config, cust_account_keys, self_delay, url_path, verbose=False):
+def create_customer_config(cust_db, cust_config, cust_account_keys, self_delay, confirmation_depth, url_path, verbose=False):
     config_contents = """
 database = {{ sqlite = "{customer_db}" }}
 trust_certificate = "localhost.crt"
 {tezos_account}
 tezos_uri = "{url}"
 self_delay = {self_delay}
-    """.format(customer_db=cust_db, tezos_account=cust_account_keys, self_delay=self_delay, url=url_path)
+confirmation_depth = {confirmation_depth}
+    """.format(customer_db=cust_db, tezos_account=cust_account_keys, self_delay=self_delay, confirmation_depth=confirmation_depth, url=url_path)
     f = open(cust_config, "w")
     f.write(config_contents)
     f.close()
@@ -190,6 +192,7 @@ def main():
     parser.add_argument("--path", help="path to create configs", default="./dev")
     parser.add_argument("--network", help="select the type of network", default="sandbox")
     parser.add_argument("--self-delay", "-t", type=int, help="self-delay for closing transactions", default="1")
+    parser.add_argument("--confirmation-depth", "-d", type=int, help="required confirmations for all transactions", default="1")
     parser.add_argument("--url", "-u", help="url for tezos network", default="http://localhost:20000")
     parser.add_argument("--amount", "-a", help="starting balance for each channel", default="10")
     parser.add_argument("--verbose", "-v", help="increase output verbosity", action="store_true")
@@ -207,6 +210,7 @@ def main():
     network = args.network.lower()
 
     self_delay = args.self_delay
+    confirmation_depth = args.confirmation_depth
     customer_deposit = args.amount
     channel_count = args.channel
     command_list = args.command_list
@@ -231,11 +235,11 @@ def main():
         fatal_error("Not implemented yet: No tezos account for customer and merchant on '%s'" % network)
 
     if args.command == MERCH_SETUP:
-        create_merchant_config(merch_db, merch_config, merch_keys, self_delay, url)
+        create_merchant_config(merch_db, merch_config, merch_keys, self_delay, confirmation_depth, url)
         start_merchant_server(merch_config, verbose)
 
     elif args.command == CUST_SETUP:
-        create_customer_config(cust_db, cust_config, cust_keys, self_delay, url)
+        create_customer_config(cust_db, cust_config, cust_keys, self_delay, confirmation_depth, url)
         start_customer_watcher(cust_config, verbose)
 
     elif args.command == SCENARIO:
