@@ -87,11 +87,14 @@ self_delay = {self_delay}
 def run_command(cmd, verbose):
     process = subprocess.Popen(cmd, start_new_session=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     while True:
-        output = process.stdout.readline()
-        if process.poll() is not None:
-            break
-        if output:
-            log("-> %s" % output.strip().decode('utf-8'), verbose)
+        try:
+            output = process.stdout.readline()
+            if process.poll() is not None:
+                break
+            if output:
+                log("-> %s" % output.strip().decode('utf-8'), verbose)
+        except KeyboardInterrupt:
+            process.terminate()
     rc = process.poll()
     error = process.stderr.readline()
     log("-> %s" % error.strip().decode('utf-8'), verbose)
@@ -190,7 +193,7 @@ def main():
         create_merchant_config(merch_db, merch_config, merch_keys, self_delay, url)
         start_merchant_server(merch_config, verbose)
 
-    if args.command == CUST_SETUP:
+    elif args.command == CUST_SETUP:
         create_customer_config(cust_db, cust_config, cust_keys, self_delay, url)
         start_customer_watcher(cust_config, verbose)
 
