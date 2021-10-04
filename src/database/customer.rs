@@ -16,10 +16,7 @@ use tezedge::crypto::ToBase58Check;
 
 use crate::{
     customer::{client::ZkChannelAddress, ChannelName},
-    escrow::{
-        notify::Level,
-        types::{ContractDetails, ContractId, TezosPublicKey},
-    },
+    escrow::types::{ContractDetails, ContractId, TezosPublicKey},
 };
 
 mod state;
@@ -198,7 +195,6 @@ pub trait QueryCustomer: Send + Sync {
         &self,
         channel_name: &ChannelName,
         contract_id: &ContractId,
-        level: Level,
     ) -> Result<()>;
 
     /// Rename an existing channel from a given name to a new one.
@@ -293,7 +289,7 @@ impl QueryCustomer for SqlitePool {
             }
 
             // Return an error if contract details are already originated
-            if contract_details.contract_id.is_some() || contract_details.contract_level.is_some() {
+            if contract_details.contract_id.is_some() {
                 return Err(Error::InvalidContractDetails(channel_name.clone()));
             }
 
@@ -309,9 +305,8 @@ impl QueryCustomer for SqlitePool {
                     state,
                     closing_balances,
                     merchant_tezos_public_key,
-                    contract_id,
-                    level
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL)",
+                    contract_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)",
                 channel_name,
                 address,
                 merchant_deposit,
@@ -434,8 +429,8 @@ impl QueryCustomer for SqlitePool {
     async fn contract_details(&self, channel_name: &ChannelName) -> Result<ContractDetails> {
         let record = sqlx::query!(
             r#"
-            SELECT contract_id AS "contract_id: ContractId",
-                level AS "contract_level: Level",
+            SELECT 
+                contract_id AS "contract_id: ContractId",
                 merchant_tezos_public_key AS "merchant_tezos_public_key: String"
             FROM customer_channels
             WHERE label = ?"#,
@@ -451,23 +446,16 @@ impl QueryCustomer for SqlitePool {
             TezosPublicKey::from_base58check(&record.merchant_tezos_public_key)
                 .map_err(|_| Error::InvalidContractDetails(channel_name.clone()))?;
 
-        // Return the results if they are valid (e.g. if either all or none of the originated
-        // contract details are set)
-        match (record.contract_id.clone(), record.contract_level) {
-            (Some(_), Some(_)) | (None, None) => Ok(ContractDetails {
-                merchant_tezos_public_key,
-                contract_id: record.contract_id,
-                contract_level: record.contract_level,
-            }),
-            _ => return Err(Error::InvalidContractDetails(channel_name.clone())),
-        }
+        Ok(ContractDetails {
+            merchant_tezos_public_key,
+            contract_id: record.contract_id,
+        })
     }
 
     async fn initialize_contract_details(
         &self,
         channel_name: &ChannelName,
         contract_id: &ContractId,
-        level: Level,
     ) -> Result<()> {
         let mut transaction = self.begin().await?;
 
@@ -475,8 +463,8 @@ impl QueryCustomer for SqlitePool {
         // TODO: find a way to do this modularly with `contract_details()`
         let record = sqlx::query!(
             r#"
-            SELECT contract_id AS "contract_id: Option<ContractId>",
-                level AS "contract_level: Option<Level>"
+            SELECT
+                contract_id AS "contract_id: Option<ContractId>"
             FROM customer_channels
             WHERE label = ?"#,
             channel_name,
@@ -486,17 +474,14 @@ impl QueryCustomer for SqlitePool {
         .await
         .ok_or_else(|| Error::NoSuchChannel(channel_name.clone()))??;
 
-        match (record.contract_id, record.contract_level) {
-            (Some(_), Some(_)) => return Err(Error::ContractDetailsExist(channel_name.clone())),
-            (None, None) => (),
-            _ => return Err(Error::InvalidContractDetails(channel_name.clone())),
-        };
+        if record.contract_id.is_some() {
+            return Err(Error::ContractDetailsExist(channel_name.clone()));
+        }
 
         // Update channel with new details.
         sqlx::query!(
-            "UPDATE customer_channels SET contract_id = ?, level = ? WHERE label = ?",
+            "UPDATE customer_channels SET contract_id = ? WHERE label = ?",
             contract_id,
-            level,
             channel_name,
         )
         .execute(&mut transaction)
@@ -587,8 +572,7 @@ impl QueryCustomer for SqlitePool {
                 merchant_deposit AS "merchant_deposit: MerchantBalance",
                 closing_balances AS "closing_balances: ClosingBalances",
                 merchant_tezos_public_key AS "merchant_tezos_public_key: String",
-                contract_id AS "contract_id: ContractId",
-                level AS "level: Level"
+                contract_id AS "contract_id: ContractId"
             FROM customer_channels"#
         )
         .fetch_all(self)
@@ -609,7 +593,6 @@ impl QueryCustomer for SqlitePool {
                     )
                     .map_err(|_| Error::InvalidContractDetails(label_copy))?,
                     contract_id: r.contract_id,
-                    contract_level: r.level,
                 },
             })
         })
@@ -625,8 +608,7 @@ impl QueryCustomer for SqlitePool {
                 merchant_deposit AS "merchant_deposit: MerchantBalance",
                 closing_balances AS "closing_balances: ClosingBalances",
                 merchant_tezos_public_key AS "merchant_tezos_public_key: String",
-                contract_id AS "contract_id: ContractId",
-                level AS "level: Level"
+                contract_id AS "contract_id: ContractId"
             FROM customer_channels 
             WHERE label = ?"#,
             channel_name,
@@ -649,7 +631,6 @@ impl QueryCustomer for SqlitePool {
                     )
                     .map_err(|_| Error::InvalidContractDetails(channel_name.clone()))?,
                     contract_id: r.contract_id,
-                    contract_level: r.level,
                 },
             })
         })?
@@ -878,7 +859,6 @@ mod tests {
             )
             .unwrap(),
             contract_id: None,
-            contract_level: None,
         };
 
         conn.new_channel(channel_name, &address, inactive, &contract_details)
@@ -916,25 +896,23 @@ mod tests {
         let contract_id = ContractId::new(
             OriginatedAddress::from_base58check("KT1Mjjcb6tmSsLm7Cb3DSQszePjfchPM4Uxm").unwrap(),
         );
-        let level = 10.into();
 
         // set contract details
-        conn.initialize_contract_details(&channel_name, &contract_id, level)
+        conn.initialize_contract_details(&channel_name, &contract_id)
             .await?;
 
         // make sure saved details match expected values
         let details = conn.contract_details(&channel_name).await?;
-        match (details.contract_id, details.contract_level) {
-            (Some(saved_id), Some(saved_level)) => {
-                assert!(saved_id == contract_id && saved_level == level)
+        match details.contract_id {
+            Some(saved_id) => {
+                assert!(saved_id == contract_id)
             }
-            (None, None) => panic!("Contract details did not get set when they should"),
-            _ => panic!("Contract details were only half-saved"),
+            None => panic!("Contract details did not get set when they should"),
         }
 
         // make sure we cannot overwrite saved contact details
         match conn
-            .initialize_contract_details(&channel_name, &contract_id, level)
+            .initialize_contract_details(&channel_name, &contract_id)
             .await
         {
             Ok(()) => panic!("Allowed overwrite of contract details"),

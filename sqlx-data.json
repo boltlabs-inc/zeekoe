@@ -1,25 +1,5 @@
 {
   "db": "SQLite",
-  "017523afd6954e0d8216b6a150387991d41150e975d5217ef69e7662f018dd3e": {
-    "query": "INSERT INTO customer_channels (\n                    label,\n                    address,\n                    merchant_deposit,\n                    customer_deposit,\n                    state,\n                    closing_balances,\n                    merchant_tezos_public_key,\n                    contract_id,\n                    level\n                ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL)",
-    "describe": {
-      "columns": [],
-      "parameters": {
-        "Right": 7
-      },
-      "nullable": []
-    }
-  },
-  "02abd5d85bbb322ad691487e3b4e1223a7caa1c0ab82d5b4398b15feab4e799f": {
-    "query": "INSERT INTO merchant_channels (\n                channel_id,\n                contract_id,\n                level,\n                merchant_deposit,\n                customer_deposit,\n                status,\n                closing_balances\n            ) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    "describe": {
-      "columns": [],
-      "parameters": {
-        "Right": 7
-      },
-      "nullable": []
-    }
-  },
   "076cdf23f2787d9df26bcbf900a6c8205379dabc0efdb0e5fd6d9a83e7e3745a": {
     "query": "SELECT\n                status as \"status: ChannelStatus\"\n            FROM merchant_channels\n            WHERE channel_id = ?\n            LIMIT 2",
     "describe": {
@@ -34,60 +14,6 @@
         "Right": 1
       },
       "nullable": [
-        false
-      ]
-    }
-  },
-  "1d1f1eec37210286928b7f6a04e9f1dd13e4e9752f227dd62d97157539e56f9a": {
-    "query": "SELECT\n                channel_id AS \"channel_id: ChannelId\",\n                status as \"status: ChannelStatus\",\n                contract_id AS \"contract_id: ContractId\",\n                level AS \"level: Level\",\n                merchant_deposit AS \"merchant_deposit: MerchantBalance\",\n                customer_deposit AS \"customer_deposit: CustomerBalance\",\n                closing_balances AS \"closing_balances: ClosingBalances\"\n            FROM merchant_channels",
-    "describe": {
-      "columns": [
-        {
-          "name": "channel_id: ChannelId",
-          "ordinal": 0,
-          "type_info": "Text"
-        },
-        {
-          "name": "status: ChannelStatus",
-          "ordinal": 1,
-          "type_info": "Text"
-        },
-        {
-          "name": "contract_id: ContractId",
-          "ordinal": 2,
-          "type_info": "Blob"
-        },
-        {
-          "name": "level: Level",
-          "ordinal": 3,
-          "type_info": "Blob"
-        },
-        {
-          "name": "merchant_deposit: MerchantBalance",
-          "ordinal": 4,
-          "type_info": "Blob"
-        },
-        {
-          "name": "customer_deposit: CustomerBalance",
-          "ordinal": 5,
-          "type_info": "Blob"
-        },
-        {
-          "name": "closing_balances: ClosingBalances",
-          "ordinal": 6,
-          "type_info": "Blob"
-        }
-      ],
-      "parameters": {
-        "Right": 0
-      },
-      "nullable": [
-        false,
-        false,
-        false,
-        false,
-        false,
-        false,
         false
       ]
     }
@@ -130,8 +56,18 @@
       "nullable": []
     }
   },
-  "38d4e59c3edd6dfe0d984995990c052aab7fa20f51473a9e96eda96eeab4a7d0": {
-    "query": "SELECT\n                label AS \"label: ChannelName\",\n                state AS \"state: State\",\n                address AS \"address: ZkChannelAddress\",\n                customer_deposit AS \"customer_deposit: CustomerBalance\",\n                merchant_deposit AS \"merchant_deposit: MerchantBalance\",\n                closing_balances AS \"closing_balances: ClosingBalances\",\n                merchant_tezos_public_key AS \"merchant_tezos_public_key: String\",\n                contract_id AS \"contract_id: ContractId\",\n                level AS \"level: Level\"\n            FROM customer_channels",
+  "2bc218ee92868210be2d87c2820e89fd88bad4342f00dec786eeff3a7ba43a54": {
+    "query": "INSERT INTO customer_channels (\n                    label,\n                    address,\n                    merchant_deposit,\n                    customer_deposit,\n                    state,\n                    closing_balances,\n                    merchant_tezos_public_key,\n                    contract_id\n                ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Right": 7
+      },
+      "nullable": []
+    }
+  },
+  "2c36d7e9eb96adf9115fb49ffc0080225ee646e1e36245fc85ce6f60fd6fddac": {
+    "query": "SELECT\n                label AS \"label: ChannelName\",\n                state AS \"state: State\",\n                address AS \"address: ZkChannelAddress\",\n                customer_deposit AS \"customer_deposit: CustomerBalance\",\n                merchant_deposit AS \"merchant_deposit: MerchantBalance\",\n                closing_balances AS \"closing_balances: ClosingBalances\",\n                merchant_tezos_public_key AS \"merchant_tezos_public_key: String\",\n                contract_id AS \"contract_id: ContractId\"\n            FROM customer_channels",
     "describe": {
       "columns": [
         {
@@ -173,11 +109,6 @@
           "name": "contract_id: ContractId",
           "ordinal": 7,
           "type_info": "Text"
-        },
-        {
-          "name": "level: Level",
-          "ordinal": 8,
-          "type_info": "Int64"
         }
       ],
       "parameters": {
@@ -191,8 +122,65 @@
         false,
         false,
         false,
-        true,
         true
+      ]
+    }
+  },
+  "3f321c13248d22bde3791adf13e0c89bf3714fe4c2d0542e00a62de850470d20": {
+    "query": "INSERT INTO merchant_channels (\n                channel_id,\n                contract_id,\n                merchant_deposit,\n                customer_deposit,\n                status,\n                closing_balances\n            ) VALUES (?, ?, ?, ?, ?, ?)",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Right": 6
+      },
+      "nullable": []
+    }
+  },
+  "42afbd955df1e53349eee2b4ffbe667b4c3287232515b667732827a507a861d2": {
+    "query": "SELECT\n                channel_id AS \"channel_id: ChannelId\",\n                status as \"status: ChannelStatus\",\n                contract_id AS \"contract_id: ContractId\",\n                merchant_deposit AS \"merchant_deposit: MerchantBalance\",\n                customer_deposit AS \"customer_deposit: CustomerBalance\",\n                closing_balances AS \"closing_balances: ClosingBalances\"\n            FROM merchant_channels",
+    "describe": {
+      "columns": [
+        {
+          "name": "channel_id: ChannelId",
+          "ordinal": 0,
+          "type_info": "Text"
+        },
+        {
+          "name": "status: ChannelStatus",
+          "ordinal": 1,
+          "type_info": "Text"
+        },
+        {
+          "name": "contract_id: ContractId",
+          "ordinal": 2,
+          "type_info": "Blob"
+        },
+        {
+          "name": "merchant_deposit: MerchantBalance",
+          "ordinal": 3,
+          "type_info": "Blob"
+        },
+        {
+          "name": "customer_deposit: CustomerBalance",
+          "ordinal": 4,
+          "type_info": "Blob"
+        },
+        {
+          "name": "closing_balances: ClosingBalances",
+          "ordinal": 5,
+          "type_info": "Blob"
+        }
+      ],
+      "parameters": {
+        "Right": 0
+      },
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
       ]
     }
   },
@@ -220,6 +208,24 @@
       ]
     }
   },
+  "46457824d8e5244670660472bea211ac7cad8f4af0d8b2933ddd76a6c2f61966": {
+    "query": "SELECT\n                contract_id as \"contract_id: ContractId\"\n            FROM merchant_channels\n            WHERE channel_id = ?\n            LIMIT 2",
+    "describe": {
+      "columns": [
+        {
+          "name": "contract_id: ContractId",
+          "ordinal": 0,
+          "type_info": "Blob"
+        }
+      ],
+      "parameters": {
+        "Right": 1
+      },
+      "nullable": [
+        false
+      ]
+    }
+  },
   "46ea459c9d2e371ace67299de61c55d6e17a6c8b3a8d10e6bfd0771ffc907b0e": {
     "query": "\n            SELECT secret AS \"secret: RevocationSecret\"\n            FROM revocations\n            WHERE lock = ?\n            ",
     "describe": {
@@ -234,30 +240,6 @@
         "Right": 1
       },
       "nullable": [
-        true
-      ]
-    }
-  },
-  "5a44340b3f9d88b4a5cd5c819773f10041700513d518cf756176d2cc02aeb45e": {
-    "query": "\n            SELECT contract_id AS \"contract_id: Option<ContractId>\",\n                level AS \"contract_level: Option<Level>\"\n            FROM customer_channels\n            WHERE label = ?",
-    "describe": {
-      "columns": [
-        {
-          "name": "contract_id: Option<ContractId>",
-          "ordinal": 0,
-          "type_info": "Text"
-        },
-        {
-          "name": "contract_level: Option<Level>",
-          "ordinal": 1,
-          "type_info": "Int64"
-        }
-      ],
-      "parameters": {
-        "Right": 1
-      },
-      "nullable": [
-        true,
         true
       ]
     }
@@ -314,36 +296,6 @@
       "nullable": []
     }
   },
-  "6fe44f451d774fc33c76d144887e3f2098e56aa184b70ef235247cfe845ef70d": {
-    "query": "\n            SELECT contract_id AS \"contract_id: ContractId\",\n                level AS \"contract_level: Level\",\n                merchant_tezos_public_key AS \"merchant_tezos_public_key: String\"\n            FROM customer_channels\n            WHERE label = ?",
-    "describe": {
-      "columns": [
-        {
-          "name": "contract_id: ContractId",
-          "ordinal": 0,
-          "type_info": "Text"
-        },
-        {
-          "name": "contract_level: Level",
-          "ordinal": 1,
-          "type_info": "Int64"
-        },
-        {
-          "name": "merchant_tezos_public_key: String",
-          "ordinal": 2,
-          "type_info": "Text"
-        }
-      ],
-      "parameters": {
-        "Right": 1
-      },
-      "nullable": [
-        true,
-        true,
-        false
-      ]
-    }
-  },
   "7084769ad62779a278ae538eb0fdc0138d2c220151c3b1928b5fe740b0f3b880": {
     "query": "UPDATE merchant_channels\n                    SET status = ?\n                    WHERE channel_id = ?",
     "describe": {
@@ -372,8 +324,36 @@
       ]
     }
   },
-  "76c43f33b75ba69f1aa2bc95781ed60241760b8ae87a58f93f0f126dd050cd85": {
-    "query": "\n            SELECT\n                channel_id AS \"channel_id: ChannelId\",\n                status as \"status: ChannelStatus\",\n                contract_id AS \"contract_id: ContractId\",\n                level AS \"level: Level\",\n                merchant_deposit AS \"merchant_deposit: MerchantBalance\",\n                customer_deposit AS \"customer_deposit: CustomerBalance\",\n                closing_balances AS \"closing_balances: ClosingBalances\"\n            FROM merchant_channels\n            WHERE channel_id LIKE ?\n            LIMIT 2\n        ",
+  "7dc1700b27c5471249b7822bf91200a3ec86d9ddeea6b56cfdd7d298b995ce2a": {
+    "query": "\n            SELECT\n                contract_id AS \"contract_id: Option<ContractId>\"\n            FROM customer_channels\n            WHERE label = ?",
+    "describe": {
+      "columns": [
+        {
+          "name": "contract_id: Option<ContractId>",
+          "ordinal": 0,
+          "type_info": "Text"
+        }
+      ],
+      "parameters": {
+        "Right": 1
+      },
+      "nullable": [
+        true
+      ]
+    }
+  },
+  "866f68c59d036e6c895aaaa65aad6b2805ece96bde8a6fc31e4abf4c3de0b0da": {
+    "query": "INSERT INTO nonces (data) VALUES (?) ON CONFLICT (data) DO NOTHING",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Right": 1
+      },
+      "nullable": []
+    }
+  },
+  "9904dc5a059fc79241029d1efa5d09c4bfcefe55f0f69bccec5a8539334b7c95": {
+    "query": "\n            SELECT\n                channel_id AS \"channel_id: ChannelId\",\n                status as \"status: ChannelStatus\",\n                contract_id AS \"contract_id: ContractId\",\n                merchant_deposit AS \"merchant_deposit: MerchantBalance\",\n                customer_deposit AS \"customer_deposit: CustomerBalance\",\n                closing_balances AS \"closing_balances: ClosingBalances\"\n            FROM merchant_channels\n            WHERE channel_id LIKE ?\n            LIMIT 2\n        ",
     "describe": {
       "columns": [
         {
@@ -392,23 +372,18 @@
           "type_info": "Blob"
         },
         {
-          "name": "level: Level",
+          "name": "merchant_deposit: MerchantBalance",
           "ordinal": 3,
           "type_info": "Blob"
         },
         {
-          "name": "merchant_deposit: MerchantBalance",
+          "name": "customer_deposit: CustomerBalance",
           "ordinal": 4,
           "type_info": "Blob"
         },
         {
-          "name": "customer_deposit: CustomerBalance",
-          "ordinal": 5,
-          "type_info": "Blob"
-        },
-        {
           "name": "closing_balances: ClosingBalances",
-          "ordinal": 6,
+          "ordinal": 5,
           "type_info": "Blob"
         }
       ],
@@ -421,19 +396,8 @@
         false,
         false,
         false,
-        false,
         false
       ]
-    }
-  },
-  "866f68c59d036e6c895aaaa65aad6b2805ece96bde8a6fc31e4abf4c3de0b0da": {
-    "query": "INSERT INTO nonces (data) VALUES (?) ON CONFLICT (data) DO NOTHING",
-    "describe": {
-      "columns": [],
-      "parameters": {
-        "Right": 1
-      },
-      "nullable": []
     }
   },
   "9c580669d21d3b583f52cd7f868af30f3e30710d0620525488d162230b438816": {
@@ -454,8 +418,32 @@
       ]
     }
   },
-  "a1e859f833672011f21d161999377cb42055261ff0a9c8592fd4610340b25d5b": {
-    "query": "SELECT\n                state AS \"state: State\",\n                address AS \"address: ZkChannelAddress\",\n                customer_deposit AS \"customer_deposit: CustomerBalance\",\n                merchant_deposit AS \"merchant_deposit: MerchantBalance\",\n                closing_balances AS \"closing_balances: ClosingBalances\",\n                merchant_tezos_public_key AS \"merchant_tezos_public_key: String\",\n                contract_id AS \"contract_id: ContractId\",\n                level AS \"level: Level\"\n            FROM customer_channels \n            WHERE label = ?",
+  "a3e5ad4960328d2ec9de2d604fe2f32a559b116b6a3fae2f0468f130c690dded": {
+    "query": "\n            SELECT \n                contract_id AS \"contract_id: ContractId\",\n                merchant_tezos_public_key AS \"merchant_tezos_public_key: String\"\n            FROM customer_channels\n            WHERE label = ?",
+    "describe": {
+      "columns": [
+        {
+          "name": "contract_id: ContractId",
+          "ordinal": 0,
+          "type_info": "Text"
+        },
+        {
+          "name": "merchant_tezos_public_key: String",
+          "ordinal": 1,
+          "type_info": "Text"
+        }
+      ],
+      "parameters": {
+        "Right": 1
+      },
+      "nullable": [
+        true,
+        false
+      ]
+    }
+  },
+  "aa49ec6880457cef6d300c36017c1d6e33db9021fa062907f06a3d9b72be04ef": {
+    "query": "SELECT\n                state AS \"state: State\",\n                address AS \"address: ZkChannelAddress\",\n                customer_deposit AS \"customer_deposit: CustomerBalance\",\n                merchant_deposit AS \"merchant_deposit: MerchantBalance\",\n                closing_balances AS \"closing_balances: ClosingBalances\",\n                merchant_tezos_public_key AS \"merchant_tezos_public_key: String\",\n                contract_id AS \"contract_id: ContractId\"\n            FROM customer_channels \n            WHERE label = ?",
     "describe": {
       "columns": [
         {
@@ -492,11 +480,6 @@
           "name": "contract_id: ContractId",
           "ordinal": 6,
           "type_info": "Text"
-        },
-        {
-          "name": "level: Level",
-          "ordinal": 7,
-          "type_info": "Int64"
         }
       ],
       "parameters": {
@@ -509,7 +492,6 @@
         false,
         false,
         false,
-        true,
         true
       ]
     }
@@ -552,12 +534,12 @@
       ]
     }
   },
-  "c59e81c4e494a154802e2de6114c8c14f725927ddfdf729c897deba11944896c": {
-    "query": "UPDATE customer_channels SET contract_id = ?, level = ? WHERE label = ?",
+  "bdb241cdba6cf57fcfdf2846f9f390655ccb4d7610982b4488f3c84057df6d3f": {
+    "query": "UPDATE customer_channels SET contract_id = ? WHERE label = ?",
     "describe": {
       "columns": [],
       "parameters": {
-        "Right": 3
+        "Right": 2
       },
       "nullable": []
     }
@@ -636,30 +618,6 @@
         "Right": 2
       },
       "nullable": []
-    }
-  },
-  "f953021ba09df4f5fdcfc80a291cffa1403715be7b9ecae8c971728f9fe72619": {
-    "query": "SELECT contract_id as \"contract_id: ContractId\",\n                level as \"level: Level\"\n            FROM merchant_channels\n            WHERE channel_id = ?\n            LIMIT 2",
-    "describe": {
-      "columns": [
-        {
-          "name": "contract_id: ContractId",
-          "ordinal": 0,
-          "type_info": "Blob"
-        },
-        {
-          "name": "level: Level",
-          "ordinal": 1,
-          "type_info": "Blob"
-        }
-      ],
-      "parameters": {
-        "Right": 1
-      },
-      "nullable": [
-        false,
-        false
-      ]
     }
   },
   "fc251426308ae90596746c87a8d598387e9b52eaaecbcd47aa31fb238f2cb759": {

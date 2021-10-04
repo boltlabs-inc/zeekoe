@@ -188,6 +188,10 @@ async fn finalize_customer_close(
 /// **Usage**: this function is called when
 /// the contract's customer claim delay has passed *and* the custClose entrypoint call/operation
 /// is confirmed on chain at any depth.
+//
+// Note to developers: This function reverts the status update if the `cust_claim` entrypoint call
+// fails. This revert is only valid if no other state changes in this function!
+// DO NOT ADD STATE CHANGES without first removing the status update.
 pub async fn claim_funds(
     database: &dyn QueryCustomer,
     config: &Config,
@@ -200,45 +204,63 @@ pub async fn claim_funds(
         channel_name.clone()
     ))?;
 
-    // If database status is PendingClose, call the custClaim entrypoint
     match channel_details.state {
-        State::PendingClose(_) => {
-            // Update channel status to PendingCustomerClaim
-            database.with_channel_state(
-                channel_name,
-                zkchannels_state::PendingClose,
-                |closing_message| -> Result<_, Infallible> {
-                    Ok((State::PendingCustomerClaim(closing_message), ()))
-                },
-            )
-            .await
-            .context(format!("Failed to update channel status to PendingCustomerClaim for {}", channel_name))??;
-
-            let contract_id = channel_details.contract_details.contract_id
-                .ok_or_else(|| anyhow::anyhow!("Failed to claim customer funds for {} because contract details were not correctly saved", channel_name))?;
-
-            // Post custClaim entrypoint on chain and wait for it to be confirmed
-            tezos::close::cust_claim(
-                Some(&config.tezos_uri),
-                &contract_id,
-                customer_key_material,
-                tezos::DEFAULT_CONFIRMATION_DEPTH,
-            )
-            .await
-            .context(format!(
-                "Failed to claim customer funds for {}",
-                channel_name.clone()
-            ))?;
-
-            Ok(())
-        }
-        // If it is Dispute, do nothing
-        State::Dispute(_) => Ok(()),
-        _ => Err(anyhow::anyhow!(format!(
-            "Failed to claim customer funds for {} due to unexpected channel state: expected PendingClose or Dispute, got {}",
+        // Carry on to call the custClaim entrypoint
+        State::PendingClose(_) => {},
+        // Don't claim funds if the channel is disputed or already closed
+        State::Dispute(_) | State::Closed(_) => return Ok(()),
+        // Anything else is an error
+        _ => return Err(anyhow::anyhow!(format!(
+            "Failed to claim customer funds for {}. Unexpected channel state: expected PendingClose, Dispute, or Closed; got {}",
             channel_name.clone(),
             channel_details.state.state_name(),
         ))),
+    }
+
+    // Update channel status to PendingCustomerClaim
+    database
+        .with_channel_state(
+            channel_name,
+            zkchannels_state::PendingClose,
+            |closing_message| -> Result<_, Infallible> {
+                Ok((State::PendingCustomerClaim(closing_message), ()))
+            },
+        )
+        .await
+        .context(format!(
+            "Failed to update channel status to PendingCustomerClaim for {}",
+            channel_name
+        ))??;
+
+    let contract_id = channel_details.contract_details.contract_id
+                .ok_or_else(|| anyhow::anyhow!("Failed to claim customer funds for {} because contract details were not correctly saved", channel_name))?;
+
+    // Post custClaim entrypoint on chain and wait for it to be confirmed
+    match tezos::close::cust_claim(
+        Some(&config.tezos_uri),
+        &contract_id,
+        customer_key_material,
+        tezos::DEFAULT_CONFIRMATION_DEPTH,
+    )
+    .await
+    .context(format!(
+        "Failed to claim customer funds for {}",
+        channel_name.clone()
+    )) {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            // If `custClaim` didn't post correctly, revert state back to PendingClose
+            database
+                .with_channel_state(
+                    channel_name,
+                    zkchannels_state::PendingCustomerClaim,
+                    |closing_message| -> Result<_, Infallible> {
+                        Ok((State::PendingClose(closing_message), ()))
+                    },
+                )
+                .await??;
+            Err(e)
+        }
     }
 }
 

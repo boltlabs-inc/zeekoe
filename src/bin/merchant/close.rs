@@ -50,7 +50,7 @@ impl Method for Close {
             .context("Mutual close failed")?;
 
         // Get contract ID for this channel
-        let (contract_id, _) = database
+        let contract_id = database
             .contract_details(close_state.channel_id())
             .await
             .context(format!(
@@ -154,13 +154,13 @@ pub async fn process_customer_close(
                 })?;
 
             // Retrieve contract ID
-            let (contract_id, _) = database
+            let contract_id = database
                 .contract_details(channel_id)
                 .await
                 .context("Failed to retrieve contract details")?;
 
             // Call the merchDispute entrypoint and wait for it to be confirmed
-            let (_status, _dispute_level) = tezos::close::merch_dispute(
+            let _status = tezos::close::merch_dispute(
                 Some(tezos_uri),
                 &contract_id,
                 revocation_secret,
@@ -227,18 +227,16 @@ pub async fn finalize_customer_close(
                     channel_id
                 ))
         }
-        // If database status is Dispute, update merchant final balance to include the merchant
-        // balance.
-        ChannelStatus::Dispute => database
-            .update_closing_balances(channel_id, &ChannelStatus::Dispute, merchant_balance, None)
-            .await
-            .context(format!(
-                "Failed to save merchant's final balance for after successful dispute (id = {})",
-                channel_id
-            )),
+        // If status is Dispute or Closed, then there has been a successful dispute operation
+        ChannelStatus::Dispute | ChannelStatus::Closed => Ok(()),
+        // Any other status is unexpected and incorrect.
         _ => Err(Error::UnexpectedChannelStatus {
             channel_id: *channel_id,
-            expected: vec![ChannelStatus::PendingClose, ChannelStatus::Dispute],
+            expected: vec![
+                ChannelStatus::PendingClose,
+                ChannelStatus::Dispute,
+                ChannelStatus::Closed,
+            ],
             found: current_status,
         }
         .into()),
@@ -457,7 +455,7 @@ async fn expiry(
         ))?;
 
     // Retrieve contract details
-    let (contract_id, _) = database
+    let contract_id = database
         .contract_details(channel_id)
         .await
         .context(format!(
@@ -506,7 +504,7 @@ pub async fn claim_expiry_funds(
         ))?;
 
     // Retrieve contract details
-    let (contract_id, _) = database
+    let contract_id = database
         .contract_details(channel_id)
         .await
         .context(format!(
@@ -515,7 +513,7 @@ pub async fn claim_expiry_funds(
         ))?;
 
     // Call merchClaim entrypoint and retrieve final channel balances
-    let (_status, _claim_level) = tezos::close::merch_claim(
+    let _status = tezos::close::merch_claim(
         Some(tezos_uri),
         &contract_id,
         tezos_key_material,
