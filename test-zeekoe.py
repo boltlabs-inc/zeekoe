@@ -18,6 +18,7 @@ import json
 import subprocess
 import sys
 import random
+import requests
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -146,6 +147,14 @@ def scenario_close_with_expiry(config, channel_name, verbose):
     # TODO: then customer should detect and respond with cust close
     pass
 
+def check_blockchain_maturity(url):
+    full_url = url + "/chains/main/blocks/head/metadata"
+    r = requests.get(url = full_url)
+    data = r.json()
+    level = data['level']['level']
+    assert(level >= 60), """The blockchain level is less than 60 blocks. 
+    Wait until it is at least 60 blocks before running any tests"""
+
 class TestScenario():
     def __init__(self, cust_config, channel_name, customer_deposit, verbose):
         self.cust_config = cust_config
@@ -244,6 +253,7 @@ def main():
 
     elif args.command == SCENARIO:
         info("Running scenario: %s" % ', '.join(command_list))
+        check_blockchain_maturity(url)
         t = TestScenario(cust_config, channel_name, customer_deposit, verbose)
         t.run_command_list(command_list)
     else:
