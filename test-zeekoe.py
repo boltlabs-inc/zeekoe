@@ -10,16 +10,21 @@
 # Then test the life cycle of a few channels (ideally in parallel): establish a channel, make a payment and run cust close
 # $: python3 test-zeekoe.py scenario --channel 1 -v --command_list establish pay pay pay_all close
 #
+# To test a dispute scenario, where the customer closes on a revoked state, use 'store' and 
+# 'restore' to restore a revoked state, e.g.
+# $: python3 test-zeekoe.py scenario --channel 1 -v --command_list establish pay store pay restore close
+# 
 # List the channels
 # $: python3 test-zeekoe.py list
 #
 
 import argparse
 import json
-import subprocess
-import sys
+import os
 import random
 import requests
+import subprocess
+import sys
 import time
 
 RED='\033[0;31m'
@@ -171,13 +176,26 @@ def check_blockchain_maturity(url):
         level = get_blockchain_level(url)
 
 class TestScenario():
-    def __init__(self, cust_config, channel_name, customer_deposit, verbose):
+    def __init__(
+            self, 
+            cust_config, cust_db, 
+            dev_path, temp_path, 
+            channel_name, customer_deposit, 
+            verbose
+        ):
         self.cust_config = cust_config
+        self.cust_db = cust_db
+        self.dev_path = dev_path
+        self.temp_path = temp_path
         self.channel_name = channel_name
         self.customer_deposit = float(customer_deposit)
         self.balance_remaining = float(customer_deposit)
         self.verbose = verbose
-    
+        
+        # Create temporary directory to store revoked customer state when testing dispute scenarios
+        if not os.path.isdir(temp_path):
+            os.system(f"mkdir {temp_path}")
+
     def establish(self):
         create_new_channel(self.cust_config, self.channel_name, self.customer_deposit, self.verbose)
 
@@ -195,6 +213,25 @@ class TestScenario():
     def close(self):
         close_channel(self.cust_config, self.channel_name, self.verbose)
 
+    def store_state(self):
+        log("Storing customer state with remaining balance of %s" % self.balance_remaining)
+        cmd = f"cp {self.dev_path}/{self.cust_db} {self.temp_path}/{self.cust_db}"
+        os.system(cmd)
+        cmd = f"cp {self.dev_path}/{self.cust_db}-shm {self.temp_path}/{self.cust_db}-shm"
+        os.system(cmd)
+        cmd = f"cp {self.dev_path}/{self.cust_db}-wal {self.temp_path}/{self.cust_db}-wal"
+        os.system(cmd)
+
+    def restore_state(self):
+        log("Restoring customer state")
+        cmd = f"cp {self.temp_path}/{self.cust_db} {self.dev_path}/{self.cust_db}"
+        os.system(cmd)
+        cmd = f"cp {self.temp_path}/{self.cust_db}-shm {self.dev_path}/{self.cust_db}-shm"
+        os.system(cmd)
+        cmd = f"cp {self.temp_path}/{self.cust_db}-wal {self.dev_path}/{self.cust_db}-wal"
+        os.system(cmd)
+
+
     def run_command_list(self, command_list):
         for command in command_list:
             if command == "establish":
@@ -205,6 +242,10 @@ class TestScenario():
                 self.pay_all()
             elif command == "close":
                 self.close()
+            elif command == "store":
+                self.store_state()
+            elif command == "restore":
+                self.restore_state()
             else:
                 fatal_error(f"{command} not a recognized command.")
 
@@ -215,7 +256,7 @@ def main():
     parser.add_argument("command", help="", nargs="?", default="list")
     parser.add_argument("--path", help="path to create configs", default="./dev")
     parser.add_argument("--network", help="select the type of network", default=SANDBOX)
-    parser.add_argument("--self-delay", "-t", type=int, help="self-delay for closing transactions", default="1")
+    parser.add_argument("--self-delay", "-t", type=int, help="self-delay for closing transactions", default="120")
     parser.add_argument("--confirmation-depth", "-d", type=int, help="required confirmations for all transactions", default="1")
     parser.add_argument("--url", "-u", help="url for tezos network", default="http://localhost:20000")
     parser.add_argument("--amount", "-a", help="starting balance for each channel", default="10")
@@ -250,6 +291,7 @@ def main():
     merch_config = "{path}/Merchant-{network}.toml".format(path=dev_path, network=network)
     merch_db = "merchant-{network}.db".format(network=network)
     channel_name = "my-zkchannel-{count}".format(count=str(channel_count))
+    temp_path = "{path}/temp".format(path=dev_path)
 
     if network == SANDBOX:
         cust_keys = "tezos_account = { alias = \"alice\" }"
@@ -270,7 +312,12 @@ def main():
         info("Running scenario: %s" % ', '.join(command_list))
         if network == SANDBOX:
             check_blockchain_maturity(url)
-        t = TestScenario(cust_config, channel_name, customer_deposit, verbose)
+        t = TestScenario(
+                cust_config, cust_db, 
+                dev_path, temp_path,
+                channel_name, customer_deposit, 
+                verbose
+            )
         t.run_command_list(command_list)
     else:
         # list the available channels
