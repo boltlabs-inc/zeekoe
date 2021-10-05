@@ -1,11 +1,13 @@
 
 #
-# To setup the sandbox configs and start the merchant server, run the following:
-# $: python3 test-zeekoe.py setup --url "http://localhost:20000" -v
+# To setup the merchant's sandbox config and start the merchant server, run the following:
+# $: python3 test-zeekoe.py merch-setup --url "http://localhost:20000" -v
+# 
+# Then setup the customer's sandbox config and start the chain watcher, run the following:
+# $: python3 test-zeekoe.py cust-setup --url "http://localhost:20000" -v
 # 
 # Then test the life cycle of a few channels (ideally in parallel): establish a channel, make a payment and run cust close
-# $: python3 test-zeekoe.py scenario --channel 1 --num-payments 5 -v
-# $: python3 test-zeekoe.py scenario --channel 2 --num-payments 7 -v
+# $: python3 test-zeekoe.py scenario --channel 1 -v --command_list establish pay pay pay_all close
 #
 # List the channels
 # $: python3 test-zeekoe.py list
@@ -39,12 +41,13 @@ def fatal_error(msg):
     print("%sERROR:%s %s%s%s" % (BBlack, NC, RED, msg, NC))
     sys.exit(-1)
 
-def create_merchant_config(merch_db, merch_config, merch_account_keys, self_delay, url_path, verbose=False):
+def create_merchant_config(merch_db, merch_config, merch_account_keys, self_delay, confirmation_depth, url_path, verbose=False):
     config_contents = """
 database = {{ sqlite = "{merchant_db}" }}
 {tezos_account}
 tezos_uri = "{url}"
 self_delay = {self_delay}
+confirmation_depth = {confirmation_depth}
 
 [[service]]
 address = "::1"
@@ -55,7 +58,7 @@ certificate = "localhost.crt"
 address = "127.0.0.1"
 private_key = "localhost.key"
 certificate = "localhost.crt"    
-    """.format(merchant_db=merch_db, tezos_account=merch_account_keys, self_delay=self_delay, url=url_path)
+    """.format(merchant_db=merch_db, tezos_account=merch_account_keys, self_delay=self_delay, confirmation_depth=confirmation_depth, url=url_path)
     f = open(merch_config, "w")
     f.write(config_contents)
     f.close()
@@ -66,14 +69,15 @@ certificate = "localhost.crt"
         print("============")
     return
     
-def create_customer_config(cust_db, cust_config, cust_account_keys, self_delay, url_path, verbose=False):
+def create_customer_config(cust_db, cust_config, cust_account_keys, self_delay, confirmation_depth, url_path, verbose=False):
     config_contents = """
 database = {{ sqlite = "{customer_db}" }}
 trust_certificate = "localhost.crt"
 {tezos_account}
 tezos_uri = "{url}"
 self_delay = {self_delay}
-    """.format(customer_db=cust_db, tezos_account=cust_account_keys, self_delay=self_delay, url=url_path)
+confirmation_depth = {confirmation_depth}
+    """.format(customer_db=cust_db, tezos_account=cust_account_keys, self_delay=self_delay, confirmation_depth=confirmation_depth, url=url_path)
     f = open(cust_config, "w")
     f.write(config_contents)
     f.close()
@@ -142,6 +146,45 @@ def scenario_close_with_expiry(config, channel_name, verbose):
     # TODO: then customer should detect and respond with cust close
     pass
 
+class TestScenario():
+    def __init__(self, cust_config, channel_name, customer_deposit, verbose):
+        self.cust_config = cust_config
+        self.channel_name = channel_name
+        self.customer_deposit = float(customer_deposit)
+        self.balance_remaining = float(customer_deposit)
+        self.verbose = verbose
+    
+    def establish(self):
+        create_new_channel(self.cust_config, self.channel_name, self.customer_deposit, self.verbose)
+
+    def pay(self):
+        max_pay_amount = self.balance_remaining / 2 # save money for future payments
+        pay_amount = round(random.uniform(0, max_pay_amount), 4)
+        make_payment(self.cust_config, self.channel_name, pay_amount, self.verbose)
+        self.balance_remaining -= pay_amount
+
+    def pay_all(self):
+        pay_amount = self.balance_remaining
+        make_payment(self.cust_config, self.channel_name, pay_amount, self.verbose)
+        self.balance_remaining = 0
+
+    def close(self):
+        close_channel(self.cust_config, self.channel_name, self.verbose)
+
+    def run_command_list(self, command_list):
+        for command in command_list:
+            if command == "establish":
+                self.establish()
+            elif command == "pay":
+                self.pay()
+            elif command == "pay_all":
+                self.pay_all()
+            elif command == "close":
+                self.close()
+            else:
+                fatal_error(f"{command} not a recognized command.")
+
+
 COMMANDS = ["list", "merch-setup", "cust-setup", "scenario"]
 def main():
     parser = argparse.ArgumentParser()
@@ -149,11 +192,12 @@ def main():
     parser.add_argument("--path", help="path to create configs", default="./dev")
     parser.add_argument("--network", help="select the type of network", default="sandbox")
     parser.add_argument("--self-delay", "-t", type=int, help="self-delay for closing transactions", default="1")
+    parser.add_argument("--confirmation-depth", "-d", type=int, help="required confirmations for all transactions", default="1")
     parser.add_argument("--url", "-u", help="url for tezos network", default="http://localhost:20000")
     parser.add_argument("--amount", "-a", help="starting balance for each channel", default="10")
     parser.add_argument("--verbose", "-v", help="increase output verbosity", action="store_true")
     parser.add_argument("--channel", type=int, help="desired starting channel counter", default="1")
-    parser.add_argument("--num-payments", "-p", type=int, help="the number of payments to make on a channel", default="5")
+    parser.add_argument('--command-list','-c', nargs='+', help='commands to be tested, e.g. establish pay close')
 
     args = parser.parse_args()
 
@@ -166,9 +210,10 @@ def main():
     network = args.network.lower()
 
     self_delay = args.self_delay
+    confirmation_depth = args.confirmation_depth
     customer_deposit = args.amount
     channel_count = args.channel
-    num_payments = args.num_payments
+    command_list = args.command_list
 
     if int(channel_count) <= 0:
         fatal_error("Expected '--channel' to be > 0")
@@ -190,27 +235,17 @@ def main():
         fatal_error("Not implemented yet: No tezos account for customer and merchant on '%s'" % network)
 
     if args.command == MERCH_SETUP:
-        create_merchant_config(merch_db, merch_config, merch_keys, self_delay, url)
+        create_merchant_config(merch_db, merch_config, merch_keys, self_delay, confirmation_depth, url)
         start_merchant_server(merch_config, verbose)
 
     elif args.command == CUST_SETUP:
-        create_customer_config(cust_db, cust_config, cust_keys, self_delay, url)
+        create_customer_config(cust_db, cust_config, cust_keys, self_delay, confirmation_depth, url)
         start_customer_watcher(cust_config, verbose)
 
     elif args.command == SCENARIO:
-        info("Running basic scenario...")
-        # now we can establish a channel
-        create_new_channel(cust_config, channel_name, customer_deposit, verbose)
-        # set maximum payment amount so that the customer doesn't run out of money
-        max_pay_amount = float(customer_deposit)/num_payments
-
-        # let's make some payments
-        for _ in range(0, num_payments):
-            pay_amount = str(round(random.uniform(0, max_pay_amount), 4))
-            make_payment(cust_config, channel_name, pay_amount, verbose)
-
-        # # let's close
-        close_channel(cust_config, channel_name, verbose)
+        info("Running scenario: %s" % ', '.join(command_list))
+        t = TestScenario(cust_config, channel_name, customer_deposit, verbose)
+        t.run_command_list(command_list)
     else:
         # list the available channels
         list_channels(cust_config)
