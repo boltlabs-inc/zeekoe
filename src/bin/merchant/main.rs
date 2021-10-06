@@ -44,6 +44,8 @@ use parameters::Parameters;
 use pay::Pay;
 use zkabacus_crypto::ChannelId;
 
+const MAX_INTERVAL_SECONDS: u64 = 60;
+
 /// A single merchant-side command, parameterized by the currently loaded configuration.
 ///
 /// All subcommands of [`Merchant`] should implement this, except [`Configure`], which does not need
@@ -169,8 +171,9 @@ impl Command for Run {
             })
             .collect();
 
-        // Set the polling service interval to run every 60 seconds or every self-delay interval
-        let interval_seconds = std::cmp::min(60, config.self_delay - 1);
+        // In production, the self_delay should be long (at least 48h) so this will always end up
+        // being 60s. In development, you may see lower values to allow for quicker testing.
+        let interval_seconds = std::cmp::min(config.self_delay / 2, MAX_INTERVAL_SECONDS);
         let mut polling_interval = tokio::time::interval(Duration::from_secs(interval_seconds));
 
         // Get a join handle for the polling service

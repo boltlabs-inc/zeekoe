@@ -1,6 +1,6 @@
 use {
     http::Uri,
-    serde::{Deserialize, Serialize},
+    serde::{de, Deserialize, Deserializer, Serialize},
     std::path::{Path, PathBuf},
 };
 
@@ -24,4 +24,17 @@ impl DatabaseLocation {
             self
         }
     }
+}
+
+pub fn deserialize_self_delay<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u64, D::Error> {
+    let num = u64::deserialize(deserializer)?;
+
+    if num < 10 {
+        return Err(de::Error::invalid_value(
+            de::Unexpected::Unsigned(num as u64),
+            &"at least 10",
+        ));
+    }
+
+    Ok(num)
 }
