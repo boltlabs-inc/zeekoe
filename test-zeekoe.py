@@ -151,6 +151,11 @@ def list_channels(cust_config):
     cmd = ["./target/debug/zkchannel", "customer", "--config", cust_config, "list"]
     return run_command(cmd, True)
 
+def expire_channel(merch_config, channel_id, verbose):
+    info("Initiate expiry on the channel id: %s" % channel_id)
+    cmd = ["./target/debug/zkchannel", "merchant", "--config", merch_config, "close", "--channel", channel_id]
+    return run_command(cmd, verbose)
+
 def scenario_close_with_expiry(config, channel_name, verbose):
     # TODO: initiate merch expiry
     # TODO: then customer should detect and respond with cust close
@@ -176,11 +181,13 @@ class TestScenario():
     def __init__(
             self, 
             cust_config, cust_db, 
+            merch_config,
             dev_path,  
             channel_name, customer_deposit, 
             verbose
         ):
         self.cust_config = cust_config
+        self.merch_config = merch_config
         self.dev_path = dev_path
         self.cust_db = cust_db
         self.temp_path = os.path.join(dev_path, "temp")
@@ -230,6 +237,12 @@ class TestScenario():
     def restore_state(self):
         log("Restoring customer state")
         self.transfer_db_files(src = self.channel_path, dst = self.dev_path, db_name = self.cust_db)
+        
+    def expire(self):
+        # TODO: Get channel_id from a channel_name
+        list_channels(self.cust_config)
+        channel_id = input("Enter the channel_id to be expired\n")
+        expire_channel(self.merch_config, channel_id, self.verbose)
 
     def run_command_list(self, command_list):
         for command in command_list:
@@ -245,6 +258,8 @@ class TestScenario():
                 self.store_state()
             elif command == "restore":
                 self.restore_state()
+            elif command == "expire":
+                self.expire()
             else:
                 fatal_error(f"{command} not a recognized command.")
 
@@ -323,6 +338,7 @@ def main():
             check_blockchain_maturity(url)
         t = TestScenario(
                 cust_config, cust_db, 
+                merch_config,
                 dev_path,
                 channel_name, customer_deposit, 
                 verbose
