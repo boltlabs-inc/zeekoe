@@ -8,11 +8,11 @@
 # $: python3 test-zeekoe.py cust-setup --url "http://localhost:20000" -v
 # 
 # Then test the life cycle of a few channels (ideally in parallel): establish a channel, make a payment and run cust close
-# $: python3 test-zeekoe.py scenario --channel 1 -v --command_list establish pay pay pay_all close
+# $: python3 test-zeekoe.py scenario --channel 1 -v --command-list establish pay pay pay_all close
 #
 # To test a dispute scenario, where the customer closes on a revoked state, use 'store' and 
 # 'restore' to restore a revoked state, e.g.
-# $: python3 test-zeekoe.py scenario --channel 1 -v --command_list establish pay store pay restore close
+# $: python3 test-zeekoe.py scenario --channel 1 -v --command-list establish pay store pay restore close
 # 
 # List the channels
 # $: python3 test-zeekoe.py list
