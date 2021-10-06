@@ -41,6 +41,12 @@ any blockchain or other escrow arbiter that supports the verification of various
 constructs. The version of the `zkchannel` application in this repository is specialized to the
 Tezos blockchain. Future work will generalize to other escrow arbiters.
 
+⚠️ **Warning:** At this time, this software should be considered a **technology demonstration only**.
+In particular, we have not yet prevented resource exhaustion and slow-loris style DoS attacks,
+timing-based de-anonymization attacks, and our transport layer does not incorporate Tor, which means 
+that the customer may be tracked based on IP address. **We strongly caution against using the software to
+handle real currency.**
+
 ## Setting up the project
 
 To build the project, you will need: 
@@ -88,6 +94,7 @@ using a provided script, which places them in the `./dev` folder:
 ```
 
 ## Specifying a configuration
+
 Each party has a configuration file that, among other things, specifies the Tezos network and key
 material that will be used to fund the channel.
 The `tezos_uri` field indicates the URI of the tezos node:
