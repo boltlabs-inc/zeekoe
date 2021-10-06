@@ -214,7 +214,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("command", help="", nargs="?", default="list")
     parser.add_argument("--path", help="path to create configs", default="./dev")
-    parser.add_argument("--network", help="select the type of network", default="sandbox")
+    parser.add_argument("--network", help="select the type of network", default=SANDBOX)
     parser.add_argument("--self-delay", "-t", type=int, help="self-delay for closing transactions", default="1")
     parser.add_argument("--confirmation-depth", "-d", type=int, help="required confirmations for all transactions", default="1")
     parser.add_argument("--url", "-u", help="url for tezos network", default="http://localhost:20000")
@@ -268,7 +268,8 @@ def main():
 
     elif args.command == SCENARIO:
         info("Running scenario: %s" % ', '.join(command_list))
-        check_blockchain_maturity(url)
+        if network == SANDBOX:
+            check_blockchain_maturity(url)
         t = TestScenario(cust_config, channel_name, customer_deposit, verbose)
         t.run_command_list(command_list)
     else:
