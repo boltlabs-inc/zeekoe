@@ -19,6 +19,7 @@ import subprocess
 import sys
 import random
 import requests
+import time
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -31,6 +32,11 @@ SANDBOX = "sandbox"
 MERCH_SETUP = "merch-setup"
 CUST_SETUP = "cust-setup"
 SCENARIO = "scenario"
+
+# The minimum blockchain level to be able to run tests. Operations need to reference a block up to 
+# 60 blocks from the head. Setting this minimum level avoids running into errors caused by the 
+# blockchain not having enough blocks. 
+MIN_BLOCKCHAIN_LEVEL = 60
 
 def info(msg):
     print("%s[+] %s%s" % (GREEN, msg, NC))
@@ -147,13 +153,21 @@ def scenario_close_with_expiry(config, channel_name, verbose):
     # TODO: then customer should detect and respond with cust close
     pass
 
-def check_blockchain_maturity(url):
+def get_blockchain_level(url):
     full_url = url + "/chains/main/blocks/head/metadata"
     r = requests.get(url = full_url)
     data = r.json()
     level = data['level']['level']
-    assert(level >= 60), """The blockchain level is less than 60 blocks. 
-    Wait until it is at least 60 blocks before running any tests"""
+    return level
+
+def check_blockchain_maturity(url):
+    level = get_blockchain_level(url)
+    while level < MIN_BLOCKCHAIN_LEVEL:
+        blocks_short = MIN_BLOCKCHAIN_LEVEL - level
+        wait_secs = blocks_short*2
+        print(f"Blockchain level is {level} but needs to be at least {MIN_BLOCKCHAIN_LEVEL}. Reattempting in {wait_secs}s")
+        time.sleep(wait_secs)
+        level = get_blockchain_level(url)
 
 class TestScenario():
     def __init__(self, cust_config, channel_name, customer_deposit, verbose):
