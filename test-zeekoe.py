@@ -1,4 +1,5 @@
-
+# To install requests library, run the following:
+# pip install requests
 #
 # To setup the merchant's sandbox config and start the merchant server, run the following:
 # $: python3 test-zeekoe.py merch-setup --url "http://localhost:20000" -v
