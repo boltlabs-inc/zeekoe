@@ -156,11 +156,6 @@ def expire_channel(merch_config, channel_id, verbose):
     cmd = ["./target/debug/zkchannel", "merchant", "--config", merch_config, "close", "--channel", channel_id]
     return run_command(cmd, verbose)
 
-def scenario_close_with_expiry(config, channel_name, verbose):
-    # TODO: initiate merch expiry
-    # TODO: then customer should detect and respond with cust close
-    pass
-
 def get_blockchain_level(url):
     full_url = url + "/chains/main/blocks/head/metadata"
     r = requests.get(url = full_url)
