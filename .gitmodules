@@ -1,3 +1,3 @@
 [submodule "tezos-contract"]
 	path = tezos-contract
-	url = git@github.com:boltlabs-inc/tezos-contract.git
+	url = https://github.com/boltlabs-inc/tezos-contract.git
