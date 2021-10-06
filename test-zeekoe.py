@@ -149,11 +149,6 @@ def list_channels(cust_config):
     cmd = ["./target/debug/zkchannel", "customer", "--config", cust_config, "list"]
     return run_command(cmd, True)
 
-def scenario_dispute_customer_close(config, channel_name, verbose):
-    # TODO: take necessary steps to close on old state
-    # TODO: then force close as usual
-    pass
-
 def scenario_close_with_expiry(config, channel_name, verbose):
     # TODO: initiate merch expiry
     # TODO: then customer should detect and respond with cust close
