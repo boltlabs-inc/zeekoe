@@ -5,7 +5,7 @@ use {
     url::Url,
 };
 
-pub use super::{deserialize_self_delay, DatabaseLocation};
+pub use super::{deserialize_confirmation_depth, deserialize_self_delay, DatabaseLocation};
 
 use crate::{
     escrow::types::{KeySpecifier, TezosKeyMaterial},
@@ -25,7 +25,10 @@ pub struct Config {
         deserialize_with = "deserialize_self_delay"
     )]
     pub self_delay: u64,
-    #[serde(default = "defaults::confirmation_depth")]
+    #[serde(
+        default = "defaults::confirmation_depth",
+        deserialize_with = "deserialize_confirmation_depth"
+    )]
     pub confirmation_depth: u64,
     #[serde(rename = "service")]
     pub services: Vec<Service>,
