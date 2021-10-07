@@ -122,8 +122,8 @@ fn python_context() -> inline_python::Context {
             cust_py = pytezos.using(key=cust_acc, shell=uri)
             cust_ci = cust_py.contract(contract_id)
 
-            if min_confirmations > 0:
-                block_id = "head~{}".format(min_confirmations)
+            if min_confirmations > 1:
+                block_id = "head~{}".format(min_confirmations-1)
                 contract = cust_ci.using(block_id = block_id)
             else:
                 contract = cust_ci

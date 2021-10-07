@@ -9,7 +9,7 @@ use {
 
 use http::Uri;
 
-pub use super::{deserialize_self_delay, DatabaseLocation};
+pub use super::{deserialize_confirmation_depth, deserialize_self_delay, DatabaseLocation};
 
 use crate::{
     customer::defaults,
@@ -41,7 +41,10 @@ pub struct Config {
         deserialize_with = "deserialize_self_delay"
     )]
     pub self_delay: u64,
-    #[serde(default = "defaults::confirmation_depth")]
+    #[serde(
+        default = "defaults::confirmation_depth",
+        deserialize_with = "deserialize_confirmation_depth"
+    )]
     pub confirmation_depth: u64,
     #[serde(default)]
     pub trust_certificate: Option<PathBuf>,
