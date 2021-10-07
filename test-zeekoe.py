@@ -1,4 +1,5 @@
-
+# To install requests library, run the following:
+# pip install requests
 #
 # To setup the merchant's sandbox config and start the merchant server, run the following:
 # $: python3 test-zeekoe.py merch-setup --url "http://localhost:20000" -v
@@ -18,6 +19,8 @@ import json
 import subprocess
 import sys
 import random
+import requests
+import time
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -30,6 +33,11 @@ SANDBOX = "sandbox"
 MERCH_SETUP = "merch-setup"
 CUST_SETUP = "cust-setup"
 SCENARIO = "scenario"
+
+# The minimum blockchain level to be able to run tests. Operations need to reference a block up to 
+# 60 blocks from the head. Setting this minimum level avoids running into errors caused by the 
+# blockchain not having enough blocks. 
+MIN_BLOCKCHAIN_LEVEL = 60
 
 def info(msg):
     print("%s[+] %s%s" % (GREEN, msg, NC))
@@ -146,6 +154,22 @@ def scenario_close_with_expiry(config, channel_name, verbose):
     # TODO: then customer should detect and respond with cust close
     pass
 
+def get_blockchain_level(url):
+    full_url = url + "/chains/main/blocks/head/metadata"
+    r = requests.get(url = full_url)
+    data = r.json()
+    level = data['level']['level']
+    return level
+
+def check_blockchain_maturity(url):
+    level = get_blockchain_level(url)
+    while level < MIN_BLOCKCHAIN_LEVEL:
+        blocks_short = MIN_BLOCKCHAIN_LEVEL - level
+        wait_secs = blocks_short*2
+        print(f"Blockchain level is {level} but needs to be at least {MIN_BLOCKCHAIN_LEVEL}. Reattempting in {wait_secs}s")
+        time.sleep(wait_secs)
+        level = get_blockchain_level(url)
+
 class TestScenario():
     def __init__(self, cust_config, channel_name, customer_deposit, verbose):
         self.cust_config = cust_config
@@ -190,7 +214,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("command", help="", nargs="?", default="list")
     parser.add_argument("--path", help="path to create configs", default="./dev")
-    parser.add_argument("--network", help="select the type of network", default="sandbox")
+    parser.add_argument("--network", help="select the type of network", default=SANDBOX)
     parser.add_argument("--self-delay", "-t", type=int, help="self-delay for closing transactions", default="1")
     parser.add_argument("--confirmation-depth", "-d", type=int, help="required confirmations for all transactions", default="1")
     parser.add_argument("--url", "-u", help="url for tezos network", default="http://localhost:20000")
@@ -244,6 +268,8 @@ def main():
 
     elif args.command == SCENARIO:
         info("Running scenario: %s" % ', '.join(command_list))
+        if network == SANDBOX:
+            check_blockchain_maturity(url)
         t = TestScenario(cust_config, channel_name, customer_deposit, verbose)
         t.run_command_list(command_list)
     else:
