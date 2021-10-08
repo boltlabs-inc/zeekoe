@@ -2,4 +2,3 @@ database = { sqlite = "customer.db" }
 trust_certificate = "localhost.crt"
 tezos_account = "../tezos-contract/pytezos-tests/sample_files/tz1iKxZpa5x1grZyN2Uw9gERXJJPMyG22Sqp.json"
 tezos_uri = "https://rpc.tzkt.io/granadanet/"
-confirmation_depth = 0
