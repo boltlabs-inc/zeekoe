@@ -45,7 +45,7 @@ impl Command for Close {
                 self.off_chain,
                 &mut rng,
                 database.as_ref(),
-                UnilateralCloseType::CustomerInitiated,
+                UnilateralCloseKind::CustomerInitiated,
             )
             .await
             .context("Unilateral close failed")?;
@@ -68,7 +68,8 @@ struct Closing {
     revocation_lock: RevocationLock,
 }
 
-pub enum UnilateralCloseType {
+#[derive(PartialEq)]
+pub enum UnilateralCloseKind {
     MerchantInitiated,
     CustomerInitiated,
 }
@@ -86,7 +87,7 @@ pub async fn unilateral_close(
     off_chain: bool,
     rng: &mut StdRng,
     database: &dyn QueryCustomer,
-    close_type: UnilateralCloseType,
+    close_kind: UnilateralCloseKind,
 ) -> Result<(), anyhow::Error> {
     // Read the closing message and set the channel state to PendingClose
     let close_message = get_close_message(rng, database, channel_name)
@@ -94,7 +95,7 @@ pub async fn unilateral_close(
         .context("Failed to fetch closing message from database")?;
 
     // If the customer has no money to claim in expiry, just update the status
-    if matches!(close_type, UnilateralCloseType::MerchantInitiated)
+    if close_kind == UnilateralCloseKind::MerchantInitiated
         && close_message.customer_balance().into_inner() == 0
     {
         database
@@ -213,30 +214,32 @@ pub async fn claim_funds(
             channel_name
         ))??;
 
+    if customer_balance.into_inner() == 0 {
+        return Ok(());
+    }
+
     // Post custClaim entrypoint on chain if there are balances to be claimed
-    if customer_balance.into_inner() > 0 {
-        let tezos_client = load_tezos_client(config, channel_name, database).await?;
-        match tezos_client.cust_claim().await.context(format!(
-            "Failed to claim customer funds for {}",
-            channel_name.clone()
-        )) {
-            Ok(_) => {}
-            Err(e) => {
-                // If `custClaim` didn't post correctly, revert state back to PendingClose
-                database
-                    .with_channel_state(
-                        channel_name,
-                        zkchannels_state::PendingCustomerClaim,
-                        |closing_message| -> Result<_, Infallible> {
-                            Ok((State::PendingClose(closing_message), ()))
-                        },
-                    )
-                    .await??;
-                return Err(e);
-            }
+    let tezos_client = load_tezos_client(config, channel_name, database).await?;
+    match tezos_client
+        .cust_claim()
+        .await
+        .with_context(|| format!("Failed to claim customer funds for {}", channel_name))
+    {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            // If `custClaim` didn't post correctly, revert state back to PendingClose
+            database
+                .with_channel_state(
+                    channel_name,
+                    zkchannels_state::PendingCustomerClaim,
+                    |closing_message| -> Result<_, Infallible> {
+                        Ok((State::PendingClose(closing_message), ()))
+                    },
+                )
+                .await??;
+            Err(e)
         }
     }
-    Ok(())
 }
 
 /// Update channel to indicate a dispute.

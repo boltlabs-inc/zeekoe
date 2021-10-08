@@ -161,7 +161,7 @@ async fn dispatch_channel(
             off_chain,
             rng,
             database,
-            close::UnilateralCloseType::MerchantInitiated,
+            close::UnilateralCloseKind::MerchantInitiated,
         )
         .await
         .context("Chain watcher failed to process contract in expiry state")?;
@@ -181,7 +181,7 @@ async fn dispatch_channel(
             .context("Chain watcher failed to claim funds")?;
 
         // Developer note: if we separate the logic so that this is not always called immediately
-        // after the previous function, make sure it is still called in the case where the
+        // after `close::claim_funds()`, make sure it is still called in the case where the
         // customer has 0 funds and does not actually post a claim operation
         close::finalize_customer_claim(database, &channel.label)
             .await
