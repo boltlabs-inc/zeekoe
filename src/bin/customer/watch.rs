@@ -155,9 +155,16 @@ async fn dispatch_channel(
     {
         // TODO: this should wait for any payments to complete.
 
-        close::unilateral_close(&channel.label, config, off_chain, rng, database)
-            .await
-            .context("Chain watcher failed to process contract in expiry state")?;
+        close::unilateral_close(
+            &channel.label,
+            config,
+            off_chain,
+            rng,
+            database,
+            close::UnilateralCloseType::MerchantInitiated,
+        )
+        .await
+        .context("Chain watcher failed to process contract in expiry state")?;
     }
 
     // The channel has not claimed funds after custClose timeout expired

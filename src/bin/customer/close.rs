@@ -45,6 +45,7 @@ impl Command for Close {
                 self.off_chain,
                 &mut rng,
                 database.as_ref(),
+                UnilateralCloseType::CustomerInitiated,
             )
             .await
             .context("Unilateral close failed")?;
@@ -67,6 +68,11 @@ struct Closing {
     revocation_lock: RevocationLock,
 }
 
+pub enum UnilateralCloseType {
+    MerchantInitiated,
+    CustomerInitiated,
+}
+
 /// Initiate channel closure on the current balances as part of a unilateral customer or a
 /// unilateral merchant close.
 ///
@@ -80,29 +86,36 @@ pub async fn unilateral_close(
     off_chain: bool,
     rng: &mut StdRng,
     database: &dyn QueryCustomer,
+    close_type: UnilateralCloseType,
 ) -> Result<(), anyhow::Error> {
     // Read the closing message and set the channel state to PendingClose
     let close_message = get_close_message(rng, database, channel_name)
         .await
         .context("Failed to fetch closing message from database")?;
 
-    // If the customer balance is non-zero, update state to indicate the customer will not respond to expiry.
-    if close_message.customer_balance().into_inner() == 0 {
-        database
-            .with_channel_state(
-                channel_name,
-                zkchannels_state::PendingClose,
-                |closing_message| -> Result<_, Infallible> {
-                    Ok((State::PendingExpiry(closing_message), ()))
-                },
-            )
-            .await
-            .context(format!(
-                "Failed to update channel status to PendingExpiry for {}",
-                channel_name
-            ))??;
-        return Ok(());
+    match (close_type, close_message.customer_balance().into_inner()) {
+        // If the customer does not need to update balances from the merchant expiry,
+        // just update the status
+        (UnilateralCloseType::MerchantInitiated, 0) => {
+            database
+                .with_channel_state(
+                    channel_name,
+                    zkchannels_state::PendingClose,
+                    |closing_message| -> Result<_, Infallible> {
+                        Ok((State::PendingExpiry(closing_message), ()))
+                    },
+                )
+                .await
+                .context(format!(
+                    "Failed to update channel status to PendingExpiry for {}",
+                    channel_name
+                ))??;
+            return Ok(());
+        }
+        // In any other case, the customer will post updated balances.
+        _ => {}
     }
+
     if !off_chain {
         // Call the custClose entrypoint and wait for it to be confirmed on chain
         let tezos_client = load_tezos_client(config, channel_name, database).await?;
@@ -130,8 +143,8 @@ pub async fn unilateral_close(
 
 /// Update channel balances when merchant receives payout in unilateral close flows.
 ///
-/// **Usage**: this function is called when the
-/// custClose entrypoint call/operation is confirmed on chain at an appropriate depth.
+/// **Usage**: this function is called when the custClose entrypoint call/operation is confirmed
+/// on chain at an appropriate depth.
 async fn finalize_customer_close(
     database: &dyn QueryCustomer,
     channel_name: &ChannelName,
