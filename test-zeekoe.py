@@ -215,7 +215,7 @@ def main():
     parser.add_argument("command", help="", nargs="?", default="list")
     parser.add_argument("--path", help="path to create configs", default="./dev")
     parser.add_argument("--network", help="select the type of network", default=SANDBOX)
-    parser.add_argument("--self-delay", "-t", type=int, help="self-delay for closing transactions", default="1")
+    parser.add_argument("--self-delay", "-t", type=int, help="self-delay for closing transactions", default="120")
     parser.add_argument("--confirmation-depth", "-d", type=int, help="required confirmations for all transactions", default="1")
     parser.add_argument("--url", "-u", help="url for tezos network", default="http://localhost:20000")
     parser.add_argument("--amount", "-a", help="starting balance for each channel", default="10")
@@ -253,10 +253,13 @@ def main():
 
     if network == SANDBOX:
         cust_keys = "tezos_account = { alias = \"alice\" }"
-
-        merch_keys = "tezos_account = { alias = \"bob\" }"
+        merch_keys = "tezos_account = { alias = \"bob\" }"        
+    elif network == TESTNET:
+        cust_keys = "tezos_account = '../tezos-contract/pytezos-tests/sample_files/tz1iKxZpa5x1grZyN2Uw9gERXJJPMyG22Sqp.json'"
+        merch_keys = "tezos_account = '../tezos-contract/pytezos-tests/sample_files/tz1bXwRiFvijKnZYUj9J53oYE3fFkMTWXqNx.json'"
     else:
         fatal_error("Not implemented yet: No tezos account for customer and merchant on '%s'" % network)
+
 
     if args.command == MERCH_SETUP:
         create_merchant_config(merch_db, merch_config, merch_keys, self_delay, confirmation_depth, url)
