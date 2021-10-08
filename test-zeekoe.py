@@ -174,22 +174,23 @@ class TestScenario():
     def __init__(
             self, 
             cust_config, cust_db, 
-            dev_path, temp_path, 
+            dev_path,  
             channel_name, customer_deposit, 
             verbose
         ):
         self.cust_config = cust_config
         self.cust_db = cust_db
         self.dev_path = dev_path
-        self.temp_path = temp_path
+        self.temp_path = f"{dev_path}/temp"
+        self.channel_path = f"{self.temp_path}/{channel_name}"
         self.channel_name = channel_name
         self.customer_deposit = float(customer_deposit)
         self.balance_remaining = float(customer_deposit)
         self.verbose = verbose
-        
-        # Create temporary directory to store revoked customer state when testing dispute scenarios
-        if not os.path.isdir(temp_path):
-            os.system(f"mkdir {temp_path}")
+
+         # Create temporary directory to store revoked customer state when testing dispute scenarios
+        if not os.path.isdir(self.temp_path):
+            os.system(f"mkdir {self.temp_path}")
 
     def establish(self):
         create_new_channel(self.cust_config, self.channel_name, self.customer_deposit, self.verbose)
@@ -210,20 +211,25 @@ class TestScenario():
 
     def store_state(self):
         log("Storing customer state with remaining balance of %s" % self.balance_remaining)
-        cmd = f"cp {self.dev_path}/{self.cust_db} {self.temp_path}/{self.cust_db}"
+
+        # Create temporary directory to store revoked customer state when testing dispute scenarios
+        if not os.path.isdir(self.channel_path):
+            os.system(f"mkdir {self.channel_path}")
+
+        cmd = f"cp {self.dev_path}/{self.cust_db} {self.channel_path}/{self.cust_db}"
         os.system(cmd)
-        cmd = f"cp {self.dev_path}/{self.cust_db}-shm {self.temp_path}/{self.cust_db}-shm"
+        cmd = f"cp {self.dev_path}/{self.cust_db}-shm {self.channel_path}/{self.cust_db}-shm"
         os.system(cmd)
-        cmd = f"cp {self.dev_path}/{self.cust_db}-wal {self.temp_path}/{self.cust_db}-wal"
+        cmd = f"cp {self.dev_path}/{self.cust_db}-wal {self.channel_path}/{self.cust_db}-wal"
         os.system(cmd)
 
     def restore_state(self):
         log("Restoring customer state")
-        cmd = f"cp {self.temp_path}/{self.cust_db} {self.dev_path}/{self.cust_db}"
+        cmd = f"cp {self.channel_path}/{self.cust_db} {self.dev_path}/{self.cust_db}"
         os.system(cmd)
-        cmd = f"cp {self.temp_path}/{self.cust_db}-shm {self.dev_path}/{self.cust_db}-shm"
+        cmd = f"cp {self.channel_path}/{self.cust_db}-shm {self.dev_path}/{self.cust_db}-shm"
         os.system(cmd)
-        cmd = f"cp {self.temp_path}/{self.cust_db}-wal {self.dev_path}/{self.cust_db}-wal"
+        cmd = f"cp {self.channel_path}/{self.cust_db}-wal {self.dev_path}/{self.cust_db}-wal"
         os.system(cmd)
 
 
@@ -286,7 +292,6 @@ def main():
     merch_config = "{path}/Merchant-{network}.toml".format(path=dev_path, network=network)
     merch_db = "merchant-{network}.db".format(network=network)
     channel_name = "my-zkchannel-{count}".format(count=str(channel_count))
-    temp_path = "{path}/temp".format(path=dev_path)
 
     if network == SANDBOX:
         cust_keys = "tezos_account = { alias = \"alice\" }"
@@ -309,7 +314,7 @@ def main():
             check_blockchain_maturity(url)
         t = TestScenario(
                 cust_config, cust_db, 
-                dev_path, temp_path,
+                dev_path,
                 channel_name, customer_deposit, 
                 verbose
             )
