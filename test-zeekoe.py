@@ -19,10 +19,12 @@
 #
 
 import argparse
+import glob
 import json
 import os
 import random
 import requests
+import shutil
 import subprocess
 import sys
 import time
@@ -179,10 +181,10 @@ class TestScenario():
             verbose
         ):
         self.cust_config = cust_config
-        self.cust_db = cust_db
         self.dev_path = dev_path
-        self.temp_path = f"{dev_path}/temp"
-        self.channel_path = f"{self.temp_path}/{channel_name}"
+        self.cust_db = cust_db
+        self.temp_path = os.path.join(dev_path, "temp")
+        self.channel_path = os.path.join(self.temp_path, f"{channel_name}")
         self.channel_name = channel_name
         self.customer_deposit = float(customer_deposit)
         self.balance_remaining = float(customer_deposit)
@@ -209,29 +211,25 @@ class TestScenario():
     def close(self):
         close_channel(self.cust_config, self.channel_name, self.verbose)
 
+    def transfer_db_files(self, src, dst, db_name):
+        """transfer all db files '-shm' and '-wal' """
+        db_path = os.path.join(src, db_name)
+        for file in glob.glob(db_path + '*'):
+            db_name = os.path.basename(file)
+            # set path for destination db file
+            new_file = os.path.join(dst, db_name)
+            shutil.copyfile(file, new_file)
+
     def store_state(self):
         log("Storing customer state with remaining balance of %s" % self.balance_remaining)
-
         # Create temporary directory to store revoked customer state when testing dispute scenarios
         if not os.path.isdir(self.channel_path):
-            os.system(f"mkdir {self.channel_path}")
-
-        cmd = f"cp {self.dev_path}/{self.cust_db} {self.channel_path}/{self.cust_db}"
-        os.system(cmd)
-        cmd = f"cp {self.dev_path}/{self.cust_db}-shm {self.channel_path}/{self.cust_db}-shm"
-        os.system(cmd)
-        cmd = f"cp {self.dev_path}/{self.cust_db}-wal {self.channel_path}/{self.cust_db}-wal"
-        os.system(cmd)
+            os.mkdir(self.channel_path)
+        self.transfer_db_files(src = self.dev_path, dst = self.channel_path, db_name = self.cust_db)
 
     def restore_state(self):
         log("Restoring customer state")
-        cmd = f"cp {self.channel_path}/{self.cust_db} {self.dev_path}/{self.cust_db}"
-        os.system(cmd)
-        cmd = f"cp {self.channel_path}/{self.cust_db}-shm {self.dev_path}/{self.cust_db}-shm"
-        os.system(cmd)
-        cmd = f"cp {self.channel_path}/{self.cust_db}-wal {self.dev_path}/{self.cust_db}-wal"
-        os.system(cmd)
-
+        self.transfer_db_files(src = self.channel_path, dst = self.dev_path, db_name = self.cust_db)
 
     def run_command_list(self, command_list):
         for command in command_list:
@@ -287,11 +285,11 @@ def main():
     if network not in [SANDBOX, TESTNET]:
         fatal_error("Specified invalid 'network' argument. Values: '%s' or '%s'" % (SANDBOX, TESTNET))
 
-    cust_config = "{path}/Customer-{network}.toml".format(path=dev_path, network=network)
-    cust_db = "customer-{network}.db".format(network=network)
-    merch_config = "{path}/Merchant-{network}.toml".format(path=dev_path, network=network)
-    merch_db = "merchant-{network}.db".format(network=network)
-    channel_name = "my-zkchannel-{count}".format(count=str(channel_count))
+    cust_config = os.path.join(dev_path, f"Customer-{network}.toml")
+    cust_db = f"customer-{network}.db"
+    merch_config = os.path.join(dev_path, f"Merchant-{network}.toml")
+    merch_db = f"merchant-{network}.db"
+    channel_name = f"my-zkchannel-{str(channel_count)}"
 
     if network == SANDBOX:
         cust_keys = "tezos_account = { alias = \"alice\" }"
