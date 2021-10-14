@@ -251,7 +251,7 @@ class TestScenario():
 
 COMMANDS = ["list", "merch-setup", "cust-setup", "scenario"]
 def main():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("command", help="", nargs="?", default="list")
     parser.add_argument("--path", help="path to create configs", default="./dev")
     parser.add_argument("--network", help="select the type of network", default=SANDBOX)
@@ -261,7 +261,15 @@ def main():
     parser.add_argument("--amount", "-a", help="starting balance for each channel", default="10")
     parser.add_argument("--verbose", "-v", help="increase output verbosity", action="store_true")
     parser.add_argument("--channel", type=int, help="desired starting channel counter", default="1")
-    parser.add_argument('--command-list','-c', nargs='+', help='commands to be tested, e.g. establish pay close')
+    parser.add_argument('--command-list','-c', nargs='+', help='''
+        Commands to be tested. The list of valid commands and their descriptions are:
+        establish - creates a new zkChannel
+        pay - pays the merchant a random amount (at most spending half the remaining balance)
+        pay_all - pays the merchant the full remaining balance in the channel
+        close - performs a customer-initiated unilateral close on the channel
+        store - saves the customer db files in a channel-specific directory under temp_path.
+        restore - restores the customer db files saved during 'store'. This overwrites the existing customer db. 
+        ''')
 
     args = parser.parse_args()
 
