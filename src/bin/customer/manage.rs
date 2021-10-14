@@ -23,31 +23,34 @@ impl Command for List {
             .await
             .context("Failed to connect to local database")?;
         let channels = database.get_channels().await?;
-
-        let mut table = Table::new();
-        table.load_preset(comfy_table::presets::UTF8_FULL);
-        table.set_header(vec![
-            "Label",
-            "State",
-            "Balance",
-            "Max Refund",
-            "Channel ID",
-        ]);
-
-        // TODO: don't hard-code XTZ here, instead store currency in database
-        let amount = |b: u64| Amount::from_minor_units_of_currency(b.try_into().unwrap(), XTZ);
-
-        for details in channels {
-            table.add_row(vec![
-                Cell::new(details.label),
-                Cell::new(details.state.state_name()),
-                Cell::new(amount(details.state.customer_balance().into_inner())),
-                Cell::new(amount(details.state.merchant_balance().into_inner())),
-                Cell::new(details.state.channel_id()),
+        if config.json {
+            println!("{}", serde_json::to_string(&channels).unwrap());
+        } else {
+            let mut table = Table::new();
+            table.load_preset(comfy_table::presets::UTF8_FULL);
+            table.set_header(vec![
+                "Label",
+                "State",
+                "Balance",
+                "Max Refund",
+                "Channel ID",
             ]);
-        }
 
-        println!("{}", table);
+            // TODO: don't hard-code XTZ here, instead store currency in database
+            let amount = |b: u64| Amount::from_minor_units_of_currency(b.try_into().unwrap(), XTZ);
+
+            for details in channels {
+                table.add_row(vec![
+                    Cell::new(details.label),
+                    Cell::new(details.state.state_name()),
+                    Cell::new(amount(details.state.customer_balance().into_inner())),
+                    Cell::new(amount(details.state.merchant_balance().into_inner())),
+                    Cell::new(details.state.channel_id()),
+                ]);
+            }
+
+            println!("{}", table);
+        }
         Ok(())
     }
 }

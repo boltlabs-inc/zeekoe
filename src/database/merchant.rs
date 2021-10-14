@@ -129,6 +129,7 @@ pub enum Error {
 }
 
 /// The contents of a row of the database for a particular channel.
+#[derive(Serialize)]
 pub struct ChannelDetails {
     pub channel_id: ChannelId,
     pub status: ChannelStatus,

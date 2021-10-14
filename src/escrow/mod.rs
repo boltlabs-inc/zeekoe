@@ -138,6 +138,7 @@ pub mod types {
     }
 
     /// Details about the on-chain location and merchant party of a zkChannels contract.
+    #[derive(Serialize)]
     pub struct ContractDetails {
         /// Public key for the merchant party.
         pub merchant_tezos_public_key: TezosPublicKey,
