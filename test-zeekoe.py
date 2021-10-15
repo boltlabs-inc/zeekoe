@@ -192,7 +192,7 @@ class TestScenario():
 
          # Create temporary directory to store revoked customer state when testing dispute scenarios
         if not os.path.isdir(self.temp_path):
-            os.system(f"mkdir {self.temp_path}")
+            os.mkdir(self.temp_path)
 
     def establish(self):
         create_new_channel(self.cust_config, self.channel_name, self.customer_deposit, self.verbose)
