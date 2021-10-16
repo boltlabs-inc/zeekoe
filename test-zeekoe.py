@@ -8,18 +8,25 @@
 # $: python3 test-zeekoe.py cust-setup --url "http://localhost:20000" -v
 # 
 # Then test the life cycle of a few channels (ideally in parallel): establish a channel, make a payment and run cust close
-# $: python3 test-zeekoe.py scenario --channel 1 -v --command_list establish pay pay pay_all close
+# $: python3 test-zeekoe.py scenario --channel 1 -v --command-list establish pay pay pay_all close
 #
+# To test a dispute scenario, where the customer closes on a revoked state, use 'store' and 
+# 'restore' to restore a revoked state, e.g.
+# $: python3 test-zeekoe.py scenario --channel 1 -v --command-list establish pay store pay restore close
+# 
 # List the channels
 # $: python3 test-zeekoe.py list
 #
 
 import argparse
+import glob
 import json
-import subprocess
-import sys
+import os
 import random
 import requests
+import shutil
+import subprocess
+import sys
 import time
 
 RED='\033[0;31m'
@@ -144,11 +151,6 @@ def list_channels(cust_config):
     cmd = ["./target/debug/zkchannel", "customer", "--config", cust_config, "list"]
     return run_command(cmd, True)
 
-def scenario_dispute_customer_close(config, channel_name, verbose):
-    # TODO: take necessary steps to close on old state
-    # TODO: then force close as usual
-    pass
-
 def scenario_close_with_expiry(config, channel_name, verbose):
     # TODO: initiate merch expiry
     # TODO: then customer should detect and respond with cust close
@@ -171,13 +173,27 @@ def check_blockchain_maturity(url):
         level = get_blockchain_level(url)
 
 class TestScenario():
-    def __init__(self, cust_config, channel_name, customer_deposit, verbose):
+    def __init__(
+            self, 
+            cust_config, cust_db, 
+            dev_path,  
+            channel_name, customer_deposit, 
+            verbose
+        ):
         self.cust_config = cust_config
+        self.dev_path = dev_path
+        self.cust_db = cust_db
+        self.temp_path = os.path.join(dev_path, "temp")
+        self.channel_path = os.path.join(self.temp_path, f"{channel_name}")
         self.channel_name = channel_name
         self.customer_deposit = float(customer_deposit)
         self.balance_remaining = float(customer_deposit)
         self.verbose = verbose
-    
+
+         # Create temporary directory to store revoked customer state when testing dispute scenarios
+        if not os.path.isdir(self.temp_path):
+            os.mkdir(self.temp_path)
+
     def establish(self):
         create_new_channel(self.cust_config, self.channel_name, self.customer_deposit, self.verbose)
 
@@ -195,6 +211,26 @@ class TestScenario():
     def close(self):
         close_channel(self.cust_config, self.channel_name, self.verbose)
 
+    def transfer_db_files(self, src, dst, db_name):
+        """transfer all db files '-shm' and '-wal' """
+        db_path = os.path.join(src, db_name)
+        for file in glob.glob(db_path + '*'):
+            db_name = os.path.basename(file)
+            # set path for destination db file
+            new_file = os.path.join(dst, db_name)
+            shutil.copyfile(file, new_file)
+
+    def store_state(self):
+        log("Storing customer state with remaining balance of %s" % self.balance_remaining)
+        # Create temporary directory to store revoked customer state when testing dispute scenarios
+        if not os.path.isdir(self.channel_path):
+            os.mkdir(self.channel_path)
+        self.transfer_db_files(src = self.dev_path, dst = self.channel_path, db_name = self.cust_db)
+
+    def restore_state(self):
+        log("Restoring customer state")
+        self.transfer_db_files(src = self.channel_path, dst = self.dev_path, db_name = self.cust_db)
+
     def run_command_list(self, command_list):
         for command in command_list:
             if command == "establish":
@@ -205,13 +241,17 @@ class TestScenario():
                 self.pay_all()
             elif command == "close":
                 self.close()
+            elif command == "store":
+                self.store_state()
+            elif command == "restore":
+                self.restore_state()
             else:
                 fatal_error(f"{command} not a recognized command.")
 
 
 COMMANDS = ["list", "merch-setup", "cust-setup", "scenario"]
 def main():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("command", help="", nargs="?", default="list")
     parser.add_argument("--path", help="path to create configs", default="./dev")
     parser.add_argument("--network", help="select the type of network", default=SANDBOX)
@@ -221,7 +261,15 @@ def main():
     parser.add_argument("--amount", "-a", help="starting balance for each channel", default="10")
     parser.add_argument("--verbose", "-v", help="increase output verbosity", action="store_true")
     parser.add_argument("--channel", type=int, help="desired starting channel counter", default="1")
-    parser.add_argument('--command-list','-c', nargs='+', help='commands to be tested, e.g. establish pay close')
+    parser.add_argument('--command-list','-c', nargs='+', help='''
+        Commands to be tested. The list of valid commands and their descriptions are:
+        establish - creates a new zkChannel
+        pay - pays the merchant a random amount (at most spending half the remaining balance)
+        pay_all - pays the merchant the full remaining balance in the channel
+        close - performs a customer-initiated unilateral close on the channel
+        store - saves the customer db files in a channel-specific directory under temp_path.
+        restore - restores the customer db files saved during 'store'. This overwrites the existing customer db. 
+        ''')
 
     args = parser.parse_args()
 
@@ -245,11 +293,11 @@ def main():
     if network not in [SANDBOX, TESTNET]:
         fatal_error("Specified invalid 'network' argument. Values: '%s' or '%s'" % (SANDBOX, TESTNET))
 
-    cust_config = "{path}/Customer-{network}.toml".format(path=dev_path, network=network)
-    cust_db = "customer-{network}.db".format(network=network)
-    merch_config = "{path}/Merchant-{network}.toml".format(path=dev_path, network=network)
-    merch_db = "merchant-{network}.db".format(network=network)
-    channel_name = "my-zkchannel-{count}".format(count=str(channel_count))
+    cust_config = os.path.join(dev_path, f"Customer-{network}.toml")
+    cust_db = f"customer-{network}.db"
+    merch_config = os.path.join(dev_path, f"Merchant-{network}.toml")
+    merch_db = f"merchant-{network}.db"
+    channel_name = f"my-zkchannel-{str(channel_count)}"
 
     if network == SANDBOX:
         cust_keys = "tezos_account = { alias = \"alice\" }"
@@ -273,7 +321,12 @@ def main():
         info("Running scenario: %s" % ', '.join(command_list))
         if network == SANDBOX:
             check_blockchain_maturity(url)
-        t = TestScenario(cust_config, channel_name, customer_deposit, verbose)
+        t = TestScenario(
+                cust_config, cust_db, 
+                dev_path,
+                channel_name, customer_deposit, 
+                verbose
+            )
         t.run_command_list(command_list)
     else:
         # list the available channels
