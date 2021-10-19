@@ -401,6 +401,8 @@ pub enum VerificationError {
     UnexpectedContractHash,
     #[error("Expected customer contract's self_delay to be {expected:?}, but was {actual:?}")]
     UnexpectedSelfDelay { expected: u64, actual: u64 },
+    #[error("Expected customer contract's delay_expiry to be to 0, but was {actual:?}")]
+    UnexpectedDelayExpiry { actual: u32 },
     #[error("Expected contract's merchant_balance to be {expected:?}, but was {actual:?}")]
     UnexpectedMerchantBalance {
         expected: MerchantBalance,
@@ -411,6 +413,8 @@ pub enum VerificationError {
         expected: CustomerBalance,
         actual: CustomerBalance,
     },
+    #[error("Expected customer contract's revocation_lock_bytes to be 0, but was {actual:?}")]
+    UnexpectedRevocationLock { actual: Vec<u8> },
     #[error(transparent)]
     ZkAbacus(#[from] zkabacus_crypto::Error),
     #[error("Contract's MerchantPublicKey did not match the merchant's public key")]
@@ -873,6 +877,18 @@ impl TezosClient {
     ) -> Result<(), VerificationError> {
         let contract_state = self.get_contract_state().await?;
 
+        if contract_state.delay_expiry != 0 {
+            return Err(VerificationError::UnexpectedDelayExpiry {
+                actual: contract_state.delay_expiry,
+            });
+        }
+
+        if !is_zero(&contract_state.revocation_lock_bytes) {
+            return Err(VerificationError::UnexpectedRevocationLock {
+                actual: contract_state.revocation_lock_bytes,
+            });
+        }
+
         match contract_state.status()? {
             ContractStatus::AwaitingCustomerFunding => {}
             actual => {
@@ -1287,4 +1303,12 @@ impl TezosClient {
     pub async fn verify_contract_closed(&self, contract_id: &ContractId) -> Result<(), Error> {
         todo!()
     }
+}
+
+fn is_zero(buf: &[u8]) -> bool {
+    let (prefix, aligned, suffix) = unsafe { buf.align_to::<u128>() };
+
+    prefix.iter().all(|&x| x == 0)
+        && suffix.iter().all(|&x| x == 0)
+        && aligned.iter().all(|&x| x == 0)
 }
