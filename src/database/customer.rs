@@ -164,7 +164,14 @@ pub trait QueryCustomer: Send + Sync {
         address: &ZkChannelAddress,
         inactive: Inactive,
         contract_details: &ContractDetails,
+        zkabacus_config: &zkabacus_crypto::customer::Config,
     ) -> std::result::Result<(), (Inactive, Error)>;
+
+    /// Get a channel's [`zkabacus_crypto::customer::Config`].
+    async fn channel_zkabacus_config(
+        &self,
+        channel_name: &ChannelName,
+    ) -> Result<zkabacus_crypto::customer::Config>;
 
     /// Get the address of a given channel.
     async fn channel_address(&self, channel_name: &ChannelName) -> Result<ZkChannelAddress>;
@@ -265,6 +272,7 @@ impl QueryCustomer for SqlitePool {
         address: &ZkChannelAddress,
         inactive: Inactive,
         contract_details: &ContractDetails,
+        zkabacus_config: &zkabacus_crypto::customer::Config,
     ) -> std::result::Result<(), (Inactive, Error)> {
         let merchant_deposit = *inactive.merchant_balance();
         let customer_deposit = *inactive.customer_balance();
@@ -296,6 +304,17 @@ impl QueryCustomer for SqlitePool {
             let default_balances = ClosingBalances::default();
             let merchant_tezos_public_key_string =
                 contract_details.merchant_tezos_public_key.to_base58check();
+            let inserted_config = sqlx::query!(
+                r#"
+                INSERT INTO configs (data)
+                VALUES (?)
+                RETURNING id AS "id: i32"
+                "#,
+                zkabacus_config
+            )
+            .fetch_one(&mut transaction)
+            .await?;
+
             let result = sqlx::query!(
                 "INSERT INTO customer_channels (
                     label,
@@ -305,8 +324,11 @@ impl QueryCustomer for SqlitePool {
                     state,
                     closing_balances,
                     merchant_tezos_public_key,
-                    contract_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)",
+                    contract_id,
+                    config_id
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)
+            ",
                 channel_name,
                 address,
                 merchant_deposit,
@@ -314,6 +336,7 @@ impl QueryCustomer for SqlitePool {
                 state,
                 default_balances,
                 merchant_tezos_public_key_string,
+                inserted_config.id
             )
             .execute(&mut transaction)
             .await
@@ -332,12 +355,32 @@ impl QueryCustomer for SqlitePool {
         })
     }
 
+    async fn channel_zkabacus_config(
+        &self,
+        channel_name: &ChannelName,
+    ) -> Result<zkabacus_crypto::customer::Config> {
+        Ok(sqlx::query!(
+            r#"
+            SELECT data AS "data: zkabacus_crypto::customer::Config"
+            FROM configs
+            INNER JOIN customer_channels ON configs.id = customer_channels.config_id
+            WHERE customer_channels.label = ?
+            LIMIT 1
+            "#,
+            channel_name
+        )
+        .fetch_one(self)
+        .await?
+        .data)
+    }
+
     async fn channel_address(&self, channel_name: &ChannelName) -> Result<ZkChannelAddress> {
         Ok(sqlx::query!(
             r#"
             SELECT address AS "address: ZkChannelAddress"
             FROM customer_channels
-            WHERE label = ?"#,
+            WHERE label = ?
+            "#,
             channel_name,
         )
         .fetch(self)
@@ -352,7 +395,8 @@ impl QueryCustomer for SqlitePool {
             r#"
             SELECT closing_balances AS "closing_balances: ClosingBalances"
             FROM customer_channels
-            WHERE label = ?"#,
+            WHERE label = ?
+            "#,
             channel_name,
         )
         .fetch(self)
@@ -433,7 +477,8 @@ impl QueryCustomer for SqlitePool {
                 contract_id AS "contract_id: ContractId",
                 merchant_tezos_public_key AS "merchant_tezos_public_key: String"
             FROM customer_channels
-            WHERE label = ?"#,
+            WHERE label = ?
+            "#,
             channel_name,
         )
         .fetch(self)
@@ -466,7 +511,8 @@ impl QueryCustomer for SqlitePool {
             SELECT
                 contract_id AS "contract_id: Option<ContractId>"
             FROM customer_channels
-            WHERE label = ?"#,
+            WHERE label = ?
+            "#,
             channel_name,
         )
         .fetch(&mut transaction)
@@ -564,7 +610,8 @@ impl QueryCustomer for SqlitePool {
 
     async fn get_channels(&self) -> Result<Vec<ChannelDetails>> {
         sqlx::query!(
-            r#"SELECT
+            r#"
+            SELECT
                 label AS "label: ChannelName",
                 state AS "state: State",
                 address AS "address: ZkChannelAddress",
@@ -573,7 +620,8 @@ impl QueryCustomer for SqlitePool {
                 closing_balances AS "closing_balances: ClosingBalances",
                 merchant_tezos_public_key AS "merchant_tezos_public_key: String",
                 contract_id AS "contract_id: ContractId"
-            FROM customer_channels"#
+            FROM customer_channels
+            "#
         )
         .fetch_all(self)
         .await?
@@ -601,7 +649,8 @@ impl QueryCustomer for SqlitePool {
 
     async fn get_channel(&self, channel_name: &ChannelName) -> Result<ChannelDetails> {
         sqlx::query!(
-            r#"SELECT
+            r#"
+            SELECT
                 state AS "state: State",
                 address AS "address: ZkChannelAddress",
                 customer_deposit AS "customer_deposit: CustomerBalance",
@@ -610,7 +659,8 @@ impl QueryCustomer for SqlitePool {
                 merchant_tezos_public_key AS "merchant_tezos_public_key: String",
                 contract_id AS "contract_id: ContractId"
             FROM customer_channels 
-            WHERE label = ?"#,
+            WHERE label = ?
+            "#,
             channel_name,
         )
         .fetch(self)
@@ -813,7 +863,7 @@ mod tests {
         // set up keys
         let merchant_config = merchant::Config::new(&mut rng);
         let (pk, rev_param, range_param) = merchant_config.extract_customer_config_parts();
-        let customer_config = Config::from_parts(pk, rev_param, range_param);
+        let zkabacus_config = Config::from_parts(pk, rev_param, range_param);
 
         // build a channel id
         let cid_m = MerchantRandomness::new(&mut rng);
@@ -821,7 +871,7 @@ mod tests {
         let channel_id = ChannelId::new(
             cid_m,
             cid_c,
-            customer_config.merchant_public_key(),
+            zkabacus_config.merchant_public_key(),
             &[],
             &[],
         );
@@ -834,7 +884,7 @@ mod tests {
         // simulate establish to get zkabacus objects
         let (requested, proof) = Requested::new(
             &mut rng,
-            customer_config,
+            &zkabacus_config,
             channel_id,
             merchant_balance,
             customer_balance,
@@ -852,7 +902,9 @@ mod tests {
             )
             .unwrap();
 
-        let inactive = requested.complete(closing_signature).unwrap();
+        let inactive = requested
+            .complete(closing_signature, &zkabacus_config)
+            .unwrap();
         let contract_details = ContractDetails {
             merchant_tezos_public_key: TezosPublicKey::from_base58check(
                 "edpku5Ei6Dni4qwoJGqXJs13xHfyu4fhUg6zqZkFyiEh1mQhFD3iZE",
@@ -861,9 +913,15 @@ mod tests {
             contract_id: None,
         };
 
-        conn.new_channel(channel_name, &address, inactive, &contract_details)
-            .await
-            .map_err(|(_, e)| e)?;
+        conn.new_channel(
+            channel_name,
+            &address,
+            inactive,
+            &contract_details,
+            &zkabacus_config,
+        )
+        .await
+        .map_err(|(_, e)| e)?;
 
         Ok(())
     }

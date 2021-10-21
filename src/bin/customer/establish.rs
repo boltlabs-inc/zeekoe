@@ -177,7 +177,6 @@ impl Command for Establish {
         };
 
         let zkabacus_request_parameters = ZkAbacusRequestParameters {
-            customer_config: zkabacus_customer_config,
             channel_id,
             merchant_balance,
             customer_balance,
@@ -188,6 +187,7 @@ impl Command for Establish {
         let (actual_label, chan) = zkabacus_initialize(
             &mut rng,
             database.as_ref(),
+            &zkabacus_customer_config,
             zkabacus_request_parameters,
             &contract_details,
             label,
@@ -343,9 +343,15 @@ impl Command for Establish {
         proceed!(in chan);
 
         // Run zkAbacus.Activate
-        zkabacus_activate(&config, database.as_ref(), &actual_label, chan)
-            .await
-            .context("Failed to activate channel")?;
+        zkabacus_activate(
+            &config,
+            database.as_ref(),
+            &actual_label,
+            chan,
+            &zkabacus_customer_config,
+        )
+        .await
+        .context("Failed to activate channel")?;
 
         // Print success
         eprintln!(
@@ -431,7 +437,6 @@ async fn get_parameters(
 }
 
 struct ZkAbacusRequestParameters {
-    customer_config: zkabacus_crypto::customer::Config,
     channel_id: ChannelId,
     merchant_balance: MerchantBalance,
     customer_balance: CustomerBalance,
@@ -443,9 +448,11 @@ struct ZkAbacusRequestParameters {
 /// If successful returns the [`ChannelName`] that the channel was *actually* inserted into the
 /// database using (which may differ from the one specified if the one specified was already in
 /// use!), and the [`Chan`] ready for the next part of the establish protocol.
+#[allow(clippy::too_many_arguments)]
 async fn zkabacus_initialize(
     mut rng: &mut StdRng,
     database: &dyn QueryCustomer,
+    zkabacus_config: &zkabacus_crypto::customer::Config,
     request_parameters: ZkAbacusRequestParameters,
     contract_details: &ContractDetails,
     label: ChannelName,
@@ -454,7 +461,7 @@ async fn zkabacus_initialize(
 ) -> Result<(ChannelName, Chan<establish::CustomerSupplyContractInfo>), anyhow::Error> {
     let (requested, proof) = Requested::new(
         &mut rng,
-        request_parameters.customer_config,
+        zkabacus_config,
         request_parameters.channel_id,
         request_parameters.merchant_balance,
         request_parameters.customer_balance,
@@ -477,7 +484,7 @@ async fn zkabacus_initialize(
         .context("Failed to receive closing signature")?;
 
     // Attempt to validate the closing signature
-    let inactive = match requested.complete(closing_signature) {
+    let inactive = match requested.complete(closing_signature, zkabacus_config) {
         Ok(inactive) => inactive,
         Err(_) => abort!(in chan return establish::Error::InvalidClosingSignature),
     };
@@ -486,9 +493,16 @@ async fn zkabacus_initialize(
     proceed!(in chan);
 
     // Store the inactive channel state in the database
-    let actual_label = store_inactive_local(database, label, address, inactive, contract_details)
-        .await
-        .context("Failed to store inactive channel state in local database")?;
+    let actual_label = store_inactive_local(
+        database,
+        zkabacus_config,
+        label,
+        address,
+        inactive,
+        contract_details,
+    )
+    .await
+    .context("Failed to store inactive channel state in local database")?;
 
     Ok((actual_label, chan))
 }
@@ -497,6 +511,7 @@ async fn zkabacus_initialize(
 /// is already in use, find another label that is not and return that.
 async fn store_inactive_local(
     database: &dyn QueryCustomer,
+    zkabacus_config: &zkabacus_crypto::customer::Config,
     label: ChannelName,
     address: &ZkChannelAddress,
     mut inactive: Inactive,
@@ -514,7 +529,13 @@ async fn store_inactive_local(
 
         // Try inserting the inactive state with this label
         match database
-            .new_channel(&actual_label, address, inactive, contract_details)
+            .new_channel(
+                &actual_label,
+                address,
+                inactive,
+                contract_details,
+                zkabacus_config,
+            )
             .await
         {
             Ok(()) => break actual_label, // report the label that worked
@@ -538,6 +559,7 @@ async fn zkabacus_activate(
     database: &dyn QueryCustomer,
     label: &ChannelName,
     chan: Chan<establish::Activate>,
+    zkabacus_customer_config: &zkabacus_crypto::customer::Config,
 ) -> Result<(), anyhow::Error> {
     // Receive the pay token from the merchant
     let (pay_token, chan) = chan
@@ -555,7 +577,7 @@ async fn zkabacus_activate(
             label,
             zkchannels_state::MerchantFunded,
             // This closure tries to run zkAbacus.Activate
-            |inactive: Inactive| match inactive.activate(pay_token) {
+            |inactive: Inactive| match inactive.activate(pay_token, zkabacus_customer_config) {
                 Ok(ready) => Ok((State::Ready(ready), ())),
                 Err(_) => Err(establish::Error::InvalidPayToken),
             },

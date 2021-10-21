@@ -217,14 +217,12 @@ impl QueryMerchant for SqlitePool {
         let existing = sqlx::query!(
             r#"
             SELECT
-                signing_keypair
-                    AS "signing_keypair: KeyPair",
+                signing_keypair AS "signing_keypair: KeyPair",
                 revocation_commitment_parameters
                     AS "revocation_commitment_parameters: CommitmentParameters",
                 range_constraint_parameters
                     AS "range_constraint_parameters: RangeConstraintParameters"
-            FROM
-                merchant_config
+            FROM merchant_config
             "#,
         )
         .fetch(&mut transaction)
@@ -252,11 +250,12 @@ impl QueryMerchant for SqlitePool {
 
         sqlx::query!(
             r#"
-            INSERT INTO
-                merchant_config
-            (signing_keypair, revocation_commitment_parameters, range_constraint_parameters)
-                VALUES
-            (?, ?, ?)
+            INSERT INTO merchant_config (
+                signing_keypair,
+                revocation_commitment_parameters,
+                range_constraint_parameters
+            )
+            VALUES (?, ?, ?)
             "#,
             signing_keypair,
             revocation_commitment_parameters,
@@ -285,7 +284,8 @@ impl QueryMerchant for SqlitePool {
                 customer_deposit,
                 status,
                 closing_balances
-            ) VALUES (?, ?, ?, ?, ?, ?)",
+            )
+            VALUES (?, ?, ?, ?, ?, ?)",
             channel_id,
             contract_id,
             merchant_deposit,
@@ -310,10 +310,11 @@ impl QueryMerchant for SqlitePool {
 
         // Find out the current status
         let result: Option<ChannelStatus> = sqlx::query!(
-            r#"SELECT status AS "status: Option<ChannelStatus>"
+            r#"
+            SELECT status AS "status: Option<ChannelStatus>"
             FROM merchant_channels
-            WHERE
-                channel_id = ?"#,
+            WHERE channel_id = ?
+            "#,
             channel_id,
         )
         .fetch_one(&mut transaction)
@@ -350,9 +351,11 @@ impl QueryMerchant for SqlitePool {
 
         // Find out current status
         let result: Option<ChannelStatus> = sqlx::query!(
-            r#"SELECT status AS "status: Option<ChannelStatus>"
+            r#"
+            SELECT status AS "status: Option<ChannelStatus>"
             FROM merchant_channels
-            WHERE channel_id = ?"#,
+            WHERE channel_id = ?
+            "#,
             channel_id,
         )
         .fetch_one(&mut transaction)
@@ -405,11 +408,13 @@ impl QueryMerchant for SqlitePool {
 
         // Find out the current status
         let result = sqlx::query!(
-            r#"SELECT status AS "status: Option<ChannelStatus>",
+            r#"
+            SELECT
+                status AS "status: Option<ChannelStatus>",
                 closing_balances AS "closing_balances: ClosingBalances"
             FROM merchant_channels
-            WHERE
-                channel_id = ?"#,
+            WHERE channel_id = ?
+            "#,
             channel_id,
         )
         .fetch_one(&mut transaction)
@@ -472,14 +477,16 @@ impl QueryMerchant for SqlitePool {
 
     async fn get_channels(&self) -> Result<Vec<ChannelDetails>> {
         let channels = sqlx::query!(
-            r#"SELECT
+            r#"
+            SELECT
                 channel_id AS "channel_id: ChannelId",
                 status as "status: ChannelStatus",
                 contract_id AS "contract_id: ContractId",
                 merchant_deposit AS "merchant_deposit: MerchantBalance",
                 customer_deposit AS "customer_deposit: CustomerBalance",
                 closing_balances AS "closing_balances: ClosingBalances"
-            FROM merchant_channels"#
+            FROM merchant_channels
+            "#
         )
         .fetch_all(self)
         .await?
@@ -499,11 +506,12 @@ impl QueryMerchant for SqlitePool {
 
     async fn channel_status(&self, channel_id: &ChannelId) -> Result<ChannelStatus> {
         let mut results = sqlx::query!(
-            r#"SELECT
-                status as "status: ChannelStatus"
+            r#"
+            SELECT status as "status: ChannelStatus"
             FROM merchant_channels
             WHERE channel_id = ?
-            LIMIT 2"#,
+            LIMIT 2
+            "#,
             channel_id
         )
         .fetch_all(self)
@@ -524,10 +532,12 @@ impl QueryMerchant for SqlitePool {
 
     async fn closing_balances(&self, channel_id: &ChannelId) -> Result<ClosingBalances> {
         let mut results = sqlx::query!(
-            r#"SELECT closing_balances as "closing_balances: ClosingBalances"
+            r#"
+            SELECT closing_balances as "closing_balances: ClosingBalances"
             FROM merchant_channels
             WHERE channel_id = ?
-            LIMIT 2"#,
+            LIMIT 2
+            "#,
             channel_id
         )
         .fetch_all(self)
@@ -551,11 +561,14 @@ impl QueryMerchant for SqlitePool {
         channel_id: &ChannelId,
     ) -> Result<(MerchantBalance, CustomerBalance)> {
         let mut results = sqlx::query!(
-            r#"SELECT merchant_deposit as "merchant_balance: MerchantBalance",
+            r#"
+            SELECT 
+                merchant_deposit as "merchant_balance: MerchantBalance",
                 customer_deposit as "customer_balance: CustomerBalance"
             FROM merchant_channels
             WHERE channel_id = ?
-            LIMIT 2"#,
+            LIMIT 2
+            "#,
             channel_id
         )
         .fetch_all(self)
@@ -576,11 +589,12 @@ impl QueryMerchant for SqlitePool {
 
     async fn contract_details(&self, channel_id: &ChannelId) -> Result<ContractId> {
         let mut result = sqlx::query!(
-            r#"SELECT
-                contract_id as "contract_id: ContractId"
+            r#"
+            SELECT contract_id as "contract_id: ContractId"
             FROM merchant_channels
             WHERE channel_id = ?
-            LIMIT 2"#,
+            LIMIT 2
+            "#,
             channel_id
         )
         .fetch_all(self)
@@ -613,7 +627,7 @@ impl QueryMerchant for SqlitePool {
             FROM merchant_channels
             WHERE channel_id LIKE ?
             LIMIT 2
-        "#,
+            "#,
             query
         )
         .fetch_all(self)
