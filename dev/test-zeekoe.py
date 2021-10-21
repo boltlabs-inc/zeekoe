@@ -121,39 +121,39 @@ def run_command(cmd, verbose):
 
 def start_merchant_server(merch_config, verbose):
     info("Starting the merchant server...")
-    cmd = ["./target/debug/zkchannel", "merchant", "--config", merch_config, "run"]
+    cmd = ["../target/debug/zkchannel", "merchant", "--config", merch_config, "run"]
     return run_command(cmd, verbose)
 
 def start_customer_watcher(cust_config, verbose):
     info("Starting the customer watcher...")
-    cmd = ["./target/debug/zkchannel", "customer", "--config", cust_config, "watch"]
+    cmd = ["../target/debug/zkchannel", "customer", "--config", cust_config, "watch"]
     return run_command(cmd, verbose)
 
 def create_new_channel(cust_config, channel_name, initial_deposit, verbose):
     info("Creating a new zkchannel: %s" % channel_name)
     initial_deposit = "{amount} XTZ".format(amount=str(initial_deposit))
-    cmd = ["./target/debug/zkchannel", "customer", "--config", cust_config, "establish", "zkchannel://localhost", "--deposit", initial_deposit, "--label", channel_name]
+    cmd = ["../target/debug/zkchannel", "customer", "--config", cust_config, "establish", "zkchannel://localhost", "--deposit", initial_deposit, "--label", channel_name]
     return run_command(cmd, verbose)
 
 def make_payment(cust_config, channel_name, pay_amount, verbose):
     info("Making a %s payment on zkchannel: %s" % (pay_amount, channel_name))
     payment = "{amount} XTZ".format(amount=str(pay_amount))
-    cmd = ["./target/debug/zkchannel", "customer", "--config", cust_config, "pay", channel_name, payment]
+    cmd = ["../target/debug/zkchannel", "customer", "--config", cust_config, "pay", channel_name, payment]
     return run_command(cmd, verbose)
 
 def close_channel(cust_config, channel_name, verbose):
     info("Initiate closing on the zkchannel: %s" % channel_name)
-    cmd = ["./target/debug/zkchannel", "customer", "--config", cust_config, "close", "--force", channel_name]
+    cmd = ["../target/debug/zkchannel", "customer", "--config", cust_config, "close", "--force", channel_name]
     return run_command(cmd, verbose)
 
 def list_channels(cust_config):
     info("List channels...")
-    cmd = ["./target/debug/zkchannel", "customer", "--config", cust_config, "list"]
+    cmd = ["../target/debug/zkchannel", "customer", "--config", cust_config, "list"]
     return run_command(cmd, True)
 
 def expire_channel(merch_config, channel_id, verbose):
     info("Initiate expiry on the channel id: %s" % channel_id)
-    cmd = ["./target/debug/zkchannel", "merchant", "--config", merch_config, "close", "--channel", channel_id]
+    cmd = ["../target/debug/zkchannel", "merchant", "--config", merch_config, "close", "--channel", channel_id]
     return run_command(cmd, verbose)
 
 def get_blockchain_level(url):
@@ -263,7 +263,7 @@ COMMANDS = ["list", "merch-setup", "cust-setup", "scenario"]
 def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("command", help="", nargs="?", default="list")
-    parser.add_argument("--path", help="path to create configs", default="./dev")
+    parser.add_argument("--path", help="path to create configs", default=".")
     parser.add_argument("--network", help="select the type of network", default=SANDBOX)
     parser.add_argument("--self-delay", "-t", type=int, help="self-delay for closing transactions", default="120")
     parser.add_argument("--confirmation-depth", "-d", type=int, help="required confirmations for all transactions", default="1")
@@ -313,8 +313,8 @@ def main():
         cust_keys = "tezos_account = { alias = \"alice\" }"
         merch_keys = "tezos_account = { alias = \"bob\" }"        
     elif network == TESTNET:
-        cust_keys = "tezos_account = '../tezos-contract/pytezos-tests/sample_files/tz1iKxZpa5x1grZyN2Uw9gERXJJPMyG22Sqp.json'"
-        merch_keys = "tezos_account = '../tezos-contract/pytezos-tests/sample_files/tz1bXwRiFvijKnZYUj9J53oYE3fFkMTWXqNx.json'"
+        cust_keys = "tezos_account = '../../tezos-contract/pytezos-tests/sample_files/tz1iKxZpa5x1grZyN2Uw9gERXJJPMyG22Sqp.json'"
+        merch_keys = "tezos_account = '../../tezos-contract/pytezos-tests/sample_files/tz1bXwRiFvijKnZYUj9J53oYE3fFkMTWXqNx.json'"
     else:
         fatal_error("Not implemented yet: No tezos account for customer and merchant on '%s'" % network)
 
