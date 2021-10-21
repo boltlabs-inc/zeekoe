@@ -41,6 +41,8 @@ MERCH_SETUP = "merch-setup"
 CUST_SETUP = "cust-setup"
 SCENARIO = "scenario"
 
+ZKCHANNEL_BIN = "../target/debug/zkchannel"
+
 # The minimum blockchain level to be able to run tests. Operations need to reference a block up to 
 # 60 blocks from the head. Setting this minimum level avoids running into errors caused by the 
 # blockchain not having enough blocks. 
@@ -121,39 +123,39 @@ def run_command(cmd, verbose):
 
 def start_merchant_server(merch_config, verbose):
     info("Starting the merchant server...")
-    cmd = ["../target/debug/zkchannel", "merchant", "--config", merch_config, "run"]
+    cmd = [ZKCHANNEL_BIN, "merchant", "--config", merch_config, "run"]
     return run_command(cmd, verbose)
 
 def start_customer_watcher(cust_config, verbose):
     info("Starting the customer watcher...")
-    cmd = ["../target/debug/zkchannel", "customer", "--config", cust_config, "watch"]
+    cmd = [ZKCHANNEL_BIN, "customer", "--config", cust_config, "watch"]
     return run_command(cmd, verbose)
 
 def create_new_channel(cust_config, channel_name, initial_deposit, verbose):
     info("Creating a new zkchannel: %s" % channel_name)
     initial_deposit = "{amount} XTZ".format(amount=str(initial_deposit))
-    cmd = ["../target/debug/zkchannel", "customer", "--config", cust_config, "establish", "zkchannel://localhost", "--deposit", initial_deposit, "--label", channel_name]
+    cmd = [ZKCHANNEL_BIN, "customer", "--config", cust_config, "establish", "zkchannel://localhost", "--deposit", initial_deposit, "--label", channel_name]
     return run_command(cmd, verbose)
 
 def make_payment(cust_config, channel_name, pay_amount, verbose):
     info("Making a %s payment on zkchannel: %s" % (pay_amount, channel_name))
     payment = "{amount} XTZ".format(amount=str(pay_amount))
-    cmd = ["../target/debug/zkchannel", "customer", "--config", cust_config, "pay", channel_name, payment]
+    cmd = [ZKCHANNEL_BIN, "customer", "--config", cust_config, "pay", channel_name, payment]
     return run_command(cmd, verbose)
 
 def close_channel(cust_config, channel_name, verbose):
     info("Initiate closing on the zkchannel: %s" % channel_name)
-    cmd = ["../target/debug/zkchannel", "customer", "--config", cust_config, "close", "--force", channel_name]
+    cmd = [ZKCHANNEL_BIN, "customer", "--config", cust_config, "close", "--force", channel_name]
     return run_command(cmd, verbose)
 
 def list_channels(cust_config):
     info("List channels...")
-    cmd = ["../target/debug/zkchannel", "customer", "--config", cust_config, "list"]
+    cmd = [ZKCHANNEL_BIN, "customer", "--config", cust_config, "list"]
     return run_command(cmd, True)
 
 def expire_channel(merch_config, channel_id, verbose):
     info("Initiate expiry on the channel id: %s" % channel_id)
-    cmd = ["../target/debug/zkchannel", "merchant", "--config", merch_config, "close", "--channel", channel_id]
+    cmd = [ZKCHANNEL_BIN, "merchant", "--config", merch_config, "close", "--channel", channel_id]
     return run_command(cmd, verbose)
 
 def get_blockchain_level(url):
@@ -263,7 +265,7 @@ COMMANDS = ["list", "merch-setup", "cust-setup", "scenario"]
 def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("command", help="", nargs="?", default="list")
-    parser.add_argument("--path", help="path to create configs", default=".")
+    parser.add_argument("--config-path", help="path to create configs", default=".")
     parser.add_argument("--network", help="select the type of network", default=SANDBOX)
     parser.add_argument("--self-delay", "-t", type=int, help="self-delay for closing transactions", default="120")
     parser.add_argument("--confirmation-depth", "-d", type=int, help="required confirmations for all transactions", default="1")
