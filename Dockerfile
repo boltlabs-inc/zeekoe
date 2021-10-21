@@ -16,8 +16,7 @@ RUN apt-get update && apt-get install -y \
   pkg-config \
   python3 \
   python3-pip \
-  software-properties-common \
-  vim
+  software-properties-common
 
 RUN apt-get update
 
