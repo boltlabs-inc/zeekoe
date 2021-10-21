@@ -124,30 +124,15 @@ def run_command(cmd, verbose):
 def zkchannel_merchant(command, merch_config, verbose, *args):
     cmd = [ZKCHANNEL_BIN, "merchant", "--config", merch_config, command]
     if args:
-        cmd += list(args)
+        cmd += list(*args)
     return run_command(cmd, verbose)
 
 def zkchannel_customer(command, cust_config, verbose, *args):
+    info(f"zkchannel_customer: {command}")
     cmd = [ZKCHANNEL_BIN, "customer", "--config", cust_config, command]
     if args:
-        cmd += list(args)
+        cmd += list(*args)
     return run_command(cmd, verbose)
-
-def make_payment(cust_config, channel_name, pay_amount, verbose):
-    info("Making a %s payment on zkchannel: %s" % (pay_amount, channel_name))
-    payment = "{amount} XTZ".format(amount=str(pay_amount))
-    cmd = [ZKCHANNEL_BIN, "customer", "--config", cust_config, "pay", channel_name, payment]
-    return run_command(cmd, verbose)
-
-def close_channel(cust_config, channel_name, verbose):
-    info("Initiate closing on the zkchannel: %s" % channel_name)
-    cmd = [ZKCHANNEL_BIN, "customer", "--config", cust_config, "close", "--force", channel_name]
-    return run_command(cmd, verbose)
-
-def list_channels(cust_config):
-    info("List channels...")
-    cmd = [ZKCHANNEL_BIN, "customer", "--config", cust_config, "list"]
-    return run_command(cmd, True)
 
 def expire_channel(merch_config, channel_id, verbose):
     info("Initiate expiry on the channel id: %s" % channel_id)
@@ -195,7 +180,7 @@ class TestScenario():
             os.mkdir(self.temp_path)
 
     def establish(self):
-        info("Creating a new zkchannel: %s" % self.channel_name)
+        info(f"Creating a new zkchannel: {self.channel_name}")
         initial_deposit = "{amount} XTZ".format(amount=str(self.customer_deposit))
         args = ("zkchannel://localhost", "--label", self.channel_name, "--deposit", initial_deposit)
         zkchannel_customer("establish", self.cust_config, self.verbose, args)
@@ -203,16 +188,24 @@ class TestScenario():
     def pay(self):
         max_pay_amount = self.balance_remaining / 2 # save money for future payments
         pay_amount = round(random.uniform(0, max_pay_amount), 4)
-        make_payment(self.cust_config, self.channel_name, pay_amount, self.verbose)
         self.balance_remaining -= pay_amount
+        payment = "{amount} XTZ".format(amount=str(pay_amount))
+        info(f"Making a {payment} payment on zkchannel: {self.channel_name}")
+        args = (self.channel_name, payment)
+        return zkchannel_customer("pay", self.cust_config, self.verbose, args)
 
     def pay_all(self):
         pay_amount = self.balance_remaining
-        make_payment(self.cust_config, self.channel_name, pay_amount, self.verbose)
         self.balance_remaining = 0
+        payment = "{amount} XTZ".format(amount=str(pay_amount))
+        info(f"Paying the remaining balance ({payment}) on zkchannel: {self.channel_name}")
+        args = (self.channel_name, payment)
+        return zkchannel_customer("pay", self.cust_config, self.verbose, args)
 
     def close(self):
-        close_channel(self.cust_config, self.channel_name, self.verbose)
+        info("Initiate closing on the zkchannel: %s" % self.channel_name)
+        args = ("--force", self.channel_name)
+        return zkchannel_customer("close", self.cust_config, self.verbose, args)
 
     def transfer_db_files(self, src, dst, db_name):
         """transfer all db files '-shm' and '-wal' """
@@ -236,7 +229,7 @@ class TestScenario():
         
     def expire(self):
         # TODO: Get channel_id from a channel_name
-        list_channels(self.cust_config)
+        zkchannel_customer("list", self.cust_config, self.verbose)
         channel_id = input("Enter the channel_id to be expired\n")
         expire_channel(self.merch_config, channel_id, self.verbose)
 
@@ -344,6 +337,6 @@ def main():
         t.run_command_list(command_list)
     else:
         # list the available channels
-        list_channels(cust_config)
+        zkchannel_customer("list", cust_config, verbose)
 
 main()
