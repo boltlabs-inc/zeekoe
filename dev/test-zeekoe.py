@@ -139,11 +139,6 @@ def mutual_close(cust_config, channel_name, verbose):
     cmd = [ZKCHANNEL_BIN, "customer", "--config", cust_config, "close", channel_name]
     return run_command(cmd, verbose)
 
-def expire_channel(merch_config, channel_id, verbose):
-    info("Initiate expiry on the channel id: %s" % channel_id)
-    cmd = [ZKCHANNEL_BIN, "merchant", "--config", merch_config, "close", "--channel", channel_id]
-    return run_command(cmd, verbose)
-
 def get_blockchain_level(url):
     full_url = url + "/chains/main/blocks/head/metadata"
     r = requests.get(url = full_url)
@@ -236,7 +231,10 @@ class TestScenario():
         # TODO: Get channel_id from a channel_name
         zkchannel_customer("list", self.cust_config, self.verbose)
         channel_id = input("Enter the channel_id to be expired\n")
-        expire_channel(self.merch_config, channel_id, self.verbose)
+
+        info("Initiate expiry on the channel id: %s" % channel_id)
+        args = ("--channel", channel_id)
+        return zkchannel_merchant("close", self.merch_config, self.verbose, args)
 
     def close(self):
         close_channel(self.cust_config, self.channel_name, self.verbose)
