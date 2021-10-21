@@ -179,15 +179,15 @@ class TestScenario():
             self, 
             cust_config, cust_db, 
             merch_config,
-            dev_path,  
+            config_path,  
             channel_name, customer_deposit, 
             verbose
         ):
         self.cust_config = cust_config
         self.merch_config = merch_config
-        self.dev_path = dev_path
+        self.config_path = config_path
         self.cust_db = cust_db
-        self.temp_path = os.path.join(dev_path, "temp")
+        self.temp_path = os.path.join(config_path, "temp")
         self.channel_path = os.path.join(self.temp_path, f"{channel_name}")
         self.channel_name = channel_name
         self.customer_deposit = float(customer_deposit)
@@ -229,11 +229,11 @@ class TestScenario():
         # Create temporary directory to store revoked customer state when testing dispute scenarios
         if not os.path.isdir(self.channel_path):
             os.mkdir(self.channel_path)
-        self.transfer_db_files(src = self.dev_path, dst = self.channel_path, db_name = self.cust_db)
+        self.transfer_db_files(src = self.config_path, dst = self.channel_path, db_name = self.cust_db)
 
     def restore_state(self):
         log("Restoring customer state")
-        self.transfer_db_files(src = self.channel_path, dst = self.dev_path, db_name = self.cust_db)
+        self.transfer_db_files(src = self.channel_path, dst = self.config_path, db_name = self.cust_db)
         
     def expire(self):
         # TODO: Get channel_id from a channel_name
@@ -289,7 +289,7 @@ def main():
         fatal_error("'%s' not a recognized command. Here are the options: %s" % (args.command, COMMANDS))
     
     verbose = args.verbose
-    dev_path = args.path
+    config_path = args.config_path
     url = args.url.lower()
     network = args.network.lower()
 
@@ -305,9 +305,9 @@ def main():
     if network not in [SANDBOX, TESTNET]:
         fatal_error("Specified invalid 'network' argument. Values: '%s' or '%s'" % (SANDBOX, TESTNET))
 
-    cust_config = os.path.join(dev_path, f"Customer-{network}.toml")
+    cust_config = os.path.join(config_path, f"Customer-{network}.toml")
     cust_db = f"customer-{network}.db"
-    merch_config = os.path.join(dev_path, f"Merchant-{network}.toml")
+    merch_config = os.path.join(config_path, f"Merchant-{network}.toml")
     merch_db = f"merchant-{network}.db"
     channel_name = f"my-zkchannel-{str(channel_count)}"
 
@@ -336,7 +336,7 @@ def main():
         t = TestScenario(
                 cust_config, cust_db, 
                 merch_config,
-                dev_path,
+                config_path,
                 channel_name, customer_deposit, 
                 verbose
             )
