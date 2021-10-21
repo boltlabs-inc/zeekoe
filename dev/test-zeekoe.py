@@ -121,20 +121,16 @@ def run_command(cmd, verbose):
     log("-> %s" % error.strip().decode('utf-8'), verbose)
     return rc
 
-def start_merchant_server(merch_config, verbose):
-    info("Starting the merchant server...")
-    cmd = [ZKCHANNEL_BIN, "merchant", "--config", merch_config, "run"]
+def zkchannel_merchant(command, merch_config, verbose, *args):
+    cmd = [ZKCHANNEL_BIN, "merchant", "--config", merch_config, command]
+    if args:
+        cmd += list(args)
     return run_command(cmd, verbose)
 
-def start_customer_watcher(cust_config, verbose):
-    info("Starting the customer watcher...")
-    cmd = [ZKCHANNEL_BIN, "customer", "--config", cust_config, "watch"]
-    return run_command(cmd, verbose)
-
-def create_new_channel(cust_config, channel_name, initial_deposit, verbose):
-    info("Creating a new zkchannel: %s" % channel_name)
-    initial_deposit = "{amount} XTZ".format(amount=str(initial_deposit))
-    cmd = [ZKCHANNEL_BIN, "customer", "--config", cust_config, "establish", "zkchannel://localhost", "--deposit", initial_deposit, "--label", channel_name]
+def zkchannel_customer(command, cust_config, verbose, *args):
+    cmd = [ZKCHANNEL_BIN, "customer", "--config", cust_config, command]
+    if args:
+        cmd += list(args)
     return run_command(cmd, verbose)
 
 def make_payment(cust_config, channel_name, pay_amount, verbose):
@@ -204,7 +200,10 @@ class TestScenario():
             os.mkdir(self.temp_path)
 
     def establish(self):
-        create_new_channel(self.cust_config, self.channel_name, self.customer_deposit, self.verbose)
+        info("Creating a new zkchannel: %s" % self.channel_name)
+        initial_deposit = "{amount} XTZ".format(amount=str(self.customer_deposit))
+        args = ("zkchannel://localhost", "--label", self.channel_name, "--deposit", initial_deposit)
+        zkchannel_customer("establish", self.cust_config, self.verbose, args)
 
     def pay(self):
         max_pay_amount = self.balance_remaining / 2 # save money for future payments
@@ -336,11 +335,13 @@ def main():
 
     if args.command == MERCH_SETUP:
         create_merchant_config(merch_db, merch_config, merch_keys, self_delay, confirmation_depth, url)
-        start_merchant_server(merch_config, verbose)
+        info("Starting the merchant server...")
+        zkchannel_merchant("run", merch_config, verbose)
 
     elif args.command == CUST_SETUP:
         create_customer_config(cust_db, cust_config, cust_keys, self_delay, confirmation_depth, url)
-        start_customer_watcher(cust_config, verbose)
+        info("Starting the customer watcher...")
+        zkchannel_customer("watch", cust_config, verbose)
 
     elif args.command == SCENARIO:
         info("Running scenario: %s" % ', '.join(command_list))
