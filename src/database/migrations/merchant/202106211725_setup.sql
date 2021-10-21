@@ -1,11 +1,11 @@
 CREATE TABLE nonces (
-  id SERIAL PRIMARY KEY,
+  id INTEGER PRIMARY KEY,
   data BLOB NOT NULL
 );
 CREATE UNIQUE INDEX nonces_data ON nonces (data);
 
 CREATE TABLE revocations (
-  id SERIAL PRIMARY KEY,
+  id INTEGER PRIMARY KEY,
   lock BLOB NOT NULL,
   secret BLOB
 );
@@ -19,7 +19,7 @@ CREATE TABLE merchant_config (
 );
 
 CREATE TABLE merchant_channels (
-  id SERIAL PRIMARY KEY,
+  id INTEGER PRIMARY KEY,
   channel_id TEXT NOT NULL,
   contract_id BLOB NOT NULL,
   merchant_deposit BLOB NOT NULL,
@@ -39,4 +39,5 @@ CREATE TABLE merchant_channels (
     )),
   closing_balances BLOB NOT NULL
 );
+
 CREATE INDEX merchant_channels_channel_id ON merchant_channels (channel_id);

@@ -1,5 +1,5 @@
 CREATE TABLE customer_channels (
-  id SERIAL PRIMARY KEY,
+  id INTEGER PRIMARY KEY,
   label TEXT NOT NULL UNIQUE,
   address BLOB NOT NULL,
   merchant_deposit BLOB NOT NULL,
