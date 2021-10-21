@@ -134,11 +134,6 @@ def zkchannel_customer(command, cust_config, verbose, *args):
         cmd += list(*args)
     return run_command(cmd, verbose)
 
-def expire_channel(merch_config, channel_id, verbose):
-    info("Initiate expiry on the channel id: %s" % channel_id)
-    cmd = [ZKCHANNEL_BIN, "merchant", "--config", merch_config, "close", "--channel", channel_id]
-    return run_command(cmd, verbose)
-
 def get_blockchain_level(url):
     full_url = url + "/chains/main/blocks/head/metadata"
     r = requests.get(url = full_url)
@@ -231,7 +226,10 @@ class TestScenario():
         # TODO: Get channel_id from a channel_name
         zkchannel_customer("list", self.cust_config, self.verbose)
         channel_id = input("Enter the channel_id to be expired\n")
-        expire_channel(self.merch_config, channel_id, self.verbose)
+
+        info("Initiate expiry on the channel id: %s" % channel_id)
+        args = ("--channel", channel_id)
+        return zkchannel_merchant("close", self.merch_config, self.verbose, args)
 
     def run_command_list(self, command_list):
         for command in command_list:
