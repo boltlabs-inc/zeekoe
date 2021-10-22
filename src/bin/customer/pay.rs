@@ -186,11 +186,12 @@ async fn start_payment(
     payment_amount: PaymentAmount,
     context: ProofContext,
 ) -> Result<StartMessage, anyhow::Error> {
+    let zkabacus_config = database.channel_zkabacus_config(label).await?;
     // Try to start the payment. If successful, update channel status to `Started`.
     database
         .with_channel_state(label, zkchannels_state::Ready, |ready| {
             // Try to start the payment using the payment amount and proof context
-            match ready.start(rng, payment_amount, &context) {
+            match ready.start(rng, payment_amount, &context, &zkabacus_config) {
                 Ok((started, start_message)) => Ok((State::Started(started), start_message)),
                 Err((_, e)) => Err(pay::Error::StartFailed(e)),
             }
@@ -210,11 +211,12 @@ async fn lock_payment(
     label: &ChannelName,
     closing_signature: ClosingSignature,
 ) -> Result<Option<LockMessage>, anyhow::Error> {
+    let zkabacus_config = database.channel_zkabacus_config(label).await?;
     // Try to continue (lock) the payment. If successful, update channel status to `Locked`.
     database
         .with_channel_state(label, zkchannels_state::Started, |started| {
             // Attempt to lock the state using the closing signature. If it fails, raise a `pay::Error`.
-            match started.lock(closing_signature) {
+            match started.lock(closing_signature, &zkabacus_config) {
                 Ok((locked, lock_message)) => Ok((State::Locked(locked), lock_message)),
                 Err(_) => Err(pay::Error::InvalidClosingSignature),
             }
@@ -234,11 +236,12 @@ async fn unlock_payment(
     label: &ChannelName,
     pay_token: PayToken,
 ) -> Result<(), anyhow::Error> {
+    let zkabacus_config = database.channel_zkabacus_config(label).await?;
     // Try to finish (unlock) the payment. If successful, update channel status to `Ready`.
     database
         .with_channel_state(label, zkchannels_state::Locked, |locked| {
             // Attempt to unlock the state using the pay token
-            match locked.unlock(pay_token) {
+            match locked.unlock(pay_token, &zkabacus_config) {
                 Ok(ready) => Ok((State::Ready(ready), ())),
                 Err(_) => Err(pay::Error::InvalidPayToken),
             }
