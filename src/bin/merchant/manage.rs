@@ -1,4 +1,5 @@
 use super::{database, Command};
+use serde_json::json;
 use zeekoe::{
     amount::{Amount, XTZ},
     merchant::{
@@ -12,7 +13,6 @@ use {
     comfy_table::{Cell, Table},
     std::convert::TryInto,
 };
-use serde_json::json;
 
 #[async_trait]
 impl Command for List {
