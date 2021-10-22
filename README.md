@@ -249,6 +249,62 @@ $ ./target/debug/zkchannel customer --config "./dev/Customer.toml" list
 
 The merchant server and customer chain watcher may now be stopped by pressing ^C.
 
+## Tests
+We have a python script `test-zeekoe.py` that can be used to test various scenarios on sandbox or testnet. First, we will need to set up the merchant and customer daemons. To start up the merchant daemon connecting to a sandbox node, from the `./dev` path run:
+
+```bash
+python3 test-zeekoe.py merch-setup --url "http://localhost:20000" -v
+```
+* `merch-setup` - the command to set up the merchant's config file and start the merchant daemon
+* `--url` - the address of the tezos node we are connecting to
+* `-v` - verbose mode
+
+Alternatively, to start up the merchant daemon connecting to a testnet (granadanet) node, we set `url` `"https://rpc.tzkt.io/granadanet/"` and `network` to `"testnet"`, e.g.:
+
+```bash
+python3 test-zeekoe.py merch-setup --url "https://rpc.tzkt.io/granadanet/" -v --network="testnet"
+```
+
+To start up the customer daemon connecting to a sandbox node we use the `cust-setup` command:
+
+```bash
+python3 test-zeekoe.py cust-setup --url "http://localhost:20000" -v 
+```
+
+Or to run it connected to a testnet (granadanet) node:
+
+```bash
+python3 test-zeekoe.py cust-setup --url "https://rpc.tzkt.io/granadanet/" -v --network="testnet"
+```
+
+Once both the merchant and customer daemons are running, we can run scenarios to create channels, making payments, and close channels. Here is an example of a test which will create a channel, make a single payment, then close the channel (via a unilateral customer close).
+
+```bash
+python3 test-zeekoe.py --url "https://rpc.tzkt.io/granadanet/" -v --network="testnet" scenario --channel 1 --command-list establish pay close
+```
+* `scenario` - to run the scenario tests
+* `--channel` - a number to use for the channel name
+* `--command-list` - the commands following this flag specify the test we want to run
+
+The list of commands we can use to test are:
+* `establish` - creates a new zkChannel
+* `pay` - pays the merchant a random amount (at most spending half of the remaining balance)
+* `pay_all` - pays the merchant the full remaining balance in the channel
+* `close` - performs a customer-initiated unilateral close on the channel
+* `store` - saves the customer db files in a channel-specific directory under temp_path.
+* `restore` - restores the customer db files saved during 'store'. This overwrites the existing customer db. 
+
+The `store` and `restore` commands can be used to test what happens if the customer attempts to close the channel on a revoked state e.g.:
+
+```bash
+python3 test-zeekoe.py --url "https://rpc.tzkt.io/granadanet/" -v --network="testnet" scenario --channel 1 --command-list establish store pay restore close
+```
+
+To list the channels, run:
+```bash
+python3 test-zeekoe.py list
+```
+
 ## Development
 
 While developing on the project, here are some more things you may wish to know:
