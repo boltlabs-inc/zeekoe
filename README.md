@@ -51,10 +51,9 @@ handle real currency.**
 
 To build the project, you will need: 
 
-- A recent version of nightly Rust. We recommend the version from 2021-09-01 (some later versions
-  may break our dependencies). You can set the nightly version with:
+  - A recent version of nightly Rust. This project has been tested with 1.56.0-nightly. You can set this with:
   ```
-  $ rustup override set nightly-2021-09-01
+  $ rustup override set nightly-2021-08-31
   ```
 - A recent version of Python. This project has been tested with Python 3.8.10. 
 - Cryptographic and system dependencies for our Tezos clients:
@@ -92,6 +91,19 @@ using a provided script, which places them in the `./dev` folder:
 ```bash
 ./dev/generate-certificates
 ```
+
+Alternately, the `Dockerfile` includes a complete Ubuntu build specification and can be run on any
+machine that supports Docker. Build the container once with:
+```
+$ docker build -t zeekoe .
+```
+
+Then, run instances with
+```
+$ docker run -it --network host zeekoe
+```
+Host networking simplifies network specifications, especially when running the merchant server on localhost as in this example.
+
 
 ## Specifying a configuration
 
