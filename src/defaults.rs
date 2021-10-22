@@ -56,10 +56,6 @@ pub mod merchant {
     pub fn config_path() -> Result<PathBuf, anyhow::Error> {
         Ok(project_dirs()?.config_dir().join(CONFIG_FILE))
     }
-
-    pub const fn json() -> bool {
-        false
-    }
 }
 
 pub mod customer {
@@ -102,9 +98,5 @@ pub mod customer {
     pub const fn daemon_port() -> u16 {
         // ZKD :3
         26114
-    }
-
-    pub const fn json() -> bool {
-        false
     }
 }

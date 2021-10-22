@@ -12,6 +12,7 @@ use {
     comfy_table::{Cell, Table},
     std::convert::TryInto,
 };
+use serde_json::json;
 
 #[async_trait]
 impl Command for List {
@@ -21,8 +22,16 @@ impl Command for List {
             .context("Failed to connect to local database")?;
         let channels = database.get_channels().await?;
 
-        if config.json {
-            println!("{}", serde_json::to_string(&channels).unwrap());
+        if self.json {
+            let mut output = Vec::new();
+            for channel in channels {
+                output.push(json!({
+                    "channel_id": format!("{}", channel.channel_id),
+                    "status": format!("{}", channel.status),
+                }));
+            }
+            println!("{}", json!(output).to_string());
+            return Ok(());
         } else {
             let mut table = Table::new();
             table.load_preset(comfy_table::presets::UTF8_FULL);
@@ -52,8 +61,15 @@ impl Command for Show {
         // TODO: don't hard-code XTZ here, instead store currency in database
         let amount = |b: u64| Amount::from_minor_units_of_currency(b.try_into().unwrap(), XTZ);
 
-        if config.json {
-            println!("{}", serde_json::to_string(&details).unwrap());
+        if self.json {
+            println!("{}", json!({
+                "channel_id": format!("{}", details.channel_id),
+                "status": format!("{}", details.status),
+                "contract_id": format!("{}", details.contract_id),
+                "merchant_deposit": format!("{}", amount(details.merchant_deposit.into_inner())),
+                "customer_deposit": format!("{}", amount(details.customer_deposit.into_inner())),
+            }).to_string());
+            return Ok(());
         } else {
             let mut table = Table::new();
             table.load_preset(comfy_table::presets::UTF8_FULL);

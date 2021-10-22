@@ -15,6 +15,7 @@ use zeekoe::{
 
 use super::{database, Command};
 use anyhow::Context;
+use serde_json::json;
 
 #[async_trait]
 impl Command for List {
@@ -23,8 +24,23 @@ impl Command for List {
             .await
             .context("Failed to connect to local database")?;
         let channels = database.get_channels().await?;
-        if config.json {
-            println!("{}", serde_json::to_string(&channels).unwrap());
+
+        // TODO: don't hard-code XTZ here, instead store currency in database
+        let amount = |b: u64| Amount::from_minor_units_of_currency(b.try_into().unwrap(), XTZ);
+
+        if self.json {
+            let mut output = Vec::new();
+            for details in channels {
+                output.push(json!({
+                    "label": details.label,
+                    "state": details.state.state_name(),
+                    "balance": format!("{}", amount(details.state.customer_balance().into_inner())),
+                    "max_refund": format!("{}", amount(details.state.merchant_balance().into_inner())),
+                    "channel_id": format!("{}", details.state.channel_id()),
+                }));
+            }
+            println!("{}", json!(output).to_string());
+            return Ok(());
         } else {
             let mut table = Table::new();
             table.load_preset(comfy_table::presets::UTF8_FULL);
@@ -35,9 +51,6 @@ impl Command for List {
                 "Max Refund",
                 "Channel ID",
             ]);
-
-            // TODO: don't hard-code XTZ here, instead store currency in database
-            let amount = |b: u64| Amount::from_minor_units_of_currency(b.try_into().unwrap(), XTZ);
 
             for details in channels {
                 table.add_row(vec![

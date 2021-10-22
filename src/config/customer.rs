@@ -48,8 +48,6 @@ pub struct Config {
     pub confirmation_depth: u64,
     #[serde(default)]
     pub trust_certificate: Option<PathBuf>,
-    #[serde(default = "defaults::json")]
-    pub json: bool,
 }
 
 impl Config {

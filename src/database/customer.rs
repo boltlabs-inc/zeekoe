@@ -61,7 +61,6 @@ pub enum Error {
 
 /// The contents of a row of the database for a particular channel.
 #[non_exhaustive]
-#[derive(Serialize)]
 pub struct ChannelDetails {
     pub label: ChannelName,
     pub state: State,

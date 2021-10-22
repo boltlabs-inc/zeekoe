@@ -32,8 +32,6 @@ pub struct Config {
     pub confirmation_depth: u64,
     #[serde(rename = "service")]
     pub services: Vec<Service>,
-    #[serde(default = "defaults::json")]
-    pub json: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
