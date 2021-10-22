@@ -31,7 +31,6 @@ impl Command for List {
                 }));
             }
             println!("{}", json!(output).to_string());
-            return Ok(());
         } else {
             let mut table = Table::new();
             table.load_preset(comfy_table::presets::UTF8_FULL);
@@ -69,7 +68,6 @@ impl Command for Show {
                 "merchant_deposit": format!("{}", amount(details.merchant_deposit.into_inner())),
                 "customer_deposit": format!("{}", amount(details.customer_deposit.into_inner())),
             }).to_string());
-            return Ok(());
         } else {
             let mut table = Table::new();
             table.load_preset(comfy_table::presets::UTF8_FULL);
