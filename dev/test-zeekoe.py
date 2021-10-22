@@ -41,6 +41,8 @@ MERCH_SETUP = "merch-setup"
 CUST_SETUP = "cust-setup"
 SCENARIO = "scenario"
 
+ZKCHANNEL_BIN = "../target/debug/zkchannel"
+
 # The minimum blockchain level to be able to run tests. Operations need to reference a block up to 
 # 60 blocks from the head. Setting this minimum level avoids running into errors caused by the 
 # blockchain not having enough blocks. 
@@ -121,39 +123,39 @@ def run_command(cmd, verbose):
 
 def start_merchant_server(merch_config, verbose):
     info("Starting the merchant server...")
-    cmd = ["./target/debug/zkchannel", "merchant", "--config", merch_config, "run"]
+    cmd = [ZKCHANNEL_BIN, "merchant", "--config", merch_config, "run"]
     return run_command(cmd, verbose)
 
 def start_customer_watcher(cust_config, verbose):
     info("Starting the customer watcher...")
-    cmd = ["./target/debug/zkchannel", "customer", "--config", cust_config, "watch"]
+    cmd = [ZKCHANNEL_BIN, "customer", "--config", cust_config, "watch"]
     return run_command(cmd, verbose)
 
 def create_new_channel(cust_config, channel_name, initial_deposit, verbose):
     info("Creating a new zkchannel: %s" % channel_name)
     initial_deposit = "{amount} XTZ".format(amount=str(initial_deposit))
-    cmd = ["./target/debug/zkchannel", "customer", "--config", cust_config, "establish", "zkchannel://localhost", "--deposit", initial_deposit, "--label", channel_name]
+    cmd = [ZKCHANNEL_BIN, "customer", "--config", cust_config, "establish", "zkchannel://localhost", "--deposit", initial_deposit, "--label", channel_name]
     return run_command(cmd, verbose)
 
 def make_payment(cust_config, channel_name, pay_amount, verbose):
     info("Making a %s payment on zkchannel: %s" % (pay_amount, channel_name))
     payment = "{amount} XTZ".format(amount=str(pay_amount))
-    cmd = ["./target/debug/zkchannel", "customer", "--config", cust_config, "pay", channel_name, payment]
+    cmd = [ZKCHANNEL_BIN, "customer", "--config", cust_config, "pay", channel_name, payment]
     return run_command(cmd, verbose)
 
 def close_channel(cust_config, channel_name, verbose):
     info("Initiate closing on the zkchannel: %s" % channel_name)
-    cmd = ["./target/debug/zkchannel", "customer", "--config", cust_config, "close", "--force", channel_name]
+    cmd = [ZKCHANNEL_BIN, "customer", "--config", cust_config, "close", "--force", channel_name]
     return run_command(cmd, verbose)
 
 def list_channels(cust_config):
     info("List channels...")
-    cmd = ["./target/debug/zkchannel", "customer", "--config", cust_config, "list"]
+    cmd = [ZKCHANNEL_BIN, "customer", "--config", cust_config, "list"]
     return run_command(cmd, True)
 
 def expire_channel(merch_config, channel_id, verbose):
     info("Initiate expiry on the channel id: %s" % channel_id)
-    cmd = ["./target/debug/zkchannel", "merchant", "--config", merch_config, "close", "--channel", channel_id]
+    cmd = [ZKCHANNEL_BIN, "merchant", "--config", merch_config, "close", "--channel", channel_id]
     return run_command(cmd, verbose)
 
 def get_blockchain_level(url):
@@ -177,15 +179,15 @@ class TestScenario():
             self, 
             cust_config, cust_db, 
             merch_config,
-            dev_path,  
+            config_path,  
             channel_name, customer_deposit, 
             verbose
         ):
         self.cust_config = cust_config
         self.merch_config = merch_config
-        self.dev_path = dev_path
+        self.config_path = config_path
         self.cust_db = cust_db
-        self.temp_path = os.path.join(dev_path, "temp")
+        self.temp_path = os.path.join(config_path, "temp")
         self.channel_path = os.path.join(self.temp_path, f"{channel_name}")
         self.channel_name = channel_name
         self.customer_deposit = float(customer_deposit)
@@ -227,11 +229,11 @@ class TestScenario():
         # Create temporary directory to store revoked customer state when testing dispute scenarios
         if not os.path.isdir(self.channel_path):
             os.mkdir(self.channel_path)
-        self.transfer_db_files(src = self.dev_path, dst = self.channel_path, db_name = self.cust_db)
+        self.transfer_db_files(src = self.config_path, dst = self.channel_path, db_name = self.cust_db)
 
     def restore_state(self):
         log("Restoring customer state")
-        self.transfer_db_files(src = self.channel_path, dst = self.dev_path, db_name = self.cust_db)
+        self.transfer_db_files(src = self.channel_path, dst = self.config_path, db_name = self.cust_db)
         
     def expire(self):
         # TODO: Get channel_id from a channel_name
@@ -263,7 +265,7 @@ COMMANDS = ["list", "merch-setup", "cust-setup", "scenario"]
 def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("command", help="", nargs="?", default="list")
-    parser.add_argument("--path", help="path to create configs", default="./dev")
+    parser.add_argument("--config-path", help="path to create configs", default=".")
     parser.add_argument("--network", help="select the type of network", default=SANDBOX)
     parser.add_argument("--self-delay", "-t", type=int, help="self-delay for closing transactions", default="120")
     parser.add_argument("--confirmation-depth", "-d", type=int, help="required confirmations for all transactions", default="1")
@@ -287,7 +289,7 @@ def main():
         fatal_error("'%s' not a recognized command. Here are the options: %s" % (args.command, COMMANDS))
     
     verbose = args.verbose
-    dev_path = args.path
+    config_path = args.config_path
     url = args.url.lower()
     network = args.network.lower()
 
@@ -303,9 +305,9 @@ def main():
     if network not in [SANDBOX, TESTNET]:
         fatal_error("Specified invalid 'network' argument. Values: '%s' or '%s'" % (SANDBOX, TESTNET))
 
-    cust_config = os.path.join(dev_path, f"Customer-{network}.toml")
+    cust_config = os.path.join(config_path, f"Customer-{network}.toml")
     cust_db = f"customer-{network}.db"
-    merch_config = os.path.join(dev_path, f"Merchant-{network}.toml")
+    merch_config = os.path.join(config_path, f"Merchant-{network}.toml")
     merch_db = f"merchant-{network}.db"
     channel_name = f"my-zkchannel-{str(channel_count)}"
 
@@ -313,8 +315,8 @@ def main():
         cust_keys = "tezos_account = { alias = \"alice\" }"
         merch_keys = "tezos_account = { alias = \"bob\" }"        
     elif network == TESTNET:
-        cust_keys = "tezos_account = '../tezos-contract/pytezos-tests/sample_files/tz1iKxZpa5x1grZyN2Uw9gERXJJPMyG22Sqp.json'"
-        merch_keys = "tezos_account = '../tezos-contract/pytezos-tests/sample_files/tz1bXwRiFvijKnZYUj9J53oYE3fFkMTWXqNx.json'"
+        cust_keys = "tezos_account = '../../tezos-contract/pytezos-tests/sample_files/tz1iKxZpa5x1grZyN2Uw9gERXJJPMyG22Sqp.json'"
+        merch_keys = "tezos_account = '../../tezos-contract/pytezos-tests/sample_files/tz1bXwRiFvijKnZYUj9J53oYE3fFkMTWXqNx.json'"
     else:
         fatal_error("Not implemented yet: No tezos account for customer and merchant on '%s'" % network)
 
@@ -334,7 +336,7 @@ def main():
         t = TestScenario(
                 cust_config, cust_db, 
                 merch_config,
-                dev_path,
+                config_path,
                 channel_name, customer_deposit, 
                 verbose
             )
