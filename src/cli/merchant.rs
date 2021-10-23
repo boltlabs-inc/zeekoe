@@ -29,7 +29,11 @@ pub enum Merchant {
 /// List all the zkChannels you've established with customers.
 #[derive(Debug, StructOpt)]
 #[non_exhaustive]
-pub struct List {}
+pub struct List {
+    /// Get json output.
+    #[structopt(long)]
+    pub json: bool,
+}
 
 /// Show details for a single zkChannel.
 #[derive(Debug, StructOpt)]
@@ -37,6 +41,10 @@ pub struct List {}
 pub struct Show {
     #[structopt(empty_values(false))]
     pub prefix: String,
+
+    /// Get json output.
+    #[structopt(long)]
+    pub json: bool,
 }
 
 /// Edit the configuration in a text editor.
