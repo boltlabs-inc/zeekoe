@@ -450,14 +450,7 @@ async fn mutual_close(
     ))?;
 
     // Finalize the result of the mutual close entrypoint call
-    finalize_mutual_close(
-        database.as_ref(),
-        &config,
-        &close.label,
-        *close_state.merchant_balance(),
-        *close_state.customer_balance(),
-    )
-    .await
+    finalize_mutual_close(database.as_ref(), &close.label).await
 }
 
 /// Update the channel state from PendingClose to Closed at completion of mutual close.
@@ -467,17 +460,20 @@ async fn mutual_close(
 /// It will only be called after a successful execution of [`mutual_close()`].
 async fn finalize_mutual_close(
     database: &dyn QueryCustomer,
-    _config: &self::Config,
     channel_name: &ChannelName,
-    merchant_balance: MerchantBalance,
-    customer_balance: CustomerBalance,
 ) -> Result<(), anyhow::Error> {
-    // Update status from PendingClose to Closed
-    database
+    // Update status from PendingMutualClose to Closed
+    let (customer_balance, merchant_balance) = database
         .with_channel_state(
             channel_name,
-            zkchannels_state::PendingClose,
-            |closing_message| Ok::<_, Infallible>((State::Closed(closing_message), ())),
+            zkchannels_state::PendingMutualClose,
+            |closing_message| {
+                let balances = (
+                    *closing_message.customer_balance(),
+                    *closing_message.merchant_balance(),
+                );
+                Ok::<_, Infallible>((State::Closed(closing_message), balances))
+            },
         )
         .await
         .context(format!(
@@ -506,6 +502,21 @@ async fn zkabacus_close(
     config: &self::Config,
     address: &ZkChannelAddress,
 ) -> Result<(CloseState, Chan<close::MerchantSendAuthorization>), anyhow::Error> {
+    // Generate the closing message and update state to PendingMutualClose
+    let closing_message = database
+        .with_channel_state(
+            channel_name,
+            zkchannels_state::Ready,
+            |ready| -> Result<_, Infallible> {
+                let closing_message = ready.close(&mut rng);
+                Ok((
+                    State::PendingMutualClose(closing_message.clone()),
+                    closing_message,
+                ))
+            },
+        )
+        .await??;
+
     // Connect communication channel to the merchant
     let (_session_key, chan) = connect(config, address)
         .await
@@ -516,12 +527,6 @@ async fn zkabacus_close(
         .choose::<3>()
         .await
         .context("Failed selecting close session with merchant")?;
-
-    // Generate the closing message and update state to PendingClose
-    let closing_message = get_close_message(&mut rng, database, channel_name)
-        .await
-        .context("Failed to generate mutual close data.")?;
-
     let (close_signature, close_state) = closing_message.into_parts();
 
     // Send the pieces of the CloseMessage
@@ -556,9 +561,10 @@ async fn get_close_message(
                 State::Ready(ready) => ready.close(rng),
                 State::Started(started) => started.close(rng),
                 State::Locked(locked) => locked.close(rng),
-                State::PendingClose(close_message) => close_message,
+                State::PendingMutualClose(close_message) => close_message,
                 // Cannot enter PendingClose on a channel that has passed that point
-                State::PendingExpiry(_)
+                State::PendingClose(_)
+                | State::PendingExpiry(_)
                 | State::PendingCustomerClaim(_)
                 | State::Dispute(_)
                 | State::Closed(_) => {

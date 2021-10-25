@@ -28,15 +28,15 @@ pub enum State {
     /// Customer has revoked their ability to close on the old balance, but has not yet received
     /// the ability to make a new payment.
     Locked(zkabacus::Locked),
-    /// The merchant posted a request to close the channel, claiming all the balances.
+    /// The customer initiated a mutual close procedure.
+    PendingMutualClose(zkabacus::ClosingMessage),
+    /// The merchant posted a request to close the channel, claiming all the balances, and the
+    /// customer will not post updated balances.
     ///
     /// Note: this [`ClosingMessage`](zkabacus::ClosingMessage) indicates the channel state known
     /// to the customer at the time the merchant's request was posted.
     PendingExpiry(zkabacus::ClosingMessage),
-    /// The customer posted updated channel balances.
-    ///
-    /// Note: this [`ClosingMessage`](zkabacus::ClosingMessage) indicates the channel state as
-    /// proposed by the customer.
+    /// A party has initiated a unilateral close.
     PendingClose(zkabacus::ClosingMessage),
     /// The customer posted a claim to their funds, but the transfer is not yet complete.
     PendingCustomerClaim(zkabacus::ClosingMessage),
@@ -122,6 +122,7 @@ pub mod zkchannels_state {
     impl_zkchannel_state!(Ready, Ready);
     impl_zkchannel_state!(Started, Started);
     impl_zkchannel_state!(Locked, Locked);
+    impl_zkchannel_state!(PendingMutualClose, ClosingMessage);
     impl_zkchannel_state!(PendingExpiry, ClosingMessage);
     impl_zkchannel_state!(PendingClose, ClosingMessage);
     impl_zkchannel_state!(PendingCustomerClaim, ClosingMessage);
@@ -139,6 +140,7 @@ pub enum StateName {
     Ready,
     Started,
     Locked,
+    PendingMutualClose,
     PendingExpiry,
     PendingClose,
     PendingCustomerClaim,
@@ -156,6 +158,7 @@ impl Display for StateName {
             StateName::Ready => "ready",
             StateName::Started => "started",
             StateName::Locked => "locked",
+            StateName::PendingMutualClose => "pending mutual close",
             StateName::PendingExpiry => "pending expiry",
             StateName::PendingClose => "pending close",
             StateName::PendingCustomerClaim => "pending customer claim",
@@ -177,6 +180,7 @@ impl State {
             State::Ready(_) => StateName::Ready,
             State::Started(_) => StateName::Started,
             State::Locked(_) => StateName::Locked,
+            State::PendingMutualClose(_) => StateName::PendingMutualClose,
             State::PendingExpiry(_) => StateName::PendingExpiry,
             State::PendingClose(_) => StateName::PendingClose,
             State::PendingCustomerClaim(_) => StateName::PendingCustomerClaim,
@@ -195,6 +199,7 @@ impl State {
             State::Ready(ready) => ready.customer_balance(),
             State::Started(started) => started.customer_balance(),
             State::Locked(locked) => locked.customer_balance(),
+            State::PendingMutualClose(closing_message) => closing_message.customer_balance(),
             State::PendingExpiry(closing_message) => closing_message.customer_balance(),
             State::PendingClose(closing_message) => closing_message.customer_balance(),
             State::PendingCustomerClaim(closing_message) => closing_message.customer_balance(),
@@ -212,6 +217,7 @@ impl State {
             State::Ready(ready) => ready.merchant_balance(),
             State::Started(started) => started.merchant_balance(),
             State::Locked(locked) => locked.merchant_balance(),
+            State::PendingMutualClose(closing_message) => closing_message.merchant_balance(),
             State::PendingExpiry(closing_message) => closing_message.merchant_balance(),
             State::PendingClose(closing_message) => closing_message.merchant_balance(),
             State::PendingCustomerClaim(closing_message) => closing_message.merchant_balance(),
@@ -229,6 +235,7 @@ impl State {
             State::Ready(ready) => ready.channel_id(),
             State::Started(started) => started.channel_id(),
             State::Locked(locked) => locked.channel_id(),
+            State::PendingMutualClose(closing_message) => closing_message.channel_id(),
             State::PendingExpiry(closing_message) => closing_message.channel_id(),
             State::PendingClose(closing_message) => closing_message.channel_id(),
             State::PendingCustomerClaim(closing_message) => closing_message.channel_id(),
