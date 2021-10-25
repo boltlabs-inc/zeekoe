@@ -431,10 +431,10 @@ async fn mutual_close(
         )
         .await;
 
-    // If the mutual close entrypoint call fails due to invalid authorization signature, abort!()
-    if let Err(escrow::types::Error::InvalidAuthorizationSignature(_)) = mutual_close_result {
-        abort!(in chan return close::Error::InvalidMerchantAuthSignature)
-    }
+    // // If the mutual close entrypoint call fails due to invalid authorization signature, abort!()
+    // if let Err(escrow::types::Error::InvalidAuthorizationSignature(_)) = mutual_close_result {
+    //     abort!(in chan return close::Error::InvalidMerchantAuthSignature)
+    // }
 
     // Otherwise, close the dialectic channel...
     proceed!(in chan);

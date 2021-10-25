@@ -9,7 +9,7 @@ use {
         str::FromStr,
         time::{Duration, SystemTime},
     },
-    tezedge::{signer::OperationSignatureInfo, OriginatedAddress, ToBase58Check},
+    tezedge::{OriginatedAddress, ToBase58Check},
     tokio::task::JoinError,
     zkabacus_crypto::{
         customer::ClosingMessage, revlock::RevocationSecret, ChannelId, CloseState,
@@ -32,8 +32,10 @@ const DEFAULT_REVOCATION_LOCK: &str = "0x00";
 /// functions without the Global Interpreter Lock.
 fn python_context() -> inline_python::Context {
     let context = python! {
-        from pytezos import pytezos, Contract, ContractInterface
         import json
+        from pytezos import pytezos, Contract, ContractInterface
+        from pytezos.michelson.types import MichelsonType
+        from pytezos.michelson.parse import michelson_to_micheline
 
         main_code = ContractInterface.from_micheline(json.loads('CONTRACT_CODE))
 
@@ -306,6 +308,24 @@ fn python_context() -> inline_python::Context {
             status = contents["metadata"]["operation_result"]["status"]
 
             return status
+
+        def sign_mutual_close(
+            uri,
+            merch_acc,
+            channel_id,
+            contract_id,
+            customer_balance, merchant_balance
+        ):
+            // Merchant pytezos interface
+            merch_py = pytezos.using(key=merch_acc, shell=uri)
+            // Specify the structure and types of the fields going into the mutual close state.
+            ty = MichelsonType.match(michelson_to_micheline("pair (pair bls12_381_fr string) (pair address (pair mutez mutez))"))
+            // create the packed (serialized) version of the mutual close state, corresponding to the types above. 
+            // legacy=True ensures pytezos will always serialize the data as in michelson rather than micheline. 
+            packed = ty.from_python_object((channel_id, "zkChannels mutual close", contract_id, customer_balance, merchant_balance)).pack(legacy=True).hex()
+            mutual_close_signature = merch_py.key.sign(packed)
+            
+            return mutual_close_signature
 
         def mutual_close(
             uri,
@@ -638,6 +658,10 @@ pub struct MerchantClaimError(#[from] JoinError);
 pub struct CustomerCloseError(#[from] JoinError);
 
 #[derive(Debug, thiserror::Error)]
+#[error("Could not issue mutual close: {0}")]
+pub struct MutualCloseError(#[from] JoinError);
+
+#[derive(Debug, thiserror::Error)]
 #[error("Could not issue merchant dispute: {0}")]
 pub struct MerchantDisputeError(#[from] JoinError);
 
@@ -651,43 +675,14 @@ pub struct CustomerClaimError(#[from] JoinError);
 /// change the internal storage here.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MutualCloseAuthorizationSignature {
-    /// base58check with prefix (`Prefix::operation`) encoded operation hash.
-    operation_hash: String,
-    /// forged operation (hex) concatenated with signature('hex').
-    operation_with_signature: String,
     /// operation signature encoded with base58check with prefix (`Prefix::edsig`).
     signature: String,
 }
 
 impl MutualCloseAuthorizationSignature {
-    /// Get the operation hash.
-    pub fn operation_hash(&self) -> &String {
-        &self.operation_hash
-    }
-
-    /// Get the forged operation hash concatenated with the signature.
-    pub fn operation_with_signature(&self) -> &String {
-        &self.operation_with_signature
-    }
-
     /// Get the signature by itself.
     pub fn signature(&self) -> &String {
         &self.signature
-    }
-}
-
-impl From<OperationSignatureInfo> for MutualCloseAuthorizationSignature {
-    fn from(info: OperationSignatureInfo) -> Self {
-        let OperationSignatureInfo {
-            operation_hash,
-            operation_with_signature,
-            signature,
-        } = info;
-        Self {
-            operation_hash,
-            operation_with_signature,
-            signature,
-        }
     }
 }
 
@@ -1265,8 +1260,29 @@ impl TezosClient {
     pub fn authorize_mutual_close(
         &self,
         close_state: &CloseState,
-    ) -> Result<OperationSignatureInfo, Error> {
-        todo!()
+    ) -> Result<MutualCloseAuthorizationSignature, Error> {
+        let (uri, merchant_private_key, contract_id) = self.as_python_types();
+        let channel_id = close_state.channel_id();
+        let channel_id = hex_string(&channel_id.to_bytes());
+        let customer_balance = close_state.customer_balance().into_inner();
+        let merchant_balance = close_state.merchant_balance().into_inner();
+
+        let context = python_context();
+        context.run(python! {
+            out = sign_mutual_close(
+                'uri,
+                'merchant_private_key,
+                'channel_id,
+                'contract_id,
+                'customer_balance,
+                'merchant_balance
+            )
+        });
+
+        let mutual_close_signature = MutualCloseAuthorizationSignature{
+            signature: context.get::<String>("out")
+        };
+        Ok(mutual_close_signature)
     }
 
     /// Execute the mutual close flow via the `mutualClose` entrypoint paying out the specified
@@ -1287,8 +1303,34 @@ impl TezosClient {
         customer_balance: &CustomerBalance,
         merchant_balance: &MerchantBalance,
         authorization_signature: &MutualCloseAuthorizationSignature,
-    ) -> impl Future<Output = Result<OperationStatus, Error>> + Send + 'static {
-        async move { todo!() }
+    ) -> impl Future<Output = Result<OperationStatus, MutualCloseError>> + Send + 'static {
+        let (uri, customer_private_key, contract_id) = self.as_python_types();
+        let customer_balance = customer_balance.into_inner();
+        let merchant_balance = merchant_balance.into_inner();
+        let confirmation_depth = self.confirmation_depth;
+        let mutual_close_signature = authorization_signature.signature.clone();
+        async move {
+            tokio::task::spawn_blocking(move || {
+                let context = python_context();
+                context.run(python! {
+                    out = mutual_close(
+                        'uri,
+                        'customer_private_key,
+                        'contract_id,
+                        'customer_balance,
+                        'merchant_balance,
+                        'mutual_close_signature,
+                        'confirmation_depth
+                    )
+                });
+
+                let status = context.get::<String>("out");
+                status.parse().unwrap()
+            })
+            .await
+            .map_err(MutualCloseError)
+        }
+
     }
 
     /// Verify that the specified contract is closed.
