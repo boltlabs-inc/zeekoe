@@ -320,11 +320,11 @@ fn python_context() -> inline_python::Context {
             merch_py = pytezos.using(key=merch_acc, shell=uri)
             // Specify the structure and types of the fields going into the mutual close state.
             ty = MichelsonType.match(michelson_to_micheline("pair (pair bls12_381_fr string) (pair address (pair mutez mutez))"))
-            // create the packed (serialized) version of the mutual close state, corresponding to the types above. 
-            // legacy=True ensures pytezos will always serialize the data as in michelson rather than micheline. 
+            // create the packed (serialized) version of the mutual close state, corresponding to the types above.
+            // legacy=True ensures pytezos will always serialize the data as in michelson rather than micheline.
             packed = ty.from_python_object((channel_id, "zkChannels mutual close", contract_id, customer_balance, merchant_balance)).pack(legacy=True).hex()
             mutual_close_signature = merch_py.key.sign(packed)
-            
+
             return mutual_close_signature
 
         def mutual_close(
@@ -1279,8 +1279,8 @@ impl TezosClient {
             )
         });
 
-        let mutual_close_signature = MutualCloseAuthorizationSignature{
-            signature: context.get::<String>("out")
+        let mutual_close_signature = MutualCloseAuthorizationSignature {
+            signature: context.get::<String>("out"),
         };
         Ok(mutual_close_signature)
     }
@@ -1330,7 +1330,6 @@ impl TezosClient {
             .await
             .map_err(MutualCloseError)
         }
-
     }
 
     /// Verify that the specified contract is closed.
