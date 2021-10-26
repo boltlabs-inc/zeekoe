@@ -7,7 +7,6 @@ use {
     std::{
         convert::{TryFrom, TryInto},
         str::FromStr,
-        sync::Mutex,
         time::{Duration, SystemTime},
     },
     tezedge::{signer::OperationSignatureInfo, OriginatedAddress, ToBase58Check},
@@ -22,7 +21,6 @@ use {
 static CONTRACT_CODE: &str = include_str!("zkchannels_contract_canonical.json");
 
 lazy_static::lazy_static! {
-    static ref CONTRACT_CODE_MUTEX: Mutex<u64> = Mutex::new(0);
     static ref CONTRACT_CODE_HASH: ContractHash = ContractHash::new(&*CONTRACT_CODE);
 }
 
@@ -33,7 +31,6 @@ const DEFAULT_REVOCATION_LOCK: &str = "0x00";
 /// away. This ensures we don't carry over global state, and we can concurrently use python-based
 /// functions without the Global Interpreter Lock.
 fn python_context() -> inline_python::Context {
-    let mutex = CONTRACT_CODE_MUTEX.lock().unwrap();
     let context = python! {
         from pytezos import pytezos, Contract, ContractInterface
         import json
@@ -342,7 +339,6 @@ fn python_context() -> inline_python::Context {
 
             return status
     };
-    drop(mutex);
     context
 }
 
