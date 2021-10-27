@@ -1,21 +1,24 @@
 pub mod customer;
 pub mod merchant;
-pub use sqlx::sqlite::{SqlitePool, SqlitePoolOptions, SqliteRow};
+pub use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions, SqliteRow};
 
-use {anyhow::Context, std::fs::File, std::path::Path, std::sync::Arc};
+use {anyhow::Context, std::path::Path, std::sync::Arc};
 
-pub async fn connect_sqlite(path: &Path) -> Result<Arc<SqlitePool>, anyhow::Error> {
-    let uri = path
-        .to_str()
-        .ok_or_else(|| anyhow::anyhow!("Invalid UTF-8 in SQLite database path {:?}", path))?;
+pub async fn connect_sqlite<T: AsRef<Path>>(path: T) -> Result<Arc<SqlitePool>, anyhow::Error> {
+    let options = SqliteConnectOptions::new()
+        .create_if_missing(true)
+        .filename(path.as_ref());
 
-    if !path.exists() {
-        // Create a blank sqlite db aka an empty file.
-        let file = File::create(path)?;
-        file.sync_all()?;
-    }
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(options)
+        .await
+        .with_context(|| {
+            format!(
+                "Could not open SQLite database at \"{}\"",
+                path.as_ref().display()
+            )
+        })?;
 
-    Ok(Arc::new(SqlitePool::connect(uri).await.with_context(
-        || format!("Could not open SQLite database at \"{}\"", uri),
-    )?))
+    Ok(Arc::new(pool))
 }
