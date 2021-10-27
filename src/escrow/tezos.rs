@@ -323,16 +323,16 @@ fn python_context() -> inline_python::Context {
             // create the packed (serialized) version of the mutual close state, corresponding to the types above.
             // legacy=True ensures pytezos will always serialize the data as in michelson rather than micheline.
             packed = ty.from_python_object((channel_id, "zkChannels mutual close", contract_id, customer_balance, merchant_balance)).pack(legacy=True).hex()
-            mutual_close_signature = merch_py.key.sign(packed)
+            authorization_signature = merch_py.key.sign(packed)
 
-            return mutual_close_signature
+            return authorization_signature
 
         def mutual_close(
             uri,
             cust_acc,
             contract_id,
             customer_balance, merchant_balance,
-            mutual_close_signature,
+            authorization_signature,
             min_confirmations,
         ):
             // Customer pytezos interface
@@ -345,7 +345,7 @@ fn python_context() -> inline_python::Context {
             mutual_close_storage = {
                 "customer_balance": int(customer_balance),
                 "merchant_balance": int(merchant_balance),
-                "merchSig": mutual_close_signature
+                "merchSig": authorization_signature
             }
 
             // Call the mutualClose entrypoint
@@ -1319,7 +1319,7 @@ impl TezosClient {
         let customer_balance = customer_balance.into_inner();
         let merchant_balance = merchant_balance.into_inner();
         let confirmation_depth = self.confirmation_depth;
-        let mutual_close_signature = authorization_signature.signature;
+        let authorization_signature = authorization_signature.signature;
         async move {
             tokio::task::spawn_blocking(move || {
                 let context = python_context();
@@ -1330,7 +1330,7 @@ impl TezosClient {
                         'contract_id,
                         'customer_balance,
                         'merchant_balance,
-                        'mutual_close_signature,
+                        'authorization_signature,
                         'confirmation_depth
                     )
                 });
