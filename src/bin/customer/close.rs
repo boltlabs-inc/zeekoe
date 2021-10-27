@@ -424,7 +424,6 @@ async fn mutual_close(
     let tezos_client = load_tezos_client(&config, &close.label, database.as_ref()).await?;
     let mutual_close_result = tezos_client
         .mutual_close(
-            close_state.channel_id(),
             close_state.customer_balance(),
             close_state.merchant_balance(),
             authorization_signature,

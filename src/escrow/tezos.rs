@@ -1310,7 +1310,6 @@ impl TezosClient {
     #[allow(unused)]
     pub fn mutual_close(
         &self,
-        channel_id: &ChannelId,
         customer_balance: &CustomerBalance,
         merchant_balance: &MerchantBalance,
         authorization_signature: MutualCloseAuthorizationSignature,
