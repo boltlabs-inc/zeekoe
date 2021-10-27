@@ -662,6 +662,10 @@ pub struct CustomerCloseError(#[from] JoinError);
 pub struct MutualCloseError(#[from] JoinError);
 
 #[derive(Debug, thiserror::Error)]
+#[error("Could not issue authorization signature for mutual close: {0}")]
+pub struct AuthorizeMutualCloseError(#[from] JoinError);
+
+#[derive(Debug, thiserror::Error)]
 #[error("Could not issue merchant dispute: {0}")]
 pub struct MerchantDisputeError(#[from] JoinError);
 
@@ -1260,29 +1264,36 @@ impl TezosClient {
     pub fn authorize_mutual_close(
         &self,
         close_state: &CloseState,
-    ) -> Result<MutualCloseAuthorizationSignature, Error> {
+    ) -> impl Future<Output = Result<MutualCloseAuthorizationSignature, AuthorizeMutualCloseError>>
+           + Send
+           + 'static {
         let (uri, merchant_private_key, contract_id) = self.as_python_types();
         let channel_id = close_state.channel_id();
         let channel_id = hex_string(&channel_id.to_bytes());
         let customer_balance = close_state.customer_balance().into_inner();
         let merchant_balance = close_state.merchant_balance().into_inner();
 
-        let context = python_context();
-        context.run(python! {
-            out = sign_mutual_close(
-                'uri,
-                'merchant_private_key,
-                'channel_id,
-                'contract_id,
-                'customer_balance,
-                'merchant_balance
-            )
-        });
+        async move {
+            tokio::task::spawn_blocking(move || {
+                let context = python_context();
+                context.run(python! {
+                    out = sign_mutual_close(
+                        'uri,
+                        'merchant_private_key,
+                        'channel_id,
+                        'contract_id,
+                        'customer_balance,
+                        'merchant_balance
+                    )
+                });
 
-        let mutual_close_signature = MutualCloseAuthorizationSignature {
-            signature: context.get::<String>("out"),
-        };
-        Ok(mutual_close_signature)
+                MutualCloseAuthorizationSignature {
+                    signature: context.get::<String>("out"),
+                }
+            })
+            .await
+            .map_err(AuthorizeMutualCloseError)
+        }
     }
 
     /// Execute the mutual close flow via the `mutualClose` entrypoint paying out the specified
