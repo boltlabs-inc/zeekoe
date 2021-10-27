@@ -1313,13 +1313,13 @@ impl TezosClient {
         channel_id: &ChannelId,
         customer_balance: &CustomerBalance,
         merchant_balance: &MerchantBalance,
-        authorization_signature: &MutualCloseAuthorizationSignature,
+        authorization_signature: MutualCloseAuthorizationSignature,
     ) -> impl Future<Output = Result<OperationStatus, MutualCloseError>> + Send + 'static {
         let (uri, customer_private_key, contract_id) = self.as_python_types();
         let customer_balance = customer_balance.into_inner();
         let merchant_balance = merchant_balance.into_inner();
         let confirmation_depth = self.confirmation_depth;
-        let mutual_close_signature = authorization_signature.signature.clone();
+        let mutual_close_signature = authorization_signature.signature;
         async move {
             tokio::task::spawn_blocking(move || {
                 let context = python_context();

@@ -427,7 +427,7 @@ async fn mutual_close(
             close_state.channel_id(),
             close_state.customer_balance(),
             close_state.merchant_balance(),
-            &authorization_signature,
+            authorization_signature,
         )
         .await;
 
