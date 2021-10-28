@@ -46,6 +46,10 @@ pub struct Service {
     pub connection_timeout: Option<Duration>,
     #[serde(default = "defaults::max_pending_connection_retries")]
     pub max_pending_connection_retries: usize,
+    #[serde(default = "defaults::message_timeout")]
+    pub message_timeout: u64,
+    #[serde(default = "defaults::transaction_timeout")]
+    pub transaction_timeout: u64,
     #[serde(default = "defaults::max_message_length")]
     pub max_message_length: usize,
     #[serde(default)]

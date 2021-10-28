@@ -40,6 +40,11 @@ pub(crate) mod shared {
     pub const fn confirmation_depth() -> u64 {
         20
     }
+
+    /// Length of time (seconds) that a party waits for a normal message to be computed and sent.
+    pub const fn message_timeout() -> u64 {
+        60
+    }
 }
 
 pub mod merchant {
@@ -55,6 +60,12 @@ pub mod merchant {
 
     pub fn config_path() -> Result<PathBuf, anyhow::Error> {
         Ok(project_dirs()?.config_dir().join(CONFIG_FILE))
+    }
+
+    /// Length of time (seconds) that a merchant waits for the customer to post and confirm a
+    /// transaction on Tezos.
+    pub const fn transaction_timeout() -> u64 {
+        25 * 60
     }
 }
 
@@ -98,5 +109,11 @@ pub mod customer {
     pub const fn daemon_port() -> u16 {
         // ZKD :3
         26114
+    }
+
+    /// Length of time (seconds) that a customer waits for the merchant to approve a new channel
+    /// or a payment.
+    pub const fn approval_timeout() -> u64 {
+        360
     }
 }
