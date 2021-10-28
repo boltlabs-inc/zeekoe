@@ -844,7 +844,10 @@ mod tests {
     use zkabacus_crypto::{customer::*, merchant, *};
 
     async fn create_migrated_db() -> Result<SqlitePool> {
-        let conn = SqlitePoolOptions::new().connect("sqlite::memory:").await?;
+        let conn = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await?;
         conn.migrate().await?;
         Ok(conn)
     }
