@@ -327,6 +327,28 @@ fn python_context() -> inline_python::Context {
 
             return authorization_signature
 
+        def verify_authorization_signature(
+            uri,
+            merch_pubkey,
+            channel_id,
+            contract_id,
+            customer_balance, merchant_balance,
+            authorization_signature
+        ):
+            // Merchant pytezos interface with the merchant's public key
+            merch_py = pytezos.using(key=merch_pubkey, shell=uri)
+            // Specify the structure and types of the fields going into the mutual close state.
+            ty = MichelsonType.match(michelson_to_micheline("pair (pair bls12_381_fr string) (pair address (pair mutez mutez))"))
+            // create the packed (serialized) version of the mutual close state, corresponding to 
+            // the types above. "legacy=True" ensures pytezos will always serialize the data as in 
+            // michelson rather than micheline. 
+            packed = ty.from_python_object((channel_id, "zkChannels mutual close", contract_id, customer_balance, merchant_balance)).pack(legacy=True).hex()
+
+            // py.key.verify() throws an error if the signature is invalid
+            py.key.verify(authorization_signature, packed)
+
+            return 
+            
         def mutual_close(
             uri,
             cust_acc,
@@ -664,6 +686,10 @@ pub struct MutualCloseError(#[from] JoinError);
 #[derive(Debug, thiserror::Error)]
 #[error("Could not issue authorization signature for mutual close: {0}")]
 pub struct AuthorizeMutualCloseError(#[from] JoinError);
+
+#[derive(Debug, thiserror::Error)]
+#[error("Invalid authorization signature for mutual close: {0}")]
+pub struct InvalidAuthSignatureError(#[from] JoinError);
 
 #[derive(Debug, thiserror::Error)]
 #[error("Could not issue merchant dispute: {0}")]
@@ -1293,6 +1319,49 @@ impl TezosClient {
             })
             .await
             .map_err(AuthorizeMutualCloseError)
+        }
+    }
+
+    /// Verify the authorization signature provided by the merchant during the mutual close flow.
+    /// The signature must be a valid EdDSA signature over the tuple
+    /// `(contract id, "zkChannels mutual close", channel id, customer balance, merchant balance)`
+    ///
+    /// This is called by the customer.
+    #[allow(unused)]
+    pub fn verify_authorization_signature(
+        &self,
+        channel_id: &ChannelId,
+        merchant_pubkey: &TezosPublicKey,
+        customer_balance: &CustomerBalance,
+        merchant_balance: &MerchantBalance,
+        authorization_signature: MutualCloseAuthorizationSignature,
+    ) -> impl Future<Output = Result<(), InvalidAuthSignatureError>>
+           + Send
+           + 'static {
+            let (uri, _, contract_id) = self.as_python_types();
+            let merchant_pubkey = merchant_pubkey.to_base58check();
+            let channel_id = hex_string(&channel_id.to_bytes());
+            let customer_balance = customer_balance.into_inner();
+            let merchant_balance = merchant_balance.into_inner();
+            let authorization_signature = authorization_signature.signature;
+
+        async move {
+            tokio::task::spawn_blocking(move || {
+                let context = python_context();
+                context.run(python! {
+                    out = verify_authorization_signature(
+                        'uri,
+                        'merchant_pubkey,
+                        'channel_id,
+                        'contract_id,
+                        'customer_balance,
+                        'merchant_balance,
+                        'authorization_signature
+                    )
+                });
+            })
+            .await
+            .map_err(InvalidAuthSignatureError)
         }
     }
 

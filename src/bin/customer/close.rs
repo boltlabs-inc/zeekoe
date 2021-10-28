@@ -420,6 +420,28 @@ async fn mutual_close(
         .await
         .context("Failed to receive authorization signature from the merchant.")?;
 
+    // Read the closing message to get the channel_id
+    let close_message = get_close_message(rng, database, &channel_details.label)
+        .await
+        .context("Failed to fetch closing message from database")?;
+
+    // Verify the authorization siganture under the merchant's EdDSA Tezos key
+    let tezos_client = load_tezos_client(&config, &close.label, database.as_ref()).await?;
+    let merchant_tezos_public_key = channel_details.contract_details.merchant_tezos_public_key;    let verification_result = tezos_client
+        .verify_authorization_signature(
+            close_message.channel_id(),
+            &merchant_tezos_public_key,
+            close_state.customer_balance(),
+            close_state.merchant_balance(),
+            authorization_signature,
+        )
+        .await;
+
+    // If authorization signature is invalid, abort!()
+    if let Err(escrow::tezos::InvalidAuthSignatureError(_)) = verification_result {
+        abort!(in chan return close::Error::InvalidMerchantAuthSignature)
+    }
+
     // Call the mutual close entrypoint
     let tezos_client = load_tezos_client(&config, &close.label, database.as_ref()).await?;
     let mutual_close_result = tezos_client
@@ -429,11 +451,6 @@ async fn mutual_close(
             authorization_signature,
         )
         .await;
-
-    // // If the mutual close entrypoint call fails due to invalid authorization signature, abort!()
-    // if let Err(escrow::types::Error::InvalidAuthorizationSignature(_)) = mutual_close_result {
-    //     abort!(in chan return close::Error::InvalidMerchantAuthSignature)
-    // }
 
     // Otherwise, close the dialectic channel...
     proceed!(in chan);
