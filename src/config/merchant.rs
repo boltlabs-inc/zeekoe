@@ -90,6 +90,16 @@ impl Config {
     }
 }
 
+impl Service {
+    pub fn message_timeout(&self) -> Duration {
+        Duration::from_secs(self.message_timeout)
+    }
+
+    pub fn transaction_timeout(&self) -> Duration {
+        Duration::from_secs(self.transaction_timeout)
+    }
+}
+
 /// A description of how to approve payments.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

@@ -356,6 +356,10 @@ pub mod pay {
     pub type Pay = Session! {
         send PaymentAmount;
         send String; // Payment note
+        GetPaymentApproval;
+    };
+
+    pub type GetPaymentApproval = Session! {
         // Merchant decides if it wants to allow the described payment
         OfferAbort<CustomerStartPayment, Error>;
     };

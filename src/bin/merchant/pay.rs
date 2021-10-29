@@ -1,4 +1,4 @@
-use {anyhow::Context, rand::rngs::StdRng};
+use {anyhow::Context, rand::rngs::StdRng, url::Url};
 
 use zeekoe::{
     abort,
@@ -23,20 +23,42 @@ impl Pay {
         session_key: SessionKey,
         chan: Chan<protocol::Pay>,
     ) -> Result<(), anyhow::Error> {
-        // Get the payment amount and note in the clear from the customer
-        let (payment_amount, chan) = chan
-            .recv()
-            .await
-            .context("Failed to receive payment amount")?;
-        let (note, chan) = chan
-            .recv()
-            .await
-            .context("Failed to receive payment note")?;
+        // Get the payment amount and context note from the customer
+        let (payment_amount, chan) =
+            tokio::time::timeout(service.message_timeout(), chan.recv()).await??;
+        let (payment_note, chan) =
+            tokio::time::timeout(service.message_timeout(), chan.recv()).await??;
 
-        // Determine whether to accept the payment
-        let response_url = match approve::payment(client, &service.approve, &payment_amount, note)
-            .await
-        {
+        // Query approver service to determine whether to allow the payment
+        let (response_url, chan) =
+            approve_payment(payment_amount, payment_note, chan, client, service).await?;
+
+        // Run the zkAbacus.Pay protocol
+        // Timeout is set to 10 messages, which includes all sent & received messages and aborts
+        let maybe_chan = tokio::time::timeout(
+            10 * service.message_timeout(),
+            zkabacus_pay(rng, database, session_key, chan, payment_amount),
+        )
+        .await?;
+
+        provide_service(response_url, maybe_chan, client).await?;
+
+        Ok(())
+    }
+}
+
+/// Query the approver service using payment details provided by the customer to determine whether
+/// to allow the payment. If not, terminate the pay session.
+async fn approve_payment(
+    payment_amount: PaymentAmount,
+    payment_note: String,
+    chan: Chan<pay::GetPaymentApproval>,
+    client: &reqwest::Client,
+    service: &Service,
+) -> Result<(Option<Url>, Chan<pay::CustomerStartPayment>), anyhow::Error> {
+    // Determine whether to accept the payment
+    let response_url =
+        match approve::payment(client, &service.approve, &payment_amount, payment_note).await {
             Ok(response_url) => response_url,
             Err(approval_error) => {
                 // If the payment was not approved, indicate to the client why
@@ -46,37 +68,41 @@ impl Pay {
             }
         };
 
-        proceed!(in chan);
+    proceed!(in chan);
 
-        // Run the zkAbacus.Pay protocol
-        let pay_result = zkabacus_pay(rng, database, session_key, chan, payment_amount)
-            .await
-            .context("Payment failed");
+    Ok((response_url, chan))
+}
 
-        match pay_result {
-            Ok(chan) => {
-                // Send the response note (i.e. the fulfillment of the service) and close the
-                // connection to the customer
-                let response_note = approve::payment_success(client, response_url).await;
-                let (note, result) = match response_note {
-                    Err(err) => (None, Err(err)),
-                    Ok(o) => (o, Ok(())),
-                };
-                chan.send(note)
-                    .await
-                    .context("Failed to send response note")?
-                    .close();
-                result
-            }
-            Err(err) => {
-                approve::failure(client, response_url).await;
-                Err(err)
-            }
+/// Inform the approver service whether the payment succeeded and pass the resulting fulfillment
+/// to the customer.
+async fn provide_service(
+    response_url: Option<Url>,
+    maybe_chan: Result<Chan<pay::MerchantProvideService>, anyhow::Error>,
+    client: &reqwest::Client,
+) -> Result<(), anyhow::Error> {
+    match maybe_chan {
+        Ok(chan) => {
+            // Send the response note (i.e. the fulfillment of the service) and close the
+            // connection to the customer
+            let response_note = approve::payment_success(client, response_url).await;
+            let (note, result) = match response_note {
+                Err(err) => (None, Err(err)),
+                Ok(o) => (o, Ok(())),
+            };
+            chan.send(note)
+                .await
+                .context("Failed to send response note")?
+                .close();
+            result
+        }
+        Err(err) => {
+            approve::failure(client, response_url).await;
+            Err(err)
         }
     }
 }
 
-/// The core zkAbacus.Pay protocol.
+/// The core zkAbacus.Pay protocol: update the channel state by the payment amount.
 async fn zkabacus_pay(
     mut rng: StdRng,
     database: &dyn QueryMerchant,
