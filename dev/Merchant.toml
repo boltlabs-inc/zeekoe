@@ -1,7 +1,6 @@
 database = { sqlite = "merchant.db" }
 tezos_account = "../tezos-contract/pytezos-tests/sample_files/tz1bXwRiFvijKnZYUj9J53oYE3fFkMTWXqNx.json"
 tezos_uri = "https://rpc.tzkt.io/granadanet"
-confirmation_depth = 1
 
 [[service]]
 address = "::1"
