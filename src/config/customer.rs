@@ -85,4 +85,12 @@ impl Config {
     pub fn load_tezos_key_material(&self) -> anyhow::Result<TezosKeyMaterial> {
         Ok(TezosKeyMaterial::read_key_pair(&self.tezos_account)?)
     }
+
+    pub fn message_timeout(&self) -> Duration {
+        Duration::from_secs(self.message_timeout)
+    }
+
+    pub fn approval_timeout(&self) -> Duration {
+        Duration::from_secs(self.approval_timeout)
+    }
 }

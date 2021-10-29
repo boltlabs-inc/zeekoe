@@ -102,7 +102,7 @@ async fn provide_service(
     }
 }
 
-/// The core zkAbacus.Pay protocol: update the channel state by the payment amount.
+/// The core zkAbacus.Pay protocol: provide the customer with a valid, updated channel state.
 async fn zkabacus_pay(
     mut rng: StdRng,
     database: &dyn QueryMerchant,

@@ -7,8 +7,9 @@ use zkabacus_crypto::{
 
 use zeekoe::{
     abort,
+    amount::Amount,
     customer::{
-        cli::{Pay, Refund},
+        cli::{Note, Pay, Refund},
         client::SessionKey,
         database::{zkchannels_state, QueryCustomer, QueryCustomerExt, State},
         Chan, ChannelName, Config,
@@ -22,91 +23,132 @@ use super::{connect, database, Command};
 #[async_trait]
 impl Command for Pay {
     async fn run(self, rng: StdRng, config: self::Config) -> Result<(), anyhow::Error> {
-        // Convert the payment amount appropriately
-        let minor_units: i64 = self.pay.try_into_minor_units().ok_or_else(|| {
-            anyhow::anyhow!("Payment amount invalid for currency or out of range for channel")
-        })?;
-        let payment_amount = (if minor_units < 0 {
-            PaymentAmount::pay_customer
-        } else {
-            PaymentAmount::pay_merchant
-        })(minor_units.abs() as u64)
-        .context("Payment amount out of range")?;
+        let payment_amount = parse_payment_amount(self.pay)?;
 
-        let database = database(&config)
-            .await
-            .context("Failed to connect to local database")?;
+        let database = database(&config).await?;
 
-        // Look up the address and current local customer state for this merchant in the database
-        let address = database
-            .channel_address(&self.label)
-            .await
-            .context("Failed to look up channel address in local database")?;
+        let (session_key, chan) = open_session(database.as_ref(), &config, &self.label).await?;
 
-        // Connect and select the Pay session
-        let (session_key, chan) = connect(&config, &address)
-            .await
-            .context("Failed to connect to merchant")?;
-        let chan = chan
-            .choose::<2>()
-            .await
-            .context("Failed selecting pay session with merchant")?;
-
-        // Read the contents of the note, if any
-        let note = self
-            .note
-            .unwrap_or_else(|| zeekoe::customer::cli::Note::String(String::from("")))
-            .read(config.max_note_length)
-            .context("Failed to read payment note from standard input or command line")?;
-
-        // Send the payment amount and note to the merchant
-        let chan = chan
-            .send(payment_amount)
-            .await
-            .context("Failed to send payment amount")?
-            .send(note)
-            .await
-            .context("Failed to send payment note")?;
-
-        // Allow the merchant to accept or reject the payment and note
-        offer_abort!(in chan as Customer);
+        let chan = tokio::time::timeout(
+            config.approval_timeout(),
+            request_payment(&config, chan, payment_amount, self.note),
+        )
+        .await??;
 
         // Run the core zkAbacus.Pay protocol
-        let chan = zkabacus_pay(
-            rng,
-            database.as_ref(),
-            &self.label,
-            session_key,
-            chan,
-            payment_amount,
+        // Timeout is set to 10 messages, which includes all sent & received messages and aborts
+        let chan = tokio::time::timeout(
+            10 * config.message_timeout(),
+            zkabacus_pay(
+                rng,
+                database.as_ref(),
+                &self.label,
+                session_key,
+                chan,
+                payment_amount,
+            ),
         )
-        .await
+        .await?
         .context("Failed to complete pay protocol")?;
 
-        // Receive the response note (i.e. the fulfillment of the service)
-        let (response_note, chan) = chan
-            .recv()
-            .await
-            .context("Failed to receive response note")?;
-
-        // Close the communication channel: we are done communicating with the merchant
-        chan.close();
-
-        // Print the response note on standard out
-        if let Some(response_note) = response_note {
-            eprintln!(
-                "Payment succeeded with response from merchant: \"{}\"",
-                response_note
-            );
-        } else {
-            eprintln!("Payment succeeded with no concluding response from merchant");
-        }
+        tokio::time::timeout(config.approval_timeout(), receive_service(chan)).await??;
 
         Ok(())
     }
 }
 
-/// The core zkAbacus.Pay protocol.
+/// Parse the payment amount specified on the command line.
+fn parse_payment_amount(amount: Amount) -> Result<PaymentAmount, anyhow::Error> {
+    // Convert the payment amount appropriately
+    let minor_units: i64 = amount.try_into_minor_units().ok_or_else(|| {
+        anyhow::anyhow!("Payment amount invalid for currency or out of range for channel")
+    })?;
+
+    (if minor_units < 0 {
+        PaymentAmount::pay_customer
+    } else {
+        PaymentAmount::pay_merchant
+    })(minor_units.abs() as u64)
+    .context("Payment amount out of range")
+}
+
+/// Set up the communication channel with the merchant.
+async fn open_session(
+    database: &dyn QueryCustomer,
+    config: &Config,
+    channel_name: &ChannelName,
+) -> Result<(SessionKey, Chan<pay::Pay>), anyhow::Error> {
+    // Look up the address and current local customer state for this merchant in the database
+    let address = database
+        .channel_address(channel_name)
+        .await
+        .context("Failed to look up channel address in local database")?;
+
+    // Connect and select the Pay session
+    let (session_key, chan) = connect(config, &address).await?;
+    let chan = chan
+        .choose::<2>()
+        .await
+        .context("Failed selecting pay session with merchant")?;
+
+    Ok((session_key, chan))
+}
+
+/// Request approval for the payment request from the merchant, aborting the session if it is not
+/// granted.
+async fn request_payment(
+    config: &Config,
+    chan: Chan<pay::Pay>,
+    payment_amount: PaymentAmount,
+    payment_note: Option<Note>,
+) -> Result<Chan<pay::CustomerStartPayment>, anyhow::Error> {
+    // Read the contents of the note, if any
+    let note = payment_note
+        .unwrap_or_else(|| zeekoe::customer::cli::Note::String(String::from("")))
+        .read(config.max_note_length)
+        .context("Failed to read payment note from standard input or command line")?;
+
+    // Send the payment amount and note to the merchant
+    let chan = chan
+        .send(payment_amount)
+        .await
+        .context("Failed to send payment amount")?
+        .send(note)
+        .await
+        .context("Failed to send payment note")?;
+
+    // Allow the merchant to accept or reject the payment and note
+    offer_abort!(in chan as Customer);
+
+    Ok(chan)
+}
+
+/// Receive the paid-for service from the merchant, printing the outcome if there is one and
+/// closing the communication channel.
+async fn receive_service(chan: Chan<pay::MerchantProvideService>) -> Result<(), anyhow::Error> {
+    // Receive the response note (i.e. the fulfillment of the service)
+    let (response_note, chan) = chan
+        .recv()
+        .await
+        .context("Failed to receive response note")?;
+
+    // Close the communication channel: we are done communicating with the merchant
+    chan.close();
+
+    // Print the response note on standard out
+    if let Some(response_note) = response_note {
+        eprintln!(
+            "Payment succeeded with response from merchant: \"{}\"",
+            response_note
+        );
+    } else {
+        eprintln!("Payment succeeded with no concluding response from merchant");
+    }
+
+    Ok(())
+}
+
+/// The core zkAbacus.Pay protocol: receive a valid, updated channel state.
 async fn zkabacus_pay(
     mut rng: StdRng,
     database: &dyn QueryCustomer,
