@@ -11,6 +11,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - uses: actions/cache@v2
+        with:
+          path: /tmp/.buildx-cache
+          key: $-buildx-docker-$
+          restore-keys: |
+            $-buildx-docker-
+            $-buildx-
+
       - uses: actions/checkout@v2
         with:
           submodules: recursive
@@ -18,3 +26,12 @@ jobs:
       - name: e2e tests
         id: e2e
         uses: ./.github/actions/e2e-action
+        with:
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache
+        run: |
+          pip install requests
+          python3 test-zeekoe.py merch-setup --url "http://localhost:20000" -v
+          python3 test-zeekoe.py cust-setup --url "http://localhost:20000" -v
+          python3 test-zeekoe.py scenario --channel 1 -v --command-list establish pay pay pay_all close
+          python3 test-zeekoe.py scenario --channel 1 -v --command-list establish pay store pay restore close
