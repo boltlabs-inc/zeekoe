@@ -339,16 +339,16 @@ fn python_context() -> inline_python::Context {
             merch_py = pytezos.using(key=merch_pubkey, shell=uri)
             // Specify the structure and types of the fields going into the mutual close state.
             ty = MichelsonType.match(michelson_to_micheline("pair (pair bls12_381_fr string) (pair address (pair mutez mutez))"))
-            // create the packed (serialized) version of the mutual close state, corresponding to 
-            // the types above. "legacy=True" ensures pytezos will always serialize the data as in 
-            // michelson rather than micheline. 
+            // create the packed (serialized) version of the mutual close state, corresponding to
+            // the types above. "legacy=True" ensures pytezos will always serialize the data as in
+            // michelson rather than micheline.
             packed = ty.from_python_object((channel_id, "zkChannels mutual close", contract_id, customer_balance, merchant_balance)).pack(legacy=True).hex()
 
             // merch_py.key.verify() throws an error if the signature is invalid
             merch_py.key.verify(authorization_signature, packed)
 
-            return 
-            
+            return
+
         def mutual_close(
             uri,
             cust_acc,
@@ -1335,15 +1335,13 @@ impl TezosClient {
         customer_balance: &CustomerBalance,
         merchant_balance: &MerchantBalance,
         authorization_signature: &MutualCloseAuthorizationSignature,
-    ) -> impl Future<Output = Result<(), InvalidAuthorizationSignatureError>>
-           + Send
-           + 'static {
-            let (uri, _, contract_id) = self.as_python_types();
-            let merchant_pubkey = merchant_pubkey.to_base58check();
-            let channel_id = hex_string(&channel_id.to_bytes());
-            let customer_balance = customer_balance.into_inner();
-            let merchant_balance = merchant_balance.into_inner();
-            let authorization_signature = authorization_signature.signature.clone();
+    ) -> impl Future<Output = Result<(), InvalidAuthorizationSignatureError>> + Send + 'static {
+        let (uri, _, contract_id) = self.as_python_types();
+        let merchant_pubkey = merchant_pubkey.to_base58check();
+        let channel_id = hex_string(&channel_id.to_bytes());
+        let customer_balance = customer_balance.into_inner();
+        let merchant_balance = merchant_balance.into_inner();
+        let authorization_signature = authorization_signature.signature.clone();
 
         async move {
             tokio::task::spawn_blocking(move || {

@@ -422,7 +422,8 @@ async fn mutual_close(
 
     // Verify the authorization siganture under the merchant's EdDSA Tezos key
     let tezos_client = load_tezos_client(&config, &close.label, database.as_ref()).await?;
-    let merchant_tezos_public_key = channel_details.contract_details.merchant_tezos_public_key;    let verification_result = tezos_client
+    let merchant_tezos_public_key = channel_details.contract_details.merchant_tezos_public_key;
+    let verification_result = tezos_client
         .verify_authorization_signature(
             close_state.channel_id(),
             &merchant_tezos_public_key,
