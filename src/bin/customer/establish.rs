@@ -19,9 +19,7 @@ use zeekoe::{
     customer::{
         cli::Establish,
         client::ZkChannelAddress,
-        database::{
-            zkchannels_state, QueryCustomer, QueryCustomerExt, State,
-        },
+        database::{zkchannels_state, QueryCustomer, QueryCustomerExt, State},
         Chan, ChannelName, Config,
     },
     escrow::types::{ContractDetails, KeyHash},
