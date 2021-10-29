@@ -14,24 +14,29 @@ jobs:
       - uses: actions/cache@v2
         with:
           path: /tmp/.buildx-cache
-          key: $-buildx-docker-$
+          key: ${{ runner.os }}-buildx-docker-${{ github.sha }}
           restore-keys: |
-            $-buildx-docker-
-            $-buildx-
+            ${{ runner.os }}-buildx-docker-${{ github.sha }}
+            ${{ runner.os }}-buildx-docker-
+            ${{ runner.os }}-
 
       - uses: actions/checkout@v2
         with:
           submodules: recursive
 
+      - name: Build
+        id: docker_build
+        uses: docker/build-push-action@v2
+        with:
+          context: ./
+          file: ./Dockerfile
+          builder: ${{ steps.buildx.outputs.name }}
+          push: false
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache
+
       - name: e2e tests
         id: e2e
         uses: ./.github/actions/e2e-action
         with:
-          cache-from: type=local,src=/tmp/.buildx-cache
-          cache-to: type=local,dest=/tmp/.buildx-cache
-          command: |
-            pip install requests
-            python3 test-zeekoe.py merch-setup --url "http://localhost:20000" -v
-            python3 test-zeekoe.py cust-setup --url "http://localhost:20000" -v
-            python3 test-zeekoe.py scenario --channel 1 -v --command-list establish pay pay pay_all close
-            python3 test-zeekoe.py scenario --channel 1 -v --command-list establish pay store pay restore close
+          entrypoint: ./.github/actions/e2e-action/entrypoint.sh
