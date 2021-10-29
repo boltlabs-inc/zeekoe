@@ -20,7 +20,7 @@ use zeekoe::{
         cli::Establish,
         client::ZkChannelAddress,
         database::{
-            zkchannels_state, Error as DatabaseError, QueryCustomer, QueryCustomerExt, State,
+            zkchannels_state, QueryCustomer, QueryCustomerExt, State,
         },
         Chan, ChannelName, Config,
     },
@@ -514,43 +514,20 @@ async fn store_inactive_local(
     zkabacus_config: &zkabacus_crypto::customer::Config,
     label: ChannelName,
     address: &ZkChannelAddress,
-    mut inactive: Inactive,
+    inactive: Inactive,
     contract_details: &ContractDetails,
 ) -> Result<ChannelName, anyhow::Error> {
-    // This loop iterates trying to insert the channel, adding suffixes "(1)", "(2)", etc.
-    // onto the label name until it finds an unused label
-    let mut count = 0;
-    let actual_label = loop {
-        let actual_label = if count > 0 {
-            ChannelName::new(format!("{} ({})", label, count))
-        } else {
-            label.clone()
-        };
-
-        // Try inserting the inactive state with this label
-        match database
-            .new_channel(
-                &actual_label,
-                address,
-                inactive,
-                contract_details,
-                zkabacus_config,
-            )
-            .await
-        {
-            Ok(()) => break actual_label, // report the label that worked
-            Err((returned_inactive, DatabaseError::ChannelExists(_))) => {
-                inactive = returned_inactive; // restore the inactive state, try again
-            }
-            Err((_returned_inactive, error)) => {
-                // TODO: what to do with the `Inactive` state here when the database has failed to allow us to persist it?
-                return Err(error.into());
-            }
+    // Try inserting the inactive state with this label
+    return match database
+        .new_channel(&label, address, inactive, contract_details, zkabacus_config)
+        .await
+    {
+        Ok(()) => Ok(label),
+        Err((_returned_inactive, error)) => {
+            // TODO: what to do with the `Inactive` state here when the database has failed to allow us to persist it?
+            Err(error.into())
         }
-        count += 1;
     };
-
-    Ok(actual_label)
 }
 
 /// The core zkAbacus.Activate protocol.
