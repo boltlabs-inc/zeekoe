@@ -33,7 +33,9 @@ impl Command for Pay {
             config.approval_timeout(),
             request_payment(&config, chan, payment_amount, self.note),
         )
-        .await??;
+        .await
+        .context("Payment timed out while awaiting approval")?
+        .context("Payment was not approved by the merchant")?;
 
         // Run the core zkAbacus.Pay protocol
         // Timeout is set to 10 messages, which includes all sent & received messages and aborts
@@ -48,10 +50,13 @@ impl Command for Pay {
                 payment_amount,
             ),
         )
-        .await?
+        .await
+        .context("Payment timed out while updating channel status")?
         .context("Failed to complete pay protocol")?;
 
-        tokio::time::timeout(config.approval_timeout(), receive_service(chan)).await??;
+        tokio::time::timeout(config.approval_timeout(), receive_service(chan))
+            .await
+            .context("Payment timed out when receiving service")??;
 
         Ok(())
     }

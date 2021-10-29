@@ -24,10 +24,12 @@ impl Pay {
         chan: Chan<protocol::Pay>,
     ) -> Result<(), anyhow::Error> {
         // Get the payment amount and context note from the customer
-        let (payment_amount, chan) =
-            tokio::time::timeout(service.message_timeout(), chan.recv()).await??;
-        let (payment_note, chan) =
-            tokio::time::timeout(service.message_timeout(), chan.recv()).await??;
+        let (payment_amount, chan) = tokio::time::timeout(service.message_timeout(), chan.recv())
+            .await
+            .context("Payment timed out while receiving payment amount")??;
+        let (payment_note, chan) = tokio::time::timeout(service.message_timeout(), chan.recv())
+            .await
+            .context("Payment timed out while receiving payment note")??;
 
         // Query approver service to determine whether to allow the payment
         let (response_url, chan) =
@@ -39,7 +41,8 @@ impl Pay {
             10 * service.message_timeout(),
             zkabacus_pay(rng, database, session_key, chan, payment_amount),
         )
-        .await?;
+        .await
+        .context("Payment timed out while updating channel status")?;
 
         provide_service(response_url, maybe_chan, client).await?;
 
