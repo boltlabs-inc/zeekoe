@@ -3,4 +3,4 @@ name: 'E2E tests'
 description: 'full end to end tests of zeekoe'
 runs:
   using: 'docker'
-  image: '../../Dockerfile'
+  image: '../../../Dockerfile'
