@@ -20,7 +20,7 @@ use zeekoe::{
         database::{zkchannels_state, QueryCustomer, QueryCustomerExt, State},
         Chan, ChannelName, Config,
     },
-    escrow, offer_abort, proceed,
+    offer_abort, proceed,
     protocol::{close, Party::Customer},
 };
 use zkabacus_crypto::{
@@ -420,39 +420,34 @@ async fn mutual_close(
         .await
         .context("Failed to receive authorization signature from the merchant.")?;
 
-    // Read the closing message to get the channel_id
-    let close_message = get_close_message(rng, database, &channel_details.label)
-        .await
-        .context("Failed to fetch closing message from database")?;
-
     // Verify the authorization siganture under the merchant's EdDSA Tezos key
     let tezos_client = load_tezos_client(&config, &close.label, database.as_ref()).await?;
     let merchant_tezos_public_key = channel_details.contract_details.merchant_tezos_public_key;    let verification_result = tezos_client
         .verify_authorization_signature(
-            close_message.channel_id(),
+            close_state.channel_id(),
             &merchant_tezos_public_key,
             close_state.customer_balance(),
             close_state.merchant_balance(),
-            authorization_signature,
+            &authorization_signature,
         )
         .await;
 
     // If authorization signature is invalid, abort!()
-    if let Err(escrow::tezos::InvalidAuthSignatureError(_)) = verification_result {
-        abort!(in chan return close::Error::InvalidMerchantAuthSignature)
+    match verification_result {
+        Ok(()) => (),
+        Err(_) => abort!(in chan return close::Error::InvalidMerchantAuthorizationSignature),
     }
 
     // Call the mutual close entrypoint
-    let tezos_client = load_tezos_client(&config, &close.label, database.as_ref()).await?;
     let mutual_close_result = tezos_client
         .mutual_close(
             close_state.customer_balance(),
             close_state.merchant_balance(),
-            authorization_signature,
+            &authorization_signature,
         )
         .await;
 
-    // Otherwise, close the dialectic channel...
+    // Close the dialectic channel...
     proceed!(in chan);
     chan.close();
 

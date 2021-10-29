@@ -344,8 +344,8 @@ fn python_context() -> inline_python::Context {
             // michelson rather than micheline. 
             packed = ty.from_python_object((channel_id, "zkChannels mutual close", contract_id, customer_balance, merchant_balance)).pack(legacy=True).hex()
 
-            // py.key.verify() throws an error if the signature is invalid
-            py.key.verify(authorization_signature, packed)
+            // merch_py.key.verify() throws an error if the signature is invalid
+            merch_py.key.verify(authorization_signature, packed)
 
             return 
             
@@ -689,7 +689,7 @@ pub struct AuthorizeMutualCloseError(#[from] JoinError);
 
 #[derive(Debug, thiserror::Error)]
 #[error("Invalid authorization signature for mutual close: {0}")]
-pub struct InvalidAuthSignatureError(#[from] JoinError);
+pub struct InvalidAuthorizationSignatureError(#[from] JoinError);
 
 #[derive(Debug, thiserror::Error)]
 #[error("Could not issue merchant dispute: {0}")]
@@ -1334,8 +1334,8 @@ impl TezosClient {
         merchant_pubkey: &TezosPublicKey,
         customer_balance: &CustomerBalance,
         merchant_balance: &MerchantBalance,
-        authorization_signature: MutualCloseAuthorizationSignature,
-    ) -> impl Future<Output = Result<(), InvalidAuthSignatureError>>
+        authorization_signature: &MutualCloseAuthorizationSignature,
+    ) -> impl Future<Output = Result<(), InvalidAuthorizationSignatureError>>
            + Send
            + 'static {
             let (uri, _, contract_id) = self.as_python_types();
@@ -1343,7 +1343,7 @@ impl TezosClient {
             let channel_id = hex_string(&channel_id.to_bytes());
             let customer_balance = customer_balance.into_inner();
             let merchant_balance = merchant_balance.into_inner();
-            let authorization_signature = authorization_signature.signature;
+            let authorization_signature = authorization_signature.signature.clone();
 
         async move {
             tokio::task::spawn_blocking(move || {
@@ -1361,7 +1361,7 @@ impl TezosClient {
                 });
             })
             .await
-            .map_err(InvalidAuthSignatureError)
+            .map_err(InvalidAuthorizationSignatureError)
         }
     }
 
@@ -1381,13 +1381,13 @@ impl TezosClient {
         &self,
         customer_balance: &CustomerBalance,
         merchant_balance: &MerchantBalance,
-        authorization_signature: MutualCloseAuthorizationSignature,
+        authorization_signature: &MutualCloseAuthorizationSignature,
     ) -> impl Future<Output = Result<OperationStatus, MutualCloseError>> + Send + 'static {
         let (uri, customer_private_key, contract_id) = self.as_python_types();
         let customer_balance = customer_balance.into_inner();
         let merchant_balance = merchant_balance.into_inner();
         let confirmation_depth = self.confirmation_depth;
-        let authorization_signature = authorization_signature.signature;
+        let authorization_signature = authorization_signature.signature.clone();
         async move {
             tokio::task::spawn_blocking(move || {
                 let context = python_context();

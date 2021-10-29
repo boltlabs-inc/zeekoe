@@ -305,7 +305,7 @@ pub mod close {
         #[error("Customer sent a close state that has already been seen")]
         KnownRevocationLock,
         #[error("Merchant send an invalid authorization signature")]
-        InvalidMerchantAuthSignature,
+        InvalidMerchantAuthorizationSignature,
         #[error("Arbiter failed to accept mutual close")]
         ArbiterRejectedMutualClose,
     }
