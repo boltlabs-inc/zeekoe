@@ -16,22 +16,27 @@ use zkabacus_crypto::{
 
 use zeekoe::{
     abort,
+    amount::Amount,
     customer::{
-        cli::Establish,
+        cli::{Establish, Note},
         client::ZkChannelAddress,
         database::{zkchannels_state, QueryCustomer, QueryCustomerExt, State},
+        server::SessionKey,
         Chan, ChannelName, Config,
     },
-    escrow::types::{ContractDetails, KeyHash},
+    escrow::{
+        tezos,
+        types::{ContractDetails, KeyHash},
+    },
     offer_abort, proceed,
     protocol::{
         establish,
         Party::{Customer, Merchant},
     },
+    timeout::WithTimeout,
 };
 
 use tezedge::crypto::Prefix;
-use zeekoe::escrow::tezos;
 
 use super::{connect, database, load_tezos_client, Command};
 
@@ -58,105 +63,46 @@ impl Command for Establish {
             .await
             .context("Failed to connect to local database")?;
 
-        // Generate randomness for the channel ID
-        let customer_randomness = CustomerRandomness::new(&mut rng);
-
-        // Format deposit amounts as the correct types
-        let customer_balance = CustomerBalance::try_new(
-            self.deposit
-                .try_into_minor_units()
-                .ok_or(establish::Error::InvalidDeposit(Customer))?
-                .try_into()?,
-        )
-        .map_err(|_| establish::Error::InvalidDeposit(Customer))?;
-
-        let merchant_balance = MerchantBalance::try_new(match self.merchant_deposit {
-            None => 0,
-            Some(d) => d
-                .try_into_minor_units()
-                .ok_or(establish::Error::InvalidDeposit(Merchant))?
-                .try_into()?,
-        })
-        .map_err(|_| establish::Error::InvalidDeposit(Merchant))?;
-
-        // Load the customer's Tezos account details
-        let tezos_key_material = config.load_tezos_key_material()?;
-        let tezos_public_key = tezos_key_material.public_key().clone();
-        let tezos_address = tezos_public_key.hash();
+        let (customer_balance, merchant_balance) =
+            parse_initial_balances(self.deposit, self.merchant_deposit)?;
 
         // Run a **separate** session to get the merchant's public parameters
         let (zkabacus_customer_config, contract_details) =
             get_parameters(&config, &address).await?;
 
-        // Compute a hash of the merchant's public key material.
-        let key_hash = KeyHash::new(
-            zkabacus_customer_config.merchant_public_key(),
-            contract_details.merchant_funding_address(),
-            &contract_details.merchant_tezos_public_key,
-        );
-
         // Connect and select the Establish session
-        let (session_key, chan) = connect(&config, &address)
-            .await
-            .context("Failed to connect to merchant")?;
+        let (session_key, chan) = open_session(&config, &address).await?;
 
-        let chan = chan
-            .choose::<1>()
-            .await
-            .context("Failed to select channel establishment session")?;
+        // Load the customer's Tezos account details
+        let tezos_key_material = config.load_tezos_key_material()?;
 
-        // Read the contents of the channel establishment note, if any: this is the justification,
-        // if any is needed, for why the channel should be allowed to be established (format
-        // unspecified, specific to merchant)
-        let note = self
-            .note
-            .unwrap_or_else(|| zeekoe::customer::cli::Note::String(String::from("")))
-            .read(config.max_note_length)?;
+        // Format the customer and merchant funding information
+        let merchant_funding_info = tezos::MerchantFundingInformation {
+            balance: merchant_balance,
+            address: contract_details.merchant_funding_address(),
+            public_key: contract_details.merchant_tezos_public_key.clone(),
+        };
+        let customer_funding_info = tezos::CustomerFundingInformation {
+            balance: customer_balance,
+            address: tezos_key_material.funding_address(),
+            public_key: tezos_key_material.public_key().clone(),
+        };
 
-        // Send the request for the funding of the channel
-        let chan = chan
-            .send(customer_randomness)
-            .await
-            .context("Failed to send customer randomness for channel ID")?
-            .send(customer_balance)
-            .await
-            .context("Failed to send customer deposit amount")?
-            .send(merchant_balance)
-            .await
-            .context("Failed to send merchant deposit amount")?
-            .send(note)
-            .await
-            .context("Failed to send channel establishment note")?
-            .send(tezos_public_key.clone())
-            .await
-            .context("Failed to send customer's Tezos public key")?
-            .send(tezos_address.clone())
-            .await
-            .context("Failed to send customer's Tezos account")?
-            .send(key_hash)
-            .await
-            .context("Failed to send hash of merchant's public keys")?;
-
-        // Allow the merchant to reject the funding of the channel, else continue
-        offer_abort!(in chan as Customer);
-
-        // Receive merchant randomness contribution to the channel ID formation
-        let (merchant_randomness, chan) = chan
-            .recv()
-            .await
-            .context("Failed to receive merchant randomness for channel ID")?;
-
-        // Generate channel ID (merchant will share this same value since they use the same inputs)
-        let channel_id = ChannelId::new(
-            merchant_randomness,
-            customer_randomness,
-            // Merchant's Pointcheval-Sanders public key:
-            zkabacus_customer_config.merchant_public_key(),
-            // Merchant's Tezos public key
-            contract_details.merchant_tezos_public_key.as_ref(),
-            // Customer's Tezos public key
-            tezos_key_material.public_key().as_ref(),
-        );
+        // Send initial request for a new channel with the specified funding information
+        // Timeout accounts for 8 messages sent and received, plus extra time to get approval
+        let (channel_id, chan) = request_channel(
+            chan,
+            &mut rng,
+            &config,
+            &zkabacus_customer_config,
+            &merchant_funding_info,
+            &customer_funding_info,
+            self.note,
+        )
+        .with_timeout(8 * config.message_timeout + config.approval_timeout)
+        .await
+        .context("Establish timed out while waiting for channel approval")?
+        .context("Channel was not approved by merchant")?;
 
         // Generate the proof context for the establish proof
         // TODO: the context should actually be formed from a session transcript up to this point
@@ -199,18 +145,6 @@ impl Command for Establish {
         if self.off_chain {
             write_establish_json(&establishment)?;
         }
-
-        // The customer and merchant funding information
-        let merchant_funding_info = tezos::MerchantFundingInformation {
-            balance: merchant_balance,
-            address: contract_details.merchant_funding_address(),
-            public_key: contract_details.merchant_tezos_public_key.clone(),
-        };
-        let customer_funding_info = tezos::CustomerFundingInformation {
-            balance: customer_balance,
-            address: tezos_address.clone(),
-            public_key: tezos_public_key.clone(),
-        };
 
         let (contract_id, origination_status) = if self.off_chain {
             // TODO: prompt user to submit the origination of the contract
@@ -431,6 +365,80 @@ async fn get_parameters(
     ))
 }
 
+async fn request_channel(
+    chan: Chan<establish::Establish>,
+    mut rng: &mut StdRng,
+    config: &Config,
+    zkabacus_config: &zkabacus_crypto::customer::Config,
+    merchant_funding_info: &tezos::MerchantFundingInformation,
+    customer_funding_info: &tezos::CustomerFundingInformation,
+    note: Option<Note>,
+) -> Result<(ChannelId, Chan<establish::Initialize>), anyhow::Error> {
+    // Generate randomness for the channel ID
+    let customer_randomness = CustomerRandomness::new(&mut rng);
+
+    // Read the contents of the channel establishment note, if any: this is the justification,
+    // if any is needed, for why the channel should be allowed to be established (format
+    // unspecified, specific to merchant)
+    let note = note
+        .unwrap_or_else(|| zeekoe::customer::cli::Note::String(String::from("")))
+        .read(config.max_note_length)?;
+
+    // Compute a hash of the merchant's public key material.
+    let key_hash = KeyHash::new(
+        zkabacus_config.merchant_public_key(),
+        merchant_funding_info.address.clone(),
+        &merchant_funding_info.public_key,
+    );
+
+    // Send the request for the funding of the channel
+    let chan = chan
+        .send(customer_randomness)
+        .await
+        .context("Failed to send customer randomness for channel ID")?
+        .send(customer_funding_info.balance)
+        .await
+        .context("Failed to send customer deposit amount")?
+        .send(merchant_funding_info.balance)
+        .await
+        .context("Failed to send merchant deposit amount")?
+        .send(note)
+        .await
+        .context("Failed to send channel establishment note")?
+        .send(customer_funding_info.public_key.clone())
+        .await
+        .context("Failed to send customer's Tezos public key")?
+        .send(customer_funding_info.address.clone())
+        .await
+        .context("Failed to send customer's Tezos account")?
+        .send(key_hash)
+        .await
+        .context("Failed to send hash of merchant's public keys")?;
+
+    // Allow the merchant to reject the funding of the channel, else continue
+    offer_abort!(in chan as Customer);
+
+    // Receive merchant randomness contribution to the channel ID formation
+    let (merchant_randomness, chan) = chan
+        .recv()
+        .await
+        .context("Failed to receive merchant randomness for channel ID")?;
+
+    // Generate channel ID (merchant will share this same value since they use the same inputs)
+    let channel_id = ChannelId::new(
+        merchant_randomness,
+        customer_randomness,
+        // Merchant's Pointcheval-Sanders public key:
+        zkabacus_config.merchant_public_key(),
+        // Merchant's Tezos public key
+        merchant_funding_info.public_key.as_ref(),
+        // Customer's Tezos public key
+        customer_funding_info.public_key.as_ref(),
+    );
+
+    Ok((channel_id, chan))
+}
+
 struct ZkAbacusRequestParameters {
     channel_id: ChannelId,
     merchant_balance: MerchantBalance,
@@ -583,6 +591,47 @@ fn write_establish_json(establishment: &Establishment) -> Result<(), anyhow::Err
 
     eprintln!("Establishment data written to {:?}", &establish_json_path);
     Ok(())
+}
+
+fn parse_initial_balances(
+    deposit: Amount,
+    merchant_deposit: Option<Amount>,
+) -> Result<(CustomerBalance, MerchantBalance), anyhow::Error> {
+    // Format deposit amounts as the correct types
+    let customer_balance = CustomerBalance::try_new(
+        deposit
+            .try_into_minor_units()
+            .ok_or(establish::Error::InvalidDeposit(Customer))?
+            .try_into()?,
+    )
+    .map_err(|_| establish::Error::InvalidDeposit(Customer))?;
+
+    let merchant_balance = MerchantBalance::try_new(match merchant_deposit {
+        None => 0,
+        Some(d) => d
+            .try_into_minor_units()
+            .ok_or(establish::Error::InvalidDeposit(Merchant))?
+            .try_into()?,
+    })
+    .map_err(|_| establish::Error::InvalidDeposit(Merchant))?;
+
+    Ok((customer_balance, merchant_balance))
+}
+
+async fn open_session(
+    config: &Config,
+    address: &ZkChannelAddress,
+) -> Result<(SessionKey, Chan<establish::Establish>), anyhow::Error> {
+    let (session_key, chan) = connect(config, address)
+        .await
+        .context("Failed to connect to merchant")?;
+
+    let chan = chan
+        .choose::<1>()
+        .await
+        .context("Failed to select channel establishment session")?;
+
+    Ok((session_key, chan))
 }
 
 /// Invoke `Refresh` on the customer daemon.
