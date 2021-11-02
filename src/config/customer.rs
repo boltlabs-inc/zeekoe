@@ -33,6 +33,8 @@ pub struct Config {
     pub message_timeout: Duration,
     #[serde(with = "humantime_serde", default = "defaults::approval_timeout")]
     pub approval_timeout: Duration,
+    #[serde(with = "humantime_serde", default = "defaults::verification_timeout")]
+    pub verification_timeout: Duration,
     #[serde(default = "defaults::max_message_length")]
     pub max_message_length: usize,
     #[serde(default = "defaults::max_note_length")]

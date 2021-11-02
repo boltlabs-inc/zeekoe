@@ -118,4 +118,10 @@ pub mod customer {
     pub const fn approval_timeout() -> Duration {
         Duration::from_secs(360)
     }
+
+    /// Length of time (seconds) that a customer waits for the merchant to verify the on-chain
+    /// contract status.
+    pub const fn verification_timeout() -> Duration {
+        Duration::from_secs(180)
+    }
 }
