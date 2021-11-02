@@ -190,8 +190,14 @@ impl Command for Establish {
             .await
             .context("Failed to notify merchant contract was funded")?;
 
-        // Allow the merchant to indicate whether it funded the channel
+        // Wait for merchant to confirm funding
         offer_abort!(in chan as Customer);
+
+        // Allow the merchant to indicate whether it funded the channel
+        let (_contract_funded, chan) = chan
+            .recv()
+            .await
+            .context("Failed to receive merchant funding confirmation")?;
 
         let merchant_funding_successful: bool = if self.off_chain {
             // TODO: prompt user to check that the merchant funding was provided

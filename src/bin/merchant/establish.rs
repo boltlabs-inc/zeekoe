@@ -272,6 +272,9 @@ async fn approve_and_establish(
             )
         })?;
 
+    // Move forward in the protocol
+    proceed!(in chan);
+
     // If the merchant contribution was greater than zero, fund the channel on chain, and await
     // confirmation that the funding has gone through to the required confirmation depth
     if merchant_deposit.into_inner() > 0 {
@@ -284,7 +287,7 @@ async fn approve_and_establish(
             .await
         {
             Ok(tezos::OperationStatus::Applied) => {}
-            _ => abort!(in chan return establish::Error::FailedMerchantFunding),
+            _ => return Err(establish::Error::FailedMerchantFunding.into()),
         }
     }
 
@@ -304,11 +307,12 @@ async fn approve_and_establish(
             )
         })?;
 
-    // Move forward in the protocol
-    proceed!(in chan);
-
     // The customer verifies on-chain that we've funded within their desired timeout period and
     // has the chance to abort
+    let chan = chan
+        .send(establish::ContractFunded)
+        .await
+        .context("Failed to notify customer contract was funded")?;
     offer_abort!(in chan as Merchant);
 
     // Attempt to activate the off-chain zkChannel, setting the state in the database to the

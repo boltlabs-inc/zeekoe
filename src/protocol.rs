@@ -271,13 +271,15 @@ pub mod establish {
     };
 
     pub type MerchantVerifyCustomerFunding = Session! {
-        // Notify the merchant we've funded the contract.
+        // Notify the merchant that the customer has funded the contract.
         send ContractFunded;
         // Merchant ensures the contract was correctly funded
         OfferAbort<CustomerVerifyMerchantFunding, Error>;
     };
 
     pub type CustomerVerifyMerchantFunding = Session! {
+        // Notify the customer that the merchant has funded the contract.
+        recv ContractFunded;
         // Customer ensures the merchant funded the contract
         ChooseAbort<Activate, Error>;
     };
