@@ -47,6 +47,12 @@ pub(crate) mod shared {
     pub const fn message_timeout() -> Duration {
         Duration::from_secs(60)
     }
+
+    /// Length of time (seconds) that a merchant waits for the customer to post and confirm a
+    /// transaction on Tezos.
+    pub const fn transaction_timeout() -> Duration {
+        Duration::from_secs(25 * 60)
+    }
 }
 
 pub mod merchant {
@@ -62,12 +68,6 @@ pub mod merchant {
 
     pub fn config_path() -> Result<PathBuf, anyhow::Error> {
         Ok(project_dirs()?.config_dir().join(CONFIG_FILE))
-    }
-
-    /// Length of time (seconds) that a merchant waits for the customer to post and confirm a
-    /// transaction on Tezos.
-    pub const fn transaction_timeout() -> Duration {
-        Duration::from_secs(25 * 60)
     }
 }
 

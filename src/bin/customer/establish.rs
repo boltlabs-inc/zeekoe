@@ -26,7 +26,7 @@ use zeekoe::{
     },
     escrow::{
         tezos,
-        types::{ContractDetails, KeyHash, TezosKeyMaterial},
+        types::{ContractDetails, KeyHash},
     },
     offer_abort, proceed,
     protocol::{
@@ -141,101 +141,48 @@ impl Command for Establish {
             &merchant_funding_info,
             &customer_funding_info,
             &zkabacus_customer_config,
-            &tezos_key_material,
             self.off_chain,
         )
         .await?;
 
         // Allow the merchant to verify origination
         let chan = notify_merchant_of_origination(chan, &channel_name, database.as_ref())
-            .with_timeout(config.verification_timeout)
+            .with_timeout(config.message_timeout + config.verification_timeout)
             .await
             .context(
                 "Establish timed out while waiting for merchant to verify originated contract",
             )?
             .context("Merchant failed to verify originated contract")?;
 
-        let customer_funding_status = if self.off_chain {
-            // TODO: prompt user to fund the contract on chain
-            todo!("prompt user to fund contract on chain and submit details")
-        } else {
-            let tezos_client = load_tezos_client(&config, &channel_name, database.as_ref()).await?;
-            tezos_client
-                .add_customer_funding(&customer_funding_info)
-                .await?
-        };
+        fund_channel(
+            database.as_ref(),
+            &config,
+            &channel_name,
+            &customer_funding_info,
+            self.off_chain,
+        )
+        .await?;
 
-        // Check to make sure funding succeeded
-        if !matches!(customer_funding_status, tezos::OperationStatus::Applied) {
-            todo!("Abort protocol because funding failed?")
-        }
-
-        // Update database to indicate successful customer funding.
-        database
-            .with_channel_state(
-                &channel_name,
-                zkchannels_state::Originated,
-                |inactive| -> Result<_, Infallible> { Ok((State::CustomerFunded(inactive), ())) },
-            )
-            .await
-            .with_context(|| {
-                format!(
-                    "Failed to update channel {} to CustomerFunded status",
-                    &channel_name
-                )
-            })??;
-
-        let chan = chan
-            .send(establish::ContractFunded)
-            .await
-            .context("Failed to notify merchant contract was funded")?;
-
-        // Wait for merchant to confirm funding
-        offer_abort!(in chan as Customer);
-
-        // Allow the merchant to indicate whether it funded the channel
-        let (_contract_funded, chan) = chan
-            .recv()
-            .await
-            .context("Failed to receive merchant funding confirmation")?;
-
-        let merchant_funding_successful: bool = if self.off_chain {
-            // TODO: prompt user to check that the merchant funding was provided
-            true
-        } else {
-            let tezos_client = load_tezos_client(&config, &channel_name, database.as_ref()).await?;
-            tezos_client.verify_merchant_funding().await.map_or_else(
-                |err| {
-                    eprintln!("Could not verify merchant funding: {}", err);
-                    false
-                },
-                |_| true,
-            )
-        };
-
-        // Abort if merchant funding was not successful
-        if !merchant_funding_successful {
-            abort!(in chan return establish::Error::FailedMerchantFunding);
-        }
-
-        // Update database to indicate successful merchant funding.
-        database
-            .with_channel_state(
-                &channel_name,
-                zkchannels_state::CustomerFunded,
-                |inactive| -> Result<_, Infallible> { Ok((State::MerchantFunded(inactive), ())) },
-            )
-            .await
-            .with_context(|| {
-                format!(
-                    "Failed to update channel {} to MerchantFunded status",
-                    &channel_name
-                )
-            })??;
-
-        proceed!(in chan);
+        // Allow the merchant to confirm customer funding, then confirm merchant funding
+        // Timeout is set to allow each party to receive notification of funding and to verify it
+        // on chain, plus time for the merchant to post funding on chain.
+        let chan = confirm_funding(
+            chan,
+            database.as_ref(),
+            &config,
+            &channel_name,
+            self.off_chain,
+        )
+        .with_timeout(
+            2 * (config.message_timeout + config.verification_timeout) + config.transaction_timeout,
+        )
+        .await
+        .context("Establish timed out waiting for funding confirmation")?
+        .context("Failed to confirm that both parties funded the channel")?;
 
         // Run zkAbacus.Activate
+        // Timeout accounts for one message sent and reacted to
+
         zkabacus_activate(
             &config,
             database.as_ref(),
@@ -243,7 +190,9 @@ impl Command for Establish {
             chan,
             &zkabacus_customer_config,
         )
+        .with_timeout(2 * config.message_timeout)
         .await
+        .context("Establish timed out while activating channel")?
         .context("Failed to activate channel")?;
 
         // Print success
@@ -609,7 +558,6 @@ async fn originate_contract(
     merchant_funding_info: &tezos::MerchantFundingInformation,
     customer_funding_info: &tezos::CustomerFundingInformation,
     zkabacus_customer_config: &zkabacus_crypto::customer::Config,
-    tezos_key_material: &TezosKeyMaterial,
     off_chain: bool,
 ) -> Result<Chan<establish::CustomerSupplyContractInfo>, anyhow::Error> {
     // Write out establishment struct to disk if operating in off-chain mode
@@ -628,13 +576,14 @@ async fn originate_contract(
         // TODO: prompt user to submit the origination of the contract
         todo!("prompt user to submit contract origination details")
     } else {
+        let tezos_key_material = config.load_tezos_key_material()?;
         // Originate the contract on-chain
         tezos::originate(
             Some(&config.tezos_uri),
             merchant_funding_info,
             customer_funding_info,
             zkabacus_customer_config.merchant_public_key(),
-            tezos_key_material,
+            &tezos_key_material,
             &channel_id,
             config.confirmation_depth,
             config.self_delay,
@@ -689,6 +638,106 @@ async fn notify_merchant_of_origination(
         .await
         .context("Failed to send contract id to merchant")?;
     offer_abort!(in chan as Customer);
+
+    Ok(chan)
+}
+
+async fn fund_channel(
+    database: &dyn QueryCustomer,
+    config: &Config,
+    channel_name: &ChannelName,
+    customer_funding_info: &tezos::CustomerFundingInformation,
+    off_chain: bool,
+) -> Result<(), anyhow::Error> {
+    let customer_funding_status = if off_chain {
+        // TODO: prompt user to fund the contract on chain
+        todo!("prompt user to fund contract on chain and submit details")
+    } else {
+        let tezos_client = load_tezos_client(config, channel_name, database).await?;
+        tezos_client
+            .add_customer_funding(customer_funding_info)
+            .await?
+    };
+
+    // Check to make sure funding succeeded
+    if !matches!(customer_funding_status, tezos::OperationStatus::Applied) {
+        todo!("Abort protocol because funding failed?")
+    }
+
+    // Update database to indicate successful customer funding.
+    database
+        .with_channel_state(
+            channel_name,
+            zkchannels_state::Originated,
+            |inactive| -> Result<_, Infallible> { Ok((State::CustomerFunded(inactive), ())) },
+        )
+        .await
+        .with_context(|| {
+            format!(
+                "Failed to update channel {} to CustomerFunded status",
+                channel_name
+            )
+        })??;
+
+    Ok(())
+}
+
+async fn confirm_funding(
+    chan: Chan<establish::MerchantVerifyCustomerFunding>,
+    database: &dyn QueryCustomer,
+    config: &Config,
+    channel_name: &ChannelName,
+    off_chain: bool,
+) -> Result<Chan<establish::Activate>, anyhow::Error> {
+    let chan = chan
+        .send(establish::ContractFunded)
+        .await
+        .context("Failed to notify merchant contract was funded")?;
+
+    // Wait for merchant to confirm funding
+    offer_abort!(in chan as Customer);
+
+    // Allow the merchant to indicate whether it funded the channel
+    let (_contract_funded, chan) = chan
+        .recv()
+        .await
+        .context("Failed to receive merchant funding confirmation")?;
+
+    let merchant_funding_successful: bool = if off_chain {
+        // TODO: prompt user to check that the merchant funding was provided
+        true
+    } else {
+        let tezos_client = load_tezos_client(config, channel_name, database).await?;
+        tezos_client.verify_merchant_funding().await.map_or_else(
+            |err| {
+                eprintln!("Could not verify merchant funding: {}", err);
+                false
+            },
+            |_| true,
+        )
+    };
+
+    // Abort if merchant funding was not successful
+    if !merchant_funding_successful {
+        abort!(in chan return establish::Error::FailedMerchantFunding);
+    }
+
+    // Update database to indicate successful merchant funding.
+    database
+        .with_channel_state(
+            channel_name,
+            zkchannels_state::CustomerFunded,
+            |inactive| -> Result<_, Infallible> { Ok((State::MerchantFunded(inactive), ())) },
+        )
+        .await
+        .with_context(|| {
+            format!(
+                "Failed to update channel {} to MerchantFunded status",
+                channel_name
+            )
+        })??;
+
+    proceed!(in chan);
 
     Ok(chan)
 }
