@@ -48,10 +48,14 @@ pub(crate) mod shared {
         Duration::from_secs(60)
     }
 
-    /// Length of time (seconds) that a merchant waits for the customer to post and confirm a
-    /// transaction on Tezos.
+    /// Length of time (seconds) for a party to post and confirm a transaction on Tezos.
     pub const fn transaction_timeout() -> Duration {
         Duration::from_secs(25 * 60)
+    }
+
+    /// Length of time (seconds) for a party to retrieve and verify the status of a Tezos contract.
+    pub const fn verification_timeout() -> Duration {
+        Duration::from_secs(180)
     }
 }
 
@@ -117,11 +121,5 @@ pub mod customer {
     /// or a payment.
     pub const fn approval_timeout() -> Duration {
         Duration::from_secs(360)
-    }
-
-    /// Length of time (seconds) that a customer waits for the merchant to verify the on-chain
-    /// contract status.
-    pub const fn verification_timeout() -> Duration {
-        Duration::from_secs(180)
     }
 }
