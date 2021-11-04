@@ -32,6 +32,10 @@ const DEFAULT_REVOCATION_LOCK: &str = "0x00";
 /// functions without the Global Interpreter Lock.
 fn python_context() -> inline_python::Context {
     let context = python! {
+
+        // For documentation about the pytezos library: https://pytezos.org
+        // Producing and verifying the signature for mutual close uses the methods
+        // listed in https://pytezos.org/crypto.html
         import json
         from pytezos import pytezos, Contract, ContractInterface
         from pytezos.michelson.types import MichelsonType
@@ -1286,7 +1290,6 @@ impl TezosClient {
     /// `(contract id, "zkChannels mutual close", channel id, customer balance, merchant balance)`
     ///
     /// This is called by the merchant.
-    #[allow(unused)]
     pub fn authorize_mutual_close(
         &self,
         close_state: &CloseState,
@@ -1327,7 +1330,6 @@ impl TezosClient {
     /// `(contract id, "zkChannels mutual close", channel id, customer balance, merchant balance)`
     ///
     /// This is called by the customer.
-    #[allow(unused)]
     pub fn verify_authorization_signature(
         &self,
         channel_id: &ChannelId,
@@ -1374,7 +1376,6 @@ impl TezosClient {
     /// - the [`TezosKeyPair`] does not match the `cust_addr` field in the specified contract
     /// - the `authorization_signature` is not a valid signature under the merchant public key
     ///   on the expected tuple
-    #[allow(unused)]
     pub fn mutual_close(
         &self,
         customer_balance: &CustomerBalance,

@@ -435,7 +435,11 @@ async fn mutual_close(
 
     // If authorization signature is invalid, abort!()
     match verification_result {
-        Ok(()) => (),
+        Ok(()) => {
+            // Close the dialectic channel...
+            proceed!(in chan);
+            chan.close();
+        },
         Err(_) => abort!(in chan return close::Error::InvalidMerchantAuthorizationSignature),
     }
 
@@ -447,10 +451,6 @@ async fn mutual_close(
             &authorization_signature,
         )
         .await;
-
-    // Close the dialectic channel...
-    proceed!(in chan);
-    chan.close();
 
     // ...and raise the appropriate error if one exists.
     // The customer has the option to retry or initiate a unilateral close.
