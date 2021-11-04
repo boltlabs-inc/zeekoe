@@ -37,6 +37,7 @@ impl Command for List {
                     "balance": format!("{}", amount(details.state.customer_balance().into_inner())),
                     "max_refund": format!("{}", amount(details.state.merchant_balance().into_inner())),
                     "channel_id": format!("{}", details.state.channel_id()),
+                    "contract_id": details.contract_details.contract_id.map_or_else(|| "N/A".to_string(), |contract_id| format!("{}", contract_id))
                 }));
             }
             println!("{}", json!(output).to_string());
@@ -49,6 +50,7 @@ impl Command for List {
                 "Balance",
                 "Max Refund",
                 "Channel ID",
+                "Contract ID",
             ]);
 
             for details in channels {
@@ -58,6 +60,10 @@ impl Command for List {
                     Cell::new(amount(details.state.customer_balance().into_inner())),
                     Cell::new(amount(details.state.merchant_balance().into_inner())),
                     Cell::new(details.state.channel_id()),
+                    Cell::new(details.contract_details.contract_id.map_or_else(
+                        || "N/A".to_string(),
+                        |contract_id| format!("{}", contract_id),
+                    )),
                 ]);
             }
 

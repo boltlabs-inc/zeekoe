@@ -27,6 +27,7 @@ impl Command for List {
             for channel in channels {
                 output.push(json!({
                     "channel_id": format!("{}", channel.channel_id),
+                    "contract_id": format!("{}", channel.contract_id),
                     "status": format!("{}", channel.status),
                 }));
             }
@@ -34,11 +35,12 @@ impl Command for List {
         } else {
             let mut table = Table::new();
             table.load_preset(comfy_table::presets::UTF8_FULL);
-            table.set_header(vec!["Channel ID", "Status"]);
+            table.set_header(vec!["Channel ID", "Contract ID", "Status"]);
 
             for channel in channels {
                 table.add_row(vec![
                     Cell::new(channel.channel_id),
+                    Cell::new(channel.contract_id),
                     Cell::new(channel.status),
                 ]);
             }

@@ -33,8 +33,7 @@ pub mod types {
 
     impl Display for ContractId {
         fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-            // TODO: Fill in with actual contract ID
-            std::fmt::Debug::fmt(self, f)
+            f.write_str(&self.0.to_base58check())
         }
     }
 
