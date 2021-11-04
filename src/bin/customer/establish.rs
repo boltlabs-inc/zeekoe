@@ -275,6 +275,7 @@ async fn get_parameters(
     ))
 }
 
+/// Send initial channel parameters to the merchant and compute the channel ID if it is approved.
 async fn request_channel(
     chan: Chan<establish::Establish>,
     mut rng: &mut StdRng,
@@ -506,6 +507,7 @@ fn write_establish_json(establishment: &Establishment) -> Result<(), anyhow::Err
     Ok(())
 }
 
+/// Parse the [`Amount`]s passed on the command line into the `Balance` types used throughout.
 fn parse_initial_balances(
     deposit: Amount,
     merchant_deposit: Option<Amount>,
@@ -531,6 +533,7 @@ fn parse_initial_balances(
     Ok((customer_balance, merchant_balance))
 }
 
+/// Set up the communication channel with the merchant.
 async fn open_session(
     config: &Config,
     address: &ZkChannelAddress,
@@ -642,6 +645,7 @@ async fn notify_merchant_of_origination(
     Ok(chan)
 }
 
+/// Post funding operation to chain and update database if successful.
 async fn fund_channel(
     database: &dyn QueryCustomer,
     config: &Config,
@@ -682,6 +686,8 @@ async fn fund_channel(
     Ok(())
 }
 
+/// Allow the merchant to confirm that the customer funding is valid; if so,
+/// verify that merchant funding is also valid.
 async fn confirm_funding(
     chan: Chan<establish::MerchantVerifyCustomerFunding>,
     database: &dyn QueryCustomer,

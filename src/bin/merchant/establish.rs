@@ -173,6 +173,7 @@ async fn establish_channel(
     Ok(())
 }
 
+/// Receive and validate funding request from the customer.
 async fn receive_channel_request(
     chan: Chan<establish::Establish>,
     config: &Config,
@@ -266,6 +267,7 @@ struct CustomerChannelIdContribution {
     customer_tezos_public_key: TezosPublicKey,
 }
 
+/// Generate random input and form a channel ID based on the inputs from both parties.
 async fn form_channel_id(
     chan: Chan<establish::MerchantSupplyInfo>,
     rng: &mut StdRng,
@@ -385,8 +387,7 @@ async fn verify_contract(
     Ok(chan)
 }
 
-/// Signal to the customer that the channel has been approved to be established, and continue to the
-/// end of the channel establishment protocol.
+/// Add merchant funding, if any, to the contract.
 async fn fund_contract(
     database: &dyn QueryMerchant,
     config: &Config,
