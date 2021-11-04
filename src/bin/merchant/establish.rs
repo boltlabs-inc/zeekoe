@@ -19,7 +19,7 @@ use zeekoe::{
 
 use tezedge::crypto::Prefix;
 
-use super::{approve, load_tezos_client};
+use super::{approve, database, load_tezos_client};
 
 pub struct Establish;
 
@@ -32,7 +32,6 @@ impl Establish {
         config: &Config,
         service: &Service,
         zkabacus_merchant_config: &ZkAbacusConfig,
-        database: &dyn QueryMerchant,
         session_key: SessionKey,
         chan: Chan<protocol::Establish>,
     ) -> Result<(), anyhow::Error> {
@@ -71,7 +70,6 @@ impl Establish {
             session_key,
             config,
             service,
-            database,
             merchant_deposit,
             customer_deposit,
             chan,
@@ -99,11 +97,11 @@ async fn establish_channel(
     session_key: SessionKey,
     config: &Config,
     service: &Service,
-    database: &dyn QueryMerchant,
     merchant_deposit: MerchantBalance,
     customer_deposit: CustomerBalance,
     chan: Chan<establish::MerchantSupplyInfo>,
 ) -> Result<(), anyhow::Error> {
+    let database = database(config).await?;
     let tezos_key_material = config.load_tezos_key_material()?;
 
     // Form channel ID, incorporating randomness and key material from both parties.
@@ -140,7 +138,7 @@ async fn establish_channel(
     let chan = verify_contract(
         chan,
         config,
-        database,
+        database.as_ref(),
         merchant_deposit,
         customer_deposit,
         channel_id,
@@ -151,7 +149,7 @@ async fn establish_channel(
     .context("Establish timed out while verifying on-chain contract state")?
     .context("Failed to verify on-chain contract state")?;
 
-    fund_contract(database, config, channel_id, merchant_deposit).await?;
+    fund_contract(database.as_ref(), config, channel_id, merchant_deposit).await?;
 
     let chan = notify_customer_of_funding(chan)
         .with_timeout(service.message_timeout + service.verification_timeout)
@@ -163,7 +161,7 @@ async fn establish_channel(
     // active state if successful, and forwarding the pay token to the customer
     zkabacus_activate(
         &mut rng,
-        database,
+        database.as_ref(),
         zkabacus_merchant_config,
         channel_id,
         blinded_state,

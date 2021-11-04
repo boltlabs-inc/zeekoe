@@ -26,11 +26,12 @@ impl Close {
         &self,
         config: &Config,
         merchant_config: &MerchantConfig,
-        database: &dyn QueryMerchant,
         chan: Chan<protocol::Close>,
     ) -> Result<(), anyhow::Error> {
+        let database = database(config).await?;
+
         // Run zkAbacus close and update channel status to PendingClose
-        let (chan, close_state) = zkabacus_close(merchant_config, database, chan)
+        let (chan, close_state) = zkabacus_close(merchant_config, database.as_ref(), chan)
             .await
             .context("Mutual close failed")?;
 
@@ -44,7 +45,8 @@ impl Close {
             ))?;
 
         // Generate an authorization signature under the merchant's EdDSA Tezos key
-        let tezos_client = load_tezos_client(config, close_state.channel_id(), database).await?;
+        let tezos_client =
+            load_tezos_client(config, close_state.channel_id(), database.as_ref()).await?;
         let authorization_signature = tezos_client
             .authorize_mutual_close(&close_state)
             .await
@@ -72,7 +74,7 @@ impl Close {
 
         // Update the database to indicate a successful mutual close
         finalize_mutual_close(
-            database,
+            database.as_ref(),
             close_state.channel_id(),
             *close_state.customer_balance(),
             *close_state.merchant_balance(),

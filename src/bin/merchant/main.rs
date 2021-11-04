@@ -58,12 +58,9 @@ pub trait Command {
 #[async_trait]
 impl Command for Run {
     async fn run(self, config: Config) -> Result<(), anyhow::Error> {
-        let database = database(&config)
-            .await
-            .context("Failed to connect to merchant database")?;
-
         // Either initialize the merchant's config afresh, or get existing config if it exists
-        let zkabacus_config = database
+        let zkabacus_config = database(&config)
+            .await?
             .fetch_or_create_config(&mut StdRng::from_entropy()) // TODO: allow determinism
             .await?;
 
@@ -84,7 +81,6 @@ impl Command for Run {
                 let client = client.clone();
                 let config = config.clone();
                 let zkabacus_config = zkabacus_config.clone();
-                let database = database.clone();
                 let service = Arc::new(service.clone());
                 let mut wait_terminate = terminate.subscribe();
 
@@ -109,7 +105,6 @@ impl Command for Run {
                         // Clone `Arc`s for the various resources we need in this request
                         let client = client.clone();
                         let zkabacus_config = zkabacus_config.clone();
-                        let database = database.clone();
                         let service = service.clone();
                         let config = config.clone();
 
@@ -129,22 +124,20 @@ impl Command for Run {
                                     &config,
                                     &service,
                                     &zkabacus_config,
-                                    database.as_ref(),
                                     session_key,
                                     chan,
                                 ).await?,
                                 2 => Pay.run(
                                     rng,
                                     &client,
+                                    &config,
                                     &service,
-                                    database.as_ref(),
                                     session_key,
                                     chan,
                                 ).await?,
                                 3 => Close.run(
                                     &config,
                                     &zkabacus_config,
-                                    database.as_ref(),
                                     chan,
                                 ).await?,
 
@@ -179,8 +172,8 @@ impl Command for Run {
         // Get a join handle for the polling service
         let polling_service_join_handle = tokio::spawn(async move {
             // Clone resources
-            let database = database.clone();
             let config = config.clone();
+            let database = database(&config).await?;
 
             loop {
                 // Retrieve list of channels from database

@@ -2,7 +2,7 @@ use {anyhow::Context, rand::rngs::StdRng, url::Url};
 
 use zeekoe::{
     abort,
-    merchant::{config::Service, database::QueryMerchant, server::SessionKey, Chan},
+    merchant::{config::Service, database::QueryMerchant, server::SessionKey, Chan, Config},
     offer_abort, proceed,
     protocol::{self, pay, Party::Merchant},
     timeout::WithTimeout,
@@ -10,7 +10,7 @@ use zeekoe::{
 
 use zkabacus_crypto::{Context as ProofContext, PaymentAmount};
 
-use super::approve;
+use super::{approve, database};
 
 pub struct Pay;
 
@@ -19,11 +19,13 @@ impl Pay {
         &self,
         rng: StdRng,
         client: &reqwest::Client,
+        config: &Config,
         service: &Service,
-        database: &dyn QueryMerchant,
         session_key: SessionKey,
         chan: Chan<protocol::Pay>,
     ) -> Result<(), anyhow::Error> {
+        let database = database(config).await?;
+
         // Get the payment amount and context note from the customer
         let (payment_amount, chan) = chan
             .recv()
@@ -42,7 +44,7 @@ impl Pay {
 
         // Run the zkAbacus.Pay protocol
         // Timeout is set to 10 messages, which includes all sent & received messages and aborts
-        let maybe_chan = zkabacus_pay(rng, database, session_key, chan, payment_amount)
+        let maybe_chan = zkabacus_pay(rng, database.as_ref(), session_key, chan, payment_amount)
             .with_timeout(10 * service.message_timeout)
             .await
             .context("Payment timed out while updating channel status")?;
