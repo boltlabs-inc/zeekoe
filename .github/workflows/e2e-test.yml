@@ -9,6 +9,13 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      my-sandbox:
+        image: tqtezos/flextesa:20210602
+        ports:
+          - 20000:20000
+        options: --rm --name my-sandbox --detach flobox start
+
 
     steps:
       - uses: actions/cache@v2
@@ -47,9 +54,6 @@ jobs:
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new
           tags: ${{ steps.tags.outputs.tagged_image }}
-
-      - name: Run sandbox
-        run: docker run --rm --name my-sandbox --detach -p 20000:20000 tqtezos/flextesa:20210602 flobox start
 
       - uses: addnab/docker-run-action@v3
         with:
