@@ -51,7 +51,19 @@ jobs:
       - uses: addnab/docker-run-action@v3
         with:
           image: ${{ steps.tags.outputs.tagged_image }}
-          run: echo "hello world"
+          run: |
+            docker run --rm --name my-sandbox --detach -p 20000:20000 tqtezos/flextesa:20210602 flobox start
+            sleep 5s
+            tezos-client config reset
+            tezos-client --endpoint http://localhost:20000 bootstrapped
+            tezos-client --endpoint http://localhost:20000 config update
+            tezos-client import secret key alice unencrypted:edsk3QoqBuvdamxouPhin7swCvkQNgq4jP5KZPbwWNnwdZpSpJiEbq
+            tezos-client import secret key bob unencrypted:edsk3RFfvaFaxbHx8BMtEW1rKQcPtDML3LXjNqMNLCzC3wLC1bWbAt
+            pip install requests
+            python3 dev/test-zeekoe.py merch-setup --url "http://localhost:20000" -v
+            python3 dev/test-zeekoe.py cust-setup --url "http://localhost:20000" -v
+            python3 dev/test-zeekoe.py scenario --channel 1 -v --command-list establish pay pay pay_all close
+            python3 dev/test-zeekoe.py scenario --channel 1 -v --command-list establish pay store pay restore close
 
       - name: Move cache
         run: |
