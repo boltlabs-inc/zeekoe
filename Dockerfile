@@ -35,7 +35,6 @@ RUN ./dev/generate-certificates; CARGO_NET_GIT_FETCH_WITH_CLI=true cargo build -
 RUN wget https://github.com/serokell/tezos-packaging/releases/latest/download/tezos-client
 RUN chmod +x tezos-client
 RUN mkdir -p $HOME/.local/bin
-RUN mv tezos-client $HOME/.local/bin
-RUN export PATH="$HOME/.local/bin:$PATH"
+RUN mv tezos-client /usr/local/bin
 
 CMD bash 
