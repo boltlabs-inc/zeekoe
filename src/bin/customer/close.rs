@@ -439,27 +439,25 @@ async fn mutual_close(
             // Close the dialectic channel...
             proceed!(in chan);
             chan.close();
-        },
+        }
         Err(_) => abort!(in chan return close::Error::InvalidMerchantAuthorizationSignature),
     }
 
-    // Call the mutual close entrypoint
-    let mutual_close_result = tezos_client
+    // Call the mutual close entrypoint and raise the appropriate error if one exists.
+    // The customer has the option to retry or initiate a unilateral close.
+    // We should consider having the customer automatically initiate a unilateral close after a
+    // random delay.
+    tezos_client
         .mutual_close(
             close_state.customer_balance(),
             close_state.merchant_balance(),
             &authorization_signature,
         )
-        .await;
-
-    // ...and raise the appropriate error if one exists.
-    // The customer has the option to retry or initiate a unilateral close.
-    // We should consider having the customer automatically initiate a unilateral close after a
-    // random delay.
-    mutual_close_result.context(format!(
-        "Failed to call mutual close for {}",
-        close.label.clone()
-    ))?;
+        .await
+        .context(format!(
+            "Failed to call mutual close for {}",
+            close.label.clone()
+        ))?;
 
     // Finalize the result of the mutual close entrypoint call
     finalize_mutual_close(database.as_ref(), &close.label).await
