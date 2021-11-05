@@ -14,7 +14,7 @@ jobs:
         image: tqtezos/flextesa:20210602
         ports:
           - 20000:20000
-        options: --rm --name my-sandbox --detach flobox start
+        options: --rm flobox start
 
 
     steps:
