@@ -390,6 +390,10 @@ async fn get_parameters(
         .await
         .context("Failed to receive merchant's range proof parameters")?;
 
+    if range_constraint_parameters.validate().is_err() {
+        return Err(establish::Error::InvalidParameters.into());
+    }
+
     // Get the merchant's tz1 address
     let (merchant_funding_address, chan) = chan
         .recv()

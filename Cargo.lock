@@ -3067,7 +3067,7 @@ dependencies = [
 [[package]]
 name = "zkabacus-crypto"
 version = "0.1.0"
-source = "git+https://github.com/boltlabs-inc/libzkchannels-crypto.git?branch=main#83d60c2bc45d61cc83822aa518ffa5e44144cf34"
+source = "git+https://github.com/boltlabs-inc/libzkchannels-crypto.git?branch=range-constraint-params#e13b2b7331c59ef65a31e04a3fe6f58ed13418d0"
 dependencies = [
  "base64",
  "bincode",
@@ -3085,7 +3085,7 @@ dependencies = [
 [[package]]
 name = "zkchannels-crypto"
 version = "0.1.0"
-source = "git+https://github.com/boltlabs-inc/libzkchannels-crypto.git?branch=main#83d60c2bc45d61cc83822aa518ffa5e44144cf34"
+source = "git+https://github.com/boltlabs-inc/libzkchannels-crypto.git?branch=range-constraint-params#e13b2b7331c59ef65a31e04a3fe6f58ed13418d0"
 dependencies = [
  "arrayvec 0.7.2",
  "bincode",
