@@ -52,6 +52,9 @@ jobs:
         with:
           image: ${{ steps.tags.outputs.tagged_image }}
           run: |
+            pwd
+            ls target
+            ls target/debug
             docker run --rm --name my-sandbox --detach -p 20000:20000 tqtezos/flextesa:20210602 flobox start
             sleep 5s
             tezos-client config reset

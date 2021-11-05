@@ -31,4 +31,11 @@ WORKDIR /root/zeekoe
 RUN git submodule update --init --recursive
 RUN ./dev/generate-certificates; CARGO_NET_GIT_FETCH_WITH_CLI=true cargo build --features "allow_explicit_certificate_trust"
 
+RUN wget https://github.com/serokell/tezos-packaging/releases/latest/download/tezos-client
+RUN chmod +x tezos-client
+RUN mkdir -p $HOME/.local/bin
+RUN mv tezos-client $HOME/.local/bin
+RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> $HOME/.bashrc
+RUN source $HOME/.bashrc
+
 CMD bash 
