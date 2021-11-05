@@ -36,7 +36,6 @@ RUN wget https://github.com/serokell/tezos-packaging/releases/latest/download/te
 RUN chmod +x tezos-client
 RUN mkdir -p $HOME/.local/bin
 RUN mv tezos-client $HOME/.local/bin
-RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> $HOME/.bashrc
-RUN source $HOME/.bashrc
+RUN export PATH="$HOME/.local/bin:$PATH"
 
 CMD bash 
