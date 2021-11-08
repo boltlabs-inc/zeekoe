@@ -41,7 +41,8 @@ MERCH_SETUP = "merch-setup"
 CUST_SETUP = "cust-setup"
 SCENARIO = "scenario"
 
-ZKCHANNEL_BIN = "../target/debug/zkchannel"
+ZKCHANNEL_CUST_BIN = ["../target/debug/zkchannel", "customer"]
+ZKCHANNEL_MERCH_BIN = ["../target/debug/zkchannel", "merchant"]
 
 # The minimum blockchain level to be able to run tests. Operations need to reference a block up to 
 # 60 blocks from the head. Setting this minimum level avoids running into errors caused by the 
@@ -121,17 +122,24 @@ def run_command(cmd, verbose):
     log("-> %s" % error.strip().decode('utf-8'), verbose)
     return rc
 
-def zkchannel_merchant(command, merch_config, verbose, *args):
-    cmd = [ZKCHANNEL_BIN, "merchant", "--config", merch_config, command]
-    if args:
-        cmd += list(*args)
+def zkchannel_merchant(*args, config, verbose, **kwargs):
+    cmd=[]
+    cmd.extend((*ZKCHANNEL_MERCH_BIN, "--config", config))
+    for a in args:
+        cmd.append(a)
+    for k, v in kwargs.items():
+        cmd.append(f"--{k}")
+        cmd.append(f"{v}")
     return run_command(cmd, verbose)
 
-def zkchannel_customer(command, cust_config, verbose, *args):
-    info(f"zkchannel_customer: {command}")
-    cmd = [ZKCHANNEL_BIN, "customer", "--config", cust_config, command]
-    if args:
-        cmd += list(*args)
+def zkchannel_customer(*args, config, verbose, **kwargs):
+    cmd=[]
+    cmd.extend((*ZKCHANNEL_CUST_BIN, "--config", config))
+    for a in args:
+        cmd.append(a)
+    for k, v in kwargs.items():
+        cmd.append(f"--{k}")
+        cmd.append(f"{v}")
     return run_command(cmd, verbose)
 
 def mutual_close(cust_config, channel_name, verbose):
@@ -179,34 +187,6 @@ class TestScenario():
         if not os.path.isdir(self.temp_path):
             os.mkdir(self.temp_path)
 
-    def establish(self):
-        info(f"Creating a new zkchannel: {self.channel_name}")
-        initial_deposit = "{amount} XTZ".format(amount=str(self.customer_deposit))
-        args = ("zkchannel://localhost", "--label", self.channel_name, "--deposit", initial_deposit)
-        zkchannel_customer("establish", self.cust_config, self.verbose, args)
-
-    def pay(self):
-        max_pay_amount = self.balance_remaining / 2 # save money for future payments
-        pay_amount = round(random.uniform(0, max_pay_amount), 4)
-        self.balance_remaining -= pay_amount
-        payment = "{amount} XTZ".format(amount=str(pay_amount))
-        info(f"Making a {payment} payment on zkchannel: {self.channel_name}")
-        args = (self.channel_name, payment)
-        return zkchannel_customer("pay", self.cust_config, self.verbose, args)
-
-    def pay_all(self):
-        pay_amount = self.balance_remaining
-        self.balance_remaining = 0
-        payment = "{amount} XTZ".format(amount=str(pay_amount))
-        info(f"Paying the remaining balance ({payment}) on zkchannel: {self.channel_name}")
-        args = (self.channel_name, payment)
-        return zkchannel_customer("pay", self.cust_config, self.verbose, args)
-
-    def close(self):
-        info("Initiate closing on the zkchannel: %s" % self.channel_name)
-        args = ("--force", self.channel_name)
-        return zkchannel_customer("close", self.cust_config, self.verbose, args)
-
     def transfer_db_files(self, src, dst, db_name):
         """transfer all db files '-shm' and '-wal' """
         db_path = os.path.join(src, db_name)
@@ -216,50 +196,83 @@ class TestScenario():
             new_file = os.path.join(dst, db_name)
             shutil.copyfile(file, new_file)
 
-    def store_state(self):
-        log("Storing customer state with remaining balance of %s" % self.balance_remaining)
-        # Create temporary directory to store revoked customer state when testing dispute scenarios
-        if not os.path.isdir(self.channel_path):
-            os.mkdir(self.channel_path)
-        self.transfer_db_files(src = self.config_path, dst = self.channel_path, db_name = self.cust_db)
-
-    def restore_state(self):
-        log("Restoring customer state")
-        self.transfer_db_files(src = self.channel_path, dst = self.config_path, db_name = self.cust_db)
-        
-    def expire(self):
-        # TODO: Get channel_id from a channel_name
-        zkchannel_customer("list", self.cust_config, self.verbose)
-        channel_id = input("Enter the channel_id to be expired\n")
-
-        info("Initiate expiry on the channel id: %s" % channel_id)
-        args = ("--channel", channel_id)
-        return zkchannel_merchant("close", self.merch_config, self.verbose, args)
-
-    def close(self):
-        close_channel(self.cust_config, self.channel_name, self.verbose)
-
     def mutual_close(self):
         mutual_close(self.cust_config, self.channel_name, self.verbose)
 
     def run_command_list(self, command_list):
         for command in command_list:
             if command == "establish":
-                self.establish()
+                info(f"Creating a new zkchannel: {self.channel_name}")
+                initial_deposit = "{amount} XTZ".format(amount=str(self.customer_deposit))
+                print('initial_deposit', initial_deposit)
+                zkchannel_customer(
+                    "establish",
+                    "zkchannel://localhost",
+                    config = self.cust_config,
+                    verbose = self.verbose, 
+                    label = self.channel_name,
+                    deposit = initial_deposit
+                    )
             elif command == "pay":
-                self.pay()
+                max_pay_amount = self.balance_remaining / 2 # save money for future payments
+                pay_amount = round(random.uniform(0, max_pay_amount), 4)
+                self.balance_remaining -= pay_amount
+                payment = "{amount} XTZ".format(amount=str(pay_amount))
+                info(f"Making a {payment} payment on zkchannel: {self.channel_name}")
+                zkchannel_customer(
+                    "pay", 
+                    self.channel_name,
+                    payment,
+                    config=self.cust_config,
+                    verbose=self.verbose
+                    )
             elif command == "pay_all":
-                self.pay_all()
+                pay_amount = self.balance_remaining
+                self.balance_remaining = 0
+                payment = "{amount} XTZ".format(amount=str(pay_amount))
+                info(f"Paying the remaining balance ({payment}) on zkchannel: {self.channel_name}")
+                zkchannel_customer(
+                    "pay", 
+                    self.channel_name,
+                    payment,
+                    config=self.cust_config,
+                    verbose=self.verbose
+                    )
             elif command == "close":
-                self.close()
+                info("Initiate closing on the zkchannel: %s" % self.channel_name)
+                zkchannel_customer(
+                    "close", 
+                    config=self.cust_config, 
+                    verbose=self.verbose, 
+                    force=self.channel_name
+                    )
             elif command == "store":
-                self.store_state()
+                log("Storing customer state with remaining balance of %s" % self.balance_remaining)
+                # Create temporary directory to store revoked customer state when testing dispute scenarios
+                if not os.path.isdir(self.channel_path):
+                    os.mkdir(self.channel_path)
+                self.transfer_db_files(src = self.config_path, dst = self.channel_path, db_name = self.cust_db)
             elif command == "restore":
-                self.restore_state()
-            elif command == "expire":
-                self.expire()
+                log("Restoring customer state")
+                self.transfer_db_files(src = self.channel_path, dst = self.config_path, db_name = self.cust_db)
             elif command == "mutual_close":
                 self.mutual_close()
+            elif command == "expire":
+                # TODO: Get channel_id from a channel_name
+                zkchannel_customer(
+                    "list", 
+                    config=self.cust_config, 
+                    verbose=self.verbose
+                    )
+                channel_id = input("Enter the channel_id to be expired\n")
+
+                info("Initiate expiry on the channel id: %s" % channel_id)
+                zkchannel_merchant(
+                    "close", 
+                    config=self.merch_config, 
+                    verbose=self.verbose, 
+                    channel=channel_id
+                    )
             else:
                 fatal_error(f"{command} not a recognized command.")
 
@@ -348,6 +361,6 @@ def main():
         t.run_command_list(command_list)
     else:
         # list the available channels
-        zkchannel_customer("list", cust_config, verbose)
+        zkchannel_customer("list", config=cust_config, verbose=verbose)
 
 main()
