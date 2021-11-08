@@ -48,8 +48,7 @@ impl Close {
         let authorization_signature = tezos_client
             .authorize_mutual_close(&close_state)
             .await
-            .context("Failed to produce mutual close authorization signature")?
-            .into();
+            .context("Failed to produce mutual close authorization signature")?;
 
         let chan = chan
             .send(authorization_signature)
