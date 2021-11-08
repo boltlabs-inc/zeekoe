@@ -205,6 +205,7 @@ class TestScenario():
                     label = self.channel_name,
                     deposit = initial_deposit
                     )
+                    
             elif command == "pay":
                 max_pay_amount = self.balance_remaining / 2 # save money for future payments
                 pay_amount = round(random.uniform(0, max_pay_amount), 4)
@@ -218,6 +219,7 @@ class TestScenario():
                     config=self.cust_config,
                     verbose=self.verbose
                     )
+
             elif command == "pay_all":
                 pay_amount = self.balance_remaining
                 self.balance_remaining = 0
@@ -230,31 +232,37 @@ class TestScenario():
                     config=self.cust_config,
                     verbose=self.verbose
                     )
+
             elif command == "close":
                 info("Initiate closing on the zkchannel: %s" % self.channel_name)
                 zkchannel_customer(
                     "close", 
+                    "--force",
+                    self.channel_name,
                     config=self.cust_config, 
-                    verbose=self.verbose, 
-                    force=self.channel_name
+                    verbose=self.verbose
                     )
+
             elif command == "store":
                 log("Storing customer state with remaining balance of %s" % self.balance_remaining)
                 # Create temporary directory to store revoked customer state when testing dispute scenarios
                 if not os.path.isdir(self.channel_path):
                     os.mkdir(self.channel_path)
                 self.transfer_db_files(src = self.config_path, dst = self.channel_path, db_name = self.cust_db)
+
             elif command == "restore":
                 log("Restoring customer state")
                 self.transfer_db_files(src = self.channel_path, dst = self.config_path, db_name = self.cust_db)
+
             elif command == "mutual_close":
                     info("Initiate mutual close on the zkchannel: %s" % self.channel_name)
                     zkchannel_customer(
                         "close",
+                        self.channel_name,
                         config=self.cust_config,
-                        channel_name=self.channel_name,
                         verbose=self.verbose
                         )
+
             elif command == "expire":
                 # TODO: Get channel_id from a channel_name
                 zkchannel_customer(
@@ -334,16 +342,15 @@ def main():
     else:
         fatal_error("Not implemented yet: No tezos account for customer and merchant on '%s'" % network)
 
-
     if args.command == MERCH_SETUP:
         create_merchant_config(merch_db, merch_config, merch_keys, self_delay, confirmation_depth, url)
         info("Starting the merchant server...")
-        zkchannel_merchant("run", merch_config, verbose)
+        zkchannel_merchant("run", config=merch_config, verbose=verbose)
 
     elif args.command == CUST_SETUP:
         create_customer_config(cust_db, cust_config, cust_keys, self_delay, confirmation_depth, url)
         info("Starting the customer watcher...")
-        zkchannel_customer("watch", cust_config, verbose)
+        zkchannel_customer("watch", config=cust_config, verbose=verbose)
 
     elif args.command == SCENARIO:
         info("Running scenario: %s" % ', '.join(command_list))
