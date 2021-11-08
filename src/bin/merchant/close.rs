@@ -47,8 +47,8 @@ impl Close {
         let tezos_client = load_tezos_client(config, close_state.channel_id(), database).await?;
         let authorization_signature = tezos_client
             .authorize_mutual_close(&close_state)
-            .context("Failed to post mutualClose entrypoint")?
-            .into();
+            .await
+            .context("Failed to produce mutual close authorization signature")?;
 
         let chan = chan
             .send(authorization_signature)

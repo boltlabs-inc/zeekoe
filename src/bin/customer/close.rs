@@ -20,7 +20,7 @@ use zeekoe::{
         database::{zkchannels_state, QueryCustomer, QueryCustomerExt, State},
         Chan, ChannelName, Config,
     },
-    escrow, offer_abort, proceed,
+    offer_abort, proceed,
     protocol::{close, Party::Customer},
 };
 use zkabacus_crypto::{
@@ -420,34 +420,44 @@ async fn mutual_close(
         .await
         .context("Failed to receive authorization signature from the merchant.")?;
 
-    // Call the mutual close entrypoint
+    // Verify the authorization siganture under the merchant's EdDSA Tezos key
     let tezos_client = load_tezos_client(&config, &close.label, database.as_ref()).await?;
-    let mutual_close_result = tezos_client
-        .mutual_close(
+    let merchant_tezos_public_key = channel_details.contract_details.merchant_tezos_public_key;
+    let verification_result = tezos_client
+        .verify_authorization_signature(
             close_state.channel_id(),
+            &merchant_tezos_public_key,
             close_state.customer_balance(),
             close_state.merchant_balance(),
             &authorization_signature,
         )
         .await;
 
-    // If the mutual close entrypoint call fails due to invalid authorization signature, abort!()
-    if let Err(escrow::types::Error::InvalidAuthorizationSignature(_)) = mutual_close_result {
-        abort!(in chan return close::Error::InvalidMerchantAuthSignature)
+    // If authorization signature is invalid, abort!()
+    match verification_result {
+        Ok(()) => {
+            // Close the dialectic channel...
+            proceed!(in chan);
+            chan.close();
+        }
+        Err(_) => abort!(in chan return close::Error::InvalidMerchantAuthorizationSignature),
     }
 
-    // Otherwise, close the dialectic channel...
-    proceed!(in chan);
-    chan.close();
-
-    // ...and raise the appropriate error if one exists.
+    // Call the mutual close entrypoint and raise the appropriate error if one exists.
     // The customer has the option to retry or initiate a unilateral close.
     // We should consider having the customer automatically initiate a unilateral close after a
     // random delay.
-    mutual_close_result.context(format!(
-        "Failed to call mutual close for {}",
-        close.label.clone()
-    ))?;
+    tezos_client
+        .mutual_close(
+            close_state.customer_balance(),
+            close_state.merchant_balance(),
+            &authorization_signature,
+        )
+        .await
+        .context(format!(
+            "Failed to call mutual close for {}",
+            close.label.clone()
+        ))?;
 
     // Finalize the result of the mutual close entrypoint call
     finalize_mutual_close(database.as_ref(), &close.label).await

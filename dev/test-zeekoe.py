@@ -148,6 +148,11 @@ def close_channel(cust_config, channel_name, verbose):
     cmd = [ZKCHANNEL_BIN, "customer", "--config", cust_config, "close", "--force", channel_name]
     return run_command(cmd, verbose)
 
+def mutual_close(cust_config, channel_name, verbose):
+    info("Initiate closing on the zkchannel: %s" % channel_name)
+    cmd = [ZKCHANNEL_BIN, "customer", "--config", cust_config, "close", channel_name]
+    return run_command(cmd, verbose)
+
 def list_channels(cust_config):
     info("List channels...")
     cmd = [ZKCHANNEL_BIN, "customer", "--config", cust_config, "list"]
@@ -241,6 +246,12 @@ class TestScenario():
         channel_id = input("Enter the channel_id to be expired\n")
         expire_channel(self.merch_config, channel_id, self.verbose)
 
+    def close(self):
+        close_channel(self.cust_config, self.channel_name, self.verbose)
+
+    def mutual_close(self):
+        mutual_close(self.cust_config, self.channel_name, self.verbose)
+
     def run_command_list(self, command_list):
         for command in command_list:
             if command == "establish":
@@ -257,6 +268,8 @@ class TestScenario():
                 self.restore_state()
             elif command == "expire":
                 self.expire()
+            elif command == "mutual_close":
+                self.mutual_close()
             else:
                 fatal_error(f"{command} not a recognized command.")
 
