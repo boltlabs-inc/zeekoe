@@ -14,6 +14,8 @@ fn project_dirs() -> Result<ProjectDirs, anyhow::Error> {
 }
 
 pub(crate) mod shared {
+    use super::*;
+
     pub const ORGANIZATION: &str = "Bolt Labs";
 
     pub const APPLICATION: &str = "zkchannel";
@@ -42,8 +44,8 @@ pub(crate) mod shared {
     }
 
     /// Length of time (seconds) that a party waits for a normal message to be computed and sent.
-    pub const fn message_timeout() -> u64 {
-        60
+    pub const fn message_timeout() -> Duration {
+        Duration::from_secs(60)
     }
 }
 
@@ -64,8 +66,8 @@ pub mod merchant {
 
     /// Length of time (seconds) that a merchant waits for the customer to post and confirm a
     /// transaction on Tezos.
-    pub const fn transaction_timeout() -> u64 {
-        25 * 60
+    pub const fn transaction_timeout() -> Duration {
+        Duration::from_secs(25 * 60)
     }
 }
 
@@ -113,7 +115,7 @@ pub mod customer {
 
     /// Length of time (seconds) that a customer waits for the merchant to approve a new channel
     /// or a payment.
-    pub const fn approval_timeout() -> u64 {
-        360
+    pub const fn approval_timeout() -> Duration {
+        Duration::from_secs(360)
     }
 }

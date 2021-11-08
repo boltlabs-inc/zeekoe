@@ -5,6 +5,7 @@ use zeekoe::{
     merchant::{config::Service, database::QueryMerchant, server::SessionKey, Chan},
     offer_abort, proceed,
     protocol::{self, pay, Party::Merchant},
+    timeout::WithTimeout,
 };
 
 use zkabacus_crypto::{Context as ProofContext, PaymentAmount};
@@ -24,10 +25,14 @@ impl Pay {
         chan: Chan<protocol::Pay>,
     ) -> Result<(), anyhow::Error> {
         // Get the payment amount and context note from the customer
-        let (payment_amount, chan) = tokio::time::timeout(service.message_timeout(), chan.recv())
+        let (payment_amount, chan) = chan
+            .recv()
+            .with_timeout(service.message_timeout)
             .await
             .context("Payment timed out while receiving payment amount")??;
-        let (payment_note, chan) = tokio::time::timeout(service.message_timeout(), chan.recv())
+        let (payment_note, chan) = chan
+            .recv()
+            .with_timeout(service.message_timeout)
             .await
             .context("Payment timed out while receiving payment note")??;
 
@@ -37,12 +42,10 @@ impl Pay {
 
         // Run the zkAbacus.Pay protocol
         // Timeout is set to 10 messages, which includes all sent & received messages and aborts
-        let maybe_chan = tokio::time::timeout(
-            10 * service.message_timeout(),
-            zkabacus_pay(rng, database, session_key, chan, payment_amount),
-        )
-        .await
-        .context("Payment timed out while updating channel status")?;
+        let maybe_chan = zkabacus_pay(rng, database, session_key, chan, payment_amount)
+            .with_timeout(10 * service.message_timeout)
+            .await
+            .context("Payment timed out while updating channel status")?;
 
         provide_service(response_url, maybe_chan, client).await?;
 

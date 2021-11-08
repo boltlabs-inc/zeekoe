@@ -46,10 +46,10 @@ pub struct Service {
     pub connection_timeout: Option<Duration>,
     #[serde(default = "defaults::max_pending_connection_retries")]
     pub max_pending_connection_retries: usize,
-    #[serde(default = "defaults::message_timeout")]
-    pub message_timeout: u64,
-    #[serde(default = "defaults::transaction_timeout")]
-    pub transaction_timeout: u64,
+    #[serde(with = "humantime_serde", default = "defaults::message_timeout")]
+    pub message_timeout: Duration,
+    #[serde(with = "humantime_serde", default = "defaults::transaction_timeout")]
+    pub transaction_timeout: Duration,
     #[serde(default = "defaults::max_message_length")]
     pub max_message_length: usize,
     #[serde(default)]
@@ -87,16 +87,6 @@ impl Config {
 
     pub fn load_tezos_key_material(&self) -> Result<TezosKeyMaterial, anyhow::Error> {
         Ok(TezosKeyMaterial::read_key_pair(&self.tezos_account)?)
-    }
-}
-
-impl Service {
-    pub fn message_timeout(&self) -> Duration {
-        Duration::from_secs(self.message_timeout)
-    }
-
-    pub fn transaction_timeout(&self) -> Duration {
-        Duration::from_secs(self.transaction_timeout)
     }
 }
 

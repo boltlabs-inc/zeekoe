@@ -209,6 +209,12 @@ impl FromStr for Note {
     }
 }
 
+impl Default for Note {
+    fn default() -> Self {
+        Note::String(String::from(""))
+    }
+}
+
 impl Note {
     pub fn read(self, max_length: u64) -> Result<String, io::Error> {
         match self {

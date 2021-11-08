@@ -16,6 +16,7 @@ use zeekoe::{
     },
     offer_abort, proceed,
     protocol::{pay, Party::Customer},
+    timeout::WithTimeout,
 };
 
 use super::{connect, database, Command};
@@ -25,36 +26,35 @@ impl Command for Pay {
     async fn run(self, rng: StdRng, config: self::Config) -> Result<(), anyhow::Error> {
         let payment_amount = parse_payment_amount(self.pay)?;
 
-        let database = database(&config).await?;
+        let database = database(&config)
+            .await
+            .context("Failed to connect to local database")?;
 
         let (session_key, chan) = open_session(database.as_ref(), &config, &self.label).await?;
 
-        let chan = tokio::time::timeout(
-            config.approval_timeout(),
-            request_payment(&config, chan, payment_amount, self.note),
-        )
-        .await
-        .context("Payment timed out while awaiting approval")?
-        .context("Payment was not approved by the merchant")?;
+        let chan = request_payment(&config, chan, payment_amount, self.note)
+            .with_timeout(config.approval_timeout)
+            .await
+            .context("Payment timed out while awaiting approval")?
+            .context("Payment was not approved by the merchant")?;
 
         // Run the core zkAbacus.Pay protocol
         // Timeout is set to 10 messages, which includes all sent & received messages and aborts
-        let chan = tokio::time::timeout(
-            10 * config.message_timeout(),
-            zkabacus_pay(
-                rng,
-                database.as_ref(),
-                &self.label,
-                session_key,
-                chan,
-                payment_amount,
-            ),
+        let chan = zkabacus_pay(
+            rng,
+            database.as_ref(),
+            &self.label,
+            session_key,
+            chan,
+            payment_amount,
         )
+        .with_timeout(10 * config.message_timeout)
         .await
         .context("Payment timed out while updating channel status")?
         .context("Failed to complete pay protocol")?;
 
-        tokio::time::timeout(config.approval_timeout(), receive_service(chan))
+        receive_service(chan)
+            .with_timeout(config.approval_timeout)
             .await
             .context("Payment timed out when receiving service")??;
 
@@ -74,7 +74,7 @@ fn parse_payment_amount(amount: Amount) -> Result<PaymentAmount, anyhow::Error> 
     } else {
         PaymentAmount::pay_merchant
     })(minor_units.abs() as u64)
-    .context("Payment amount out of range")
+    .map_err(|e| e.into())
 }
 
 /// Set up the communication channel with the merchant.
@@ -109,7 +109,7 @@ async fn request_payment(
 ) -> Result<Chan<pay::CustomerStartPayment>, anyhow::Error> {
     // Read the contents of the note, if any
     let note = payment_note
-        .unwrap_or_else(|| zeekoe::customer::cli::Note::String(String::from("")))
+        .unwrap_or_default()
         .read(config.max_note_length)
         .context("Failed to read payment note from standard input or command line")?;
 
