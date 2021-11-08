@@ -142,11 +142,6 @@ def zkchannel_customer(*args, config, verbose, **kwargs):
         cmd.append(f"{v}")
     return run_command(cmd, verbose)
 
-def mutual_close(cust_config, channel_name, verbose):
-    info("Initiate closing on the zkchannel: %s" % channel_name)
-    cmd = [ZKCHANNEL_BIN, "customer", "--config", cust_config, "close", channel_name]
-    return run_command(cmd, verbose)
-
 def get_blockchain_level(url):
     full_url = url + "/chains/main/blocks/head/metadata"
     r = requests.get(url = full_url)
@@ -195,9 +190,6 @@ class TestScenario():
             # set path for destination db file
             new_file = os.path.join(dst, db_name)
             shutil.copyfile(file, new_file)
-
-    def mutual_close(self):
-        mutual_close(self.cust_config, self.channel_name, self.verbose)
 
     def run_command_list(self, command_list):
         for command in command_list:
@@ -256,7 +248,13 @@ class TestScenario():
                 log("Restoring customer state")
                 self.transfer_db_files(src = self.channel_path, dst = self.config_path, db_name = self.cust_db)
             elif command == "mutual_close":
-                self.mutual_close()
+                    info("Initiate mutual close on the zkchannel: %s" % self.channel_name)
+                    zkchannel_customer(
+                        "close",
+                        config=self.cust_config,
+                        channel_name=self.channel_name,
+                        verbose=self.verbose
+                        )
             elif command == "expire":
                 # TODO: Get channel_id from a channel_name
                 zkchannel_customer(
