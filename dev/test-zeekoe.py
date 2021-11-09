@@ -41,6 +41,15 @@ MERCH_SETUP = "merch-setup"
 CUST_SETUP = "cust-setup"
 SCENARIO = "scenario"
 
+ESTABLISH = "establish"
+PAY = "pay"
+PAY_ALL = "pay_all"
+MUTUAL_CLOSE = "mutual_close"
+CLOSE = "close"
+EXPIRE = "expire"
+STORE = "store"
+RESTORE = "restore"
+
 ZKCHANNEL_CUST_BIN = ["../target/debug/zkchannel", "customer"]
 ZKCHANNEL_MERCH_BIN = ["../target/debug/zkchannel", "merchant"]
 
@@ -210,7 +219,7 @@ class TestScenario():
 
     def run_command_list(self, command_list):
         for command in command_list:
-            if command == "establish":
+            if command == ESTABLISH:
                 info(f"Creating a new zkchannel: {self.channel_name}")
                 initial_deposit = "{amount} XTZ".format(amount=str(self.customer_deposit))
                 print('initial_deposit', initial_deposit)
@@ -223,7 +232,7 @@ class TestScenario():
                     deposit = initial_deposit
                     )
                     
-            elif command == "pay":
+            elif command == PAY:
                 max_pay_amount = self.balance_remaining / 2 # save money for future payments
                 pay_amount = round(random.uniform(0, max_pay_amount), 4)
                 self.balance_remaining -= pay_amount
@@ -237,7 +246,7 @@ class TestScenario():
                     verbose=self.verbose
                     )
 
-            elif command == "pay_all":
+            elif command == PAY_ALL:
                 pay_amount = self.balance_remaining
                 self.balance_remaining = 0
                 payment = "{amount} XTZ".format(amount=str(pay_amount))
@@ -250,7 +259,7 @@ class TestScenario():
                     verbose=self.verbose
                     )
 
-            elif command == "close":
+            elif command == CLOSE:
                 info("Initiate closing on the zkchannel: %s" % self.channel_name)
                 zkchannel_customer(
                     "close", 
@@ -260,18 +269,18 @@ class TestScenario():
                     verbose=self.verbose
                     )
 
-            elif command == "store":
+            elif command == STORE:
                 log("Storing customer state with remaining balance of %s" % self.balance_remaining)
                 # Create temporary directory to store revoked customer state when testing dispute scenarios
                 if not os.path.isdir(self.channel_path):
                     os.mkdir(self.channel_path)
                 self.transfer_db_files(src = self.config_path, dst = self.channel_path, db_name = self.cust_db)
 
-            elif command == "restore":
+            elif command == RESTORE:
                 log("Restoring customer state")
                 self.transfer_db_files(src = self.channel_path, dst = self.config_path, db_name = self.cust_db)
 
-            elif command == "mutual_close":
+            elif command == MUTUAL_CLOSE:
                     info("Initiate mutual close on the zkchannel: %s" % self.channel_name)
                     zkchannel_customer(
                         "close",
@@ -280,7 +289,7 @@ class TestScenario():
                         verbose=self.verbose
                         )
 
-            elif command == "expire":
+            elif command == EXPIRE:
                 channel_id = self.get_channel_id()
                 info("Initiate expiry on the channel id: %s" % channel_id)
                 zkchannel_merchant(
