@@ -10,6 +10,7 @@ use {
 };
 
 pub use supported::*;
+use zkabacus_crypto::{Error as PaymentAmountError, PaymentAmount};
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Amount {
@@ -32,6 +33,24 @@ impl FromStr for Amount {
         } else {
             Err(MoneyError::InvalidAmount)
         }
+    }
+}
+
+impl TryInto<PaymentAmount> for Amount {
+    type Error = AmountParseError;
+
+    fn try_into(self) -> Result<PaymentAmount, Self::Error> {
+        // Convert the payment amount appropriately
+        let minor_units: i64 = self
+            .try_into_minor_units()
+            .ok_or(AmountParseError::InvalidValue)?;
+
+        // Squash into PaymentAmount
+        Ok(if minor_units < 0 {
+            PaymentAmount::pay_customer(minor_units.abs() as u64)
+        } else {
+            PaymentAmount::pay_merchant(minor_units as u64)
+        }?)
     }
 }
 
@@ -97,6 +116,10 @@ pub enum AmountParseError {
     UnknownCurrency(String),
     #[error("Invalid format for currency amount")]
     InvalidFormat,
+    #[error("Payment amount invalid for currency or out of range for channel")]
+    InvalidValue,
+    #[error(transparent)]
+    InvalidPaymentAmount(#[from] PaymentAmountError),
 }
 
 // Define only the currencies supported by this application

@@ -1,4 +1,4 @@
-use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng};
+use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng, std::convert::TryInto};
 
 use zkabacus_crypto::{
     customer::{LockMessage, StartMessage},
@@ -7,7 +7,6 @@ use zkabacus_crypto::{
 
 use zeekoe::{
     abort,
-    amount::Amount,
     customer::{
         cli::{Note, Pay, Refund},
         client::SessionKey,
@@ -24,7 +23,7 @@ use super::{connect, database, Command};
 #[async_trait]
 impl Command for Pay {
     async fn run(self, rng: StdRng, config: self::Config) -> Result<(), anyhow::Error> {
-        let payment_amount = parse_payment_amount(self.pay)?;
+        let payment_amount = self.pay.try_into()?;
 
         let database = database(&config)
             .await
@@ -60,21 +59,6 @@ impl Command for Pay {
 
         Ok(())
     }
-}
-
-/// Parse the payment amount specified on the command line.
-fn parse_payment_amount(amount: Amount) -> Result<PaymentAmount, anyhow::Error> {
-    // Convert the payment amount appropriately
-    let minor_units: i64 = amount.try_into_minor_units().ok_or_else(|| {
-        anyhow::anyhow!("Payment amount invalid for currency or out of range for channel")
-    })?;
-
-    (if minor_units < 0 {
-        PaymentAmount::pay_customer
-    } else {
-        PaymentAmount::pay_merchant
-    })(minor_units.abs() as u64)
-    .map_err(|e| e.into())
 }
 
 /// Set up the communication channel with the merchant.
