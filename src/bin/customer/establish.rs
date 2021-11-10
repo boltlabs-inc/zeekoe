@@ -762,3 +762,35 @@ async fn refresh_daemon(_config: &Config) -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod test {
+
+    use super::parse_initial_balances;
+    use std::str::FromStr;
+    use zeekoe::amount::Amount;
+
+    #[test]
+    fn test_balance_parser() {
+        // Customer version of "into_minor_units" fails (e.g. too many decimal places)
+        let bad_amount = Amount::from_str("1.55555555 XTZ").unwrap();
+        assert!(parse_initial_balances(bad_amount, None).is_err());
+
+        // Customer version of "to_customer_balance" fails (e.g. bigger than i64_MAX)
+        let bad_amount = Amount::from_str("9223372036854775810 XTZ");
+        assert!(bad_amount.is_err() || parse_initial_balances(bad_amount.unwrap(), None).is_err());
+
+        // Merchant version of "into_minor_units" fails (e.g. too many decimal places)
+        let bad_amount = Amount::from_str("1.55555555 XTZ").unwrap();
+        let customer_balance = Amount::from_str("1.5 XTZ").unwrap();
+        assert!(parse_initial_balances(customer_balance, Some(bad_amount)).is_err());
+
+        // Merchant version of "to_customer_balance" fails (e.g. bigger than i64_MAX)
+        let bad_amount = Amount::from_str("9223372036854775810 XTZ");
+        let customer_balance = Amount::from_str("1.5 XTZ").unwrap();
+        assert!(
+            bad_amount.is_err()
+                || parse_initial_balances(customer_balance, Some(bad_amount.unwrap())).is_err()
+        );
+    }
+}

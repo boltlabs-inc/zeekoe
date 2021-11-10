@@ -60,9 +60,11 @@ impl Command for Run {
     async fn run(self, config: Config) -> Result<(), anyhow::Error> {
         // Either initialize the merchant's config afresh, or get existing config if it exists
         let zkabacus_config = database(&config)
-            .await?
+            .await
+            .context("Failed to connect to merchant database")?
             .fetch_or_create_config(&mut StdRng::from_entropy()) // TODO: allow determinism
-            .await?;
+            .await
+            .context("Failed to create or retrieve cryptography configuration")?;
 
         // Share the configuration between all server threads
         let zkabacus_config = Arc::new(zkabacus_config);
