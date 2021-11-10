@@ -2487,9 +2487,9 @@ dependencies = [
 
 [[package]]
 name = "tinyvec"
-version = "1.5.0"
+version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f83b2a3d4d9091d0abd7eba4dc2710b1718583bd4d8992e2190720ea38f391f7"
+checksum = "2c1c1d5a42b6245520c249549ec267180beaffcc0615401ac8e31853d4b6d8d2"
 dependencies = [
  "tinyvec_macros",
 ]
@@ -3067,7 +3067,7 @@ dependencies = [
 [[package]]
 name = "zkabacus-crypto"
 version = "0.1.0"
-source = "git+https://github.com/boltlabs-inc/libzkchannels-crypto.git?branch=range-constraint-params#e13b2b7331c59ef65a31e04a3fe6f58ed13418d0"
+source = "git+https://github.com/boltlabs-inc/libzkchannels-crypto.git?branch=main#dc66beb3975e0b7cb13d19f3f1880a3406ecaf4f"
 dependencies = [
  "base64",
  "bincode",
@@ -3085,7 +3085,7 @@ dependencies = [
 [[package]]
 name = "zkchannels-crypto"
 version = "0.1.0"
-source = "git+https://github.com/boltlabs-inc/libzkchannels-crypto.git?branch=range-constraint-params#e13b2b7331c59ef65a31e04a3fe6f58ed13418d0"
+source = "git+https://github.com/boltlabs-inc/libzkchannels-crypto.git?branch=main#dc66beb3975e0b7cb13d19f3f1880a3406ecaf4f"
 dependencies = [
  "arrayvec 0.7.2",
  "bincode",

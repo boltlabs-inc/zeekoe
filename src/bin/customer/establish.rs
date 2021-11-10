@@ -408,13 +408,6 @@ async fn get_parameters(
 
     chan.close();
 
-    // TODO: ensure that:
-    // - merchant's public key (in the config) is a valid Pointcheval-Sanders public key
-    // - merchant's range proof parameters consist of valid Pointcheval-Sanders public key and
-    //   valid signatures on the correct range
-    // - merchant's commitment parameters are valid Pedersen parameters
-    // - merchant's tezos public key is valid
-
     // Check that merchant's tezos public key corresponds to the tezos account that they specified
     let merchant_account_matches = merchant_tezos_public_key.hash() == merchant_funding_address;
 
