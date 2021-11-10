@@ -21,6 +21,7 @@
 import argparse
 import glob
 import json
+from pprint import pprint
 import os
 import random
 import requests
@@ -40,6 +41,8 @@ SANDBOX = "sandbox"
 MERCH_SETUP = "merch-setup"
 CUST_SETUP = "cust-setup"
 SCENARIO = "scenario"
+TEST_ALL = "test-all"
+LIST = "list"
 
 ESTABLISH = "establish"
 PAY = "pay"
@@ -302,7 +305,7 @@ class TestScenario():
                 fatal_error(f"{command} not a recognized command.")
 
 
-COMMANDS = ["list", "merch-setup", "cust-setup", "scenario"]
+COMMANDS = [LIST, MERCH_SETUP, CUST_SETUP, SCENARIO, TEST_ALL]
 def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("command", help="", nargs="?", default="list")
@@ -383,6 +386,49 @@ def main():
                 verbose
             )
         t.run_command_list(command_list)
+
+    elif args.command == TEST_ALL:
+        info("Running all test scenarios")
+        if network == SANDBOX:
+            check_blockchain_maturity(url)
+
+        tests_to_run = []
+        # Add tests for each closing method
+        close_methods = (MUTUAL_CLOSE, CLOSE, EXPIRE)
+        for close_method in close_methods:
+            # Test each closing method for the following scenarios:
+            # no payments, one payment, multiple payments, max payment
+            tests_to_run.append([ESTABLISH, close_method])
+            tests_to_run.append([ESTABLISH, PAY, close_method])
+            tests_to_run.append([ESTABLISH, PAY, PAY, close_method])
+            tests_to_run.append([ESTABLISH, PAY_ALL, close_method])
+
+        # Dispute flow tests
+        # Trigger 'dispute' by closing on revoked balances. 
+        # Attempt closing on initial balance
+        tests_to_run.append([ESTABLISH, STORE, PAY, RESTORE, CLOSE])
+        # Attempt closing on non-initial balance
+        tests_to_run.append([ESTABLISH, PAY, STORE, PAY, RESTORE, CLOSE])
+        # Attempt closing on revoked state multiple states in the past
+        tests_to_run.append([ESTABLISH, STORE, PAY, PAY, PAY, RESTORE, CLOSE])
+        # Attempt closing on initial state after spending everything in the channel
+        tests_to_run.append([ESTABLISH, STORE, PAY_ALL, RESTORE, CLOSE])
+
+        info("The following scenarios will be tested:")
+        pprint(tests_to_run)
+        for i, test in enumerate(tests_to_run):
+            info(f"Running {test}")
+            channel_name = f"my-zkchannel-{i}"
+            t = TestScenario(
+                    cust_config, cust_db, 
+                    merch_config,
+                    config_path,
+                    channel_name, customer_deposit, 
+                    verbose
+                )
+            t.run_command_list(test)
+        info("Done!")
+
     else:
         # list the available channels
         zkchannel_customer("list", config=cust_config, verbose=verbose)
