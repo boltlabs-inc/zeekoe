@@ -7,6 +7,9 @@
 # Then setup the customer's sandbox config and start the chain watcher, run the following:
 # $: python3 test-zeekoe.py cust-setup --url "http://localhost:20000" -v
 # 
+# To run all the scenario tests, run:
+# $: python3 test-zeekoe.py test-all
+# 
 # Then test the life cycle of a few channels (ideally in parallel): establish a channel, make a payment and run cust close
 # $: python3 test-zeekoe.py scenario --channel 1 -v --command-list establish pay pay pay_all close
 #
