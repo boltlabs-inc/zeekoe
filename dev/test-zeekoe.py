@@ -108,19 +108,21 @@ confirmation_depth = {confirmation_depth}
 
 def run_command(cmd, verbose):
     process = subprocess.Popen(cmd, start_new_session=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    output_text=""
     while True:
         try:
             output = process.stdout.readline()
             if process.poll() is not None:
                 break
             if output:
-                log("-> %s" % output.strip().decode('utf-8'), verbose)
+                output_text = output.strip().decode('utf-8')
+                log("-> %s" % output_text, verbose)
         except KeyboardInterrupt:
             process.terminate()
     rc = process.poll()
     error = process.stderr.readline()
     log("-> %s" % error.strip().decode('utf-8'), verbose)
-    return rc
+    return output_text, rc
 
 def zkchannel_merchant(*args, config, verbose, **kwargs):
     cmd=[]
@@ -190,6 +192,21 @@ class TestScenario():
             # set path for destination db file
             new_file = os.path.join(dst, db_name)
             shutil.copyfile(file, new_file)
+
+    def get_channel_id(self):
+        # Load the customer db in json format
+        db_data, _ = zkchannel_customer(
+            "list", 
+            "--json",
+            config=self.cust_config, 
+            verbose=self.verbose
+            )
+        d = json.loads(db_data)
+        for i in d:
+            if i['label'] == self.channel_name:
+                channel_id = i['channel_id']
+                break
+        return channel_id
 
     def run_command_list(self, command_list):
         for command in command_list:
@@ -264,14 +281,7 @@ class TestScenario():
                         )
 
             elif command == "expire":
-                # TODO: Get channel_id from a channel_name
-                zkchannel_customer(
-                    "list", 
-                    config=self.cust_config, 
-                    verbose=self.verbose
-                    )
-                channel_id = input("Enter the channel_id to be expired\n")
-
+                channel_id = self.get_channel_id()
                 info("Initiate expiry on the channel id: %s" % channel_id)
                 zkchannel_merchant(
                     "close", 
