@@ -7,11 +7,13 @@ use zeekoe::{
     abort,
     merchant::{
         cli,
+        config::Service,
         database::{Error, QueryMerchant, QueryMerchantExt},
         Chan, Config,
     },
     offer_abort, proceed,
     protocol::{self, close, ChannelStatus, Party::Merchant},
+    timeout::WithTimeout,
 };
 
 use zkabacus_crypto::{
@@ -25,6 +27,7 @@ impl Close {
     pub async fn run(
         &self,
         config: &Config,
+        service: &Service,
         merchant_config: &MerchantConfig,
         chan: Chan<protocol::Close>,
     ) -> Result<(), anyhow::Error> {
@@ -32,7 +35,9 @@ impl Close {
 
         // Run zkAbacus close and update channel status to PendingClose
         let (chan, close_state) = zkabacus_close(merchant_config, database.as_ref(), chan)
+            .with_timeout(3 * service.message_timeout)
             .await
+            .context("Mutual close timed out while preparing to close")?
             .context("Mutual close failed")?;
 
         // Get contract ID for this channel
@@ -58,10 +63,15 @@ impl Close {
             .context("Failed to send mutual close authorization signature")?;
 
         // Give the customer the opportunity to reject an invalid authorization signature
-        offer_abort!(in chan as Merchant);
-
-        // Close the dialectic channel
-        chan.close();
+        // This tiny inline function is here so we can use the `with_timeout` API
+        async {
+            offer_abort!(in chan as Merchant);
+            chan.close();
+            Ok(())
+        }
+        .with_timeout(service.verification_timeout)
+        .await
+        .context("Mutual close timed out while waiting for signature verification")??;
 
         // Wait for the contract to be closed on chain
         tezos_client

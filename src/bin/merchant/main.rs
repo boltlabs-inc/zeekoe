@@ -139,6 +139,7 @@ impl Command for Run {
                                 ).await?,
                                 3 => Close.run(
                                     &config,
+                                    &service,
                                     &zkabacus_config,
                                     chan,
                                 ).await?,

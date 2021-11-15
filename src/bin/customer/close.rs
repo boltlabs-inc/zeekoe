@@ -22,6 +22,7 @@ use zeekoe::{
     },
     offer_abort, proceed,
     protocol::{close, Party::Customer},
+    timeout::WithTimeout,
 };
 use zkabacus_crypto::{
     customer::ClosingMessage, ChannelId, CloseState, CloseStateSignature, CustomerBalance,
@@ -411,19 +412,23 @@ async fn mutual_close(
         &config,
         &channel_details.address,
     )
+    .with_timeout(5 * config.message_timeout)
     .await
-    .context("zkAbacus close failed.")?;
+    .context("Mutual close timed out while preparing to close")?
+    .context("zkAbacus close failed")?;
 
     // Receive an authorization signature from merchant under the merchant's EdDSA Tezos key
     let (authorization_signature, chan) = chan
         .recv()
+        .with_timeout(config.message_timeout)
         .await
-        .context("Failed to receive authorization signature from the merchant.")?;
+        .context("Mutual close timed out while waiting for authorization signature")?
+        .context("Failed to receive authorization signature from the merchant")?;
 
     // Verify the authorization siganture under the merchant's EdDSA Tezos key
     let tezos_client = load_tezos_client(&config, &close.label, database.as_ref()).await?;
     let merchant_tezos_public_key = channel_details.contract_details.merchant_tezos_public_key;
-    let verification_result = tezos_client
+    match tezos_client
         .verify_authorization_signature(
             close_state.channel_id(),
             &merchant_tezos_public_key,
@@ -431,10 +436,8 @@ async fn mutual_close(
             close_state.merchant_balance(),
             &authorization_signature,
         )
-        .await;
-
-    // If authorization signature is invalid, abort!()
-    match verification_result {
+        .await
+    {
         Ok(()) => {
             // Close the dialectic channel...
             proceed!(in chan);
