@@ -7,6 +7,9 @@
 # Then setup the customer's sandbox config and start the chain watcher, run the following:
 # $: python3 test-zeekoe.py cust-setup --url "http://localhost:20000" -v
 # 
+# To run all the scenario tests, run:
+# $: python3 test-zeekoe.py test-all
+# 
 # Then test the life cycle of a few channels (ideally in parallel): establish a channel, make a payment and run cust close
 # $: python3 test-zeekoe.py scenario --channel 1 -v --command-list establish pay pay pay_all close
 #
@@ -21,6 +24,7 @@
 import argparse
 import glob
 import json
+from pprint import pprint
 import os
 import random
 import requests
@@ -40,6 +44,17 @@ SANDBOX = "sandbox"
 MERCH_SETUP = "merch-setup"
 CUST_SETUP = "cust-setup"
 SCENARIO = "scenario"
+TEST_ALL = "test-all"
+LIST = "list"
+
+ESTABLISH = "establish"
+PAY = "pay"
+PAY_ALL = "pay_all"
+MUTUAL_CLOSE = "mutual_close"
+CLOSE = "close"
+EXPIRE = "expire"
+STORE = "store"
+RESTORE = "restore"
 
 ZKCHANNEL_CUST_BIN = ["../target/debug/zkchannel", "customer"]
 ZKCHANNEL_MERCH_BIN = ["../target/debug/zkchannel", "merchant"]
@@ -210,7 +225,7 @@ class TestScenario():
 
     def run_command_list(self, command_list):
         for command in command_list:
-            if command == "establish":
+            if command == ESTABLISH:
                 info(f"Creating a new zkchannel: {self.channel_name}")
                 initial_deposit = "{amount} XTZ".format(amount=str(self.customer_deposit))
                 print('initial_deposit', initial_deposit)
@@ -223,7 +238,7 @@ class TestScenario():
                     deposit = initial_deposit
                     )
                     
-            elif command == "pay":
+            elif command == PAY:
                 max_pay_amount = self.balance_remaining / 2 # save money for future payments
                 pay_amount = round(random.uniform(0, max_pay_amount), 4)
                 self.balance_remaining -= pay_amount
@@ -237,7 +252,7 @@ class TestScenario():
                     verbose=self.verbose
                     )
 
-            elif command == "pay_all":
+            elif command == PAY_ALL:
                 pay_amount = self.balance_remaining
                 self.balance_remaining = 0
                 payment = "{amount} XTZ".format(amount=str(pay_amount))
@@ -250,7 +265,7 @@ class TestScenario():
                     verbose=self.verbose
                     )
 
-            elif command == "close":
+            elif command == CLOSE:
                 info("Initiate closing on the zkchannel: %s" % self.channel_name)
                 zkchannel_customer(
                     "close", 
@@ -260,18 +275,18 @@ class TestScenario():
                     verbose=self.verbose
                     )
 
-            elif command == "store":
+            elif command == STORE:
                 log("Storing customer state with remaining balance of %s" % self.balance_remaining)
                 # Create temporary directory to store revoked customer state when testing dispute scenarios
                 if not os.path.isdir(self.channel_path):
                     os.mkdir(self.channel_path)
                 self.transfer_db_files(src = self.config_path, dst = self.channel_path, db_name = self.cust_db)
 
-            elif command == "restore":
+            elif command == RESTORE:
                 log("Restoring customer state")
                 self.transfer_db_files(src = self.channel_path, dst = self.config_path, db_name = self.cust_db)
 
-            elif command == "mutual_close":
+            elif command == MUTUAL_CLOSE:
                     info("Initiate mutual close on the zkchannel: %s" % self.channel_name)
                     zkchannel_customer(
                         "close",
@@ -280,7 +295,7 @@ class TestScenario():
                         verbose=self.verbose
                         )
 
-            elif command == "expire":
+            elif command == EXPIRE:
                 channel_id = self.get_channel_id()
                 info("Initiate expiry on the channel id: %s" % channel_id)
                 zkchannel_merchant(
@@ -293,7 +308,7 @@ class TestScenario():
                 fatal_error(f"{command} not a recognized command.")
 
 
-COMMANDS = ["list", "merch-setup", "cust-setup", "scenario"]
+COMMANDS = [LIST, MERCH_SETUP, CUST_SETUP, SCENARIO, TEST_ALL]
 def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("command", help="", nargs="?", default="list")
@@ -374,6 +389,49 @@ def main():
                 verbose
             )
         t.run_command_list(command_list)
+
+    elif args.command == TEST_ALL:
+        info("Running all test scenarios")
+        if network == SANDBOX:
+            check_blockchain_maturity(url)
+
+        tests_to_run = []
+        # Add tests for each closing method
+        close_methods = (MUTUAL_CLOSE, CLOSE, EXPIRE)
+        for close_method in close_methods:
+            # Test each closing method for the following scenarios:
+            # no payments, one payment, multiple payments, max payment
+            tests_to_run.append([ESTABLISH, close_method])
+            tests_to_run.append([ESTABLISH, PAY, close_method])
+            tests_to_run.append([ESTABLISH, PAY, PAY, close_method])
+            tests_to_run.append([ESTABLISH, PAY_ALL, close_method])
+
+        # Dispute flow tests
+        # Trigger 'dispute' by closing on revoked balances. 
+        # Attempt closing on initial balance
+        tests_to_run.append([ESTABLISH, STORE, PAY, RESTORE, CLOSE])
+        # Attempt closing on non-initial balance
+        tests_to_run.append([ESTABLISH, PAY, STORE, PAY, RESTORE, CLOSE])
+        # Attempt closing on revoked state multiple states in the past
+        tests_to_run.append([ESTABLISH, STORE, PAY, PAY, PAY, RESTORE, CLOSE])
+        # Attempt closing on initial state after spending everything in the channel
+        tests_to_run.append([ESTABLISH, STORE, PAY_ALL, RESTORE, CLOSE])
+
+        info("The following scenarios will be tested:")
+        pprint(tests_to_run)
+        for i, test in enumerate(tests_to_run):
+            info(f"Running {test}")
+            channel_name = f"my-zkchannel-{i}"
+            t = TestScenario(
+                    cust_config, cust_db, 
+                    merch_config,
+                    config_path,
+                    channel_name, customer_deposit, 
+                    verbose
+                )
+            t.run_command_list(test)
+        info("Done!")
+
     else:
         # list the available channels
         zkchannel_customer("list", config=cust_config, verbose=verbose)
