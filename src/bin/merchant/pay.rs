@@ -148,30 +148,27 @@ async fn zkabacus_pay(
             // Offer the customer the choice of whether to continue after receiving the signature
             offer_abort!(in chan as Merchant);
 
-            // Receive the customer's revealed lock, secret, and blinding factor
-            let (revocation_lock, chan) = chan
+            // Receive the customer's revealed revocation pair and blinding factor
+            let (revocation_pair, chan) = chan
                 .recv()
                 .await
-                .context("Failed to send revocation lock")?;
-            let (revocation_secret, chan) = chan
-                .recv()
-                .await
-                .context("Failed to send revocation secret")?;
+                .context("Failed to send revocation pair")?;
+
             let (revocation_blinding_factor, chan) = chan
                 .recv()
                 .await
                 .context("Failed to send revocation blinding factor")?;
 
             // Validate the received information
-            if let Ok(pay_token) = unrevoked.complete_payment(
-                &mut rng,
-                &revocation_lock,
-                &revocation_secret,
-                &revocation_blinding_factor,
-            ) {
+            if let Ok(pay_token) =
+                unrevoked.complete_payment(&mut rng, &revocation_pair, &revocation_blinding_factor)
+            {
                 // Check to see if the revocation lock was already present in the database
                 let prior_revocations = database
-                    .insert_revocation(&revocation_lock, Some(&revocation_secret))
+                    .insert_revocation(
+                        &revocation_pair.revocation_lock(),
+                        Some(&revocation_pair.revocation_secret()),
+                    )
                     .await
                     .context("Failed to insert revocation lock/secret pair in database")?;
 

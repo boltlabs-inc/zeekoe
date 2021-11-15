@@ -176,12 +176,9 @@ async fn zkabacus_pay(
 
         // If the closing signature verifies, reveal our lock, secret, and blinding factor
         let chan = chan
-            .send(lock_message.revocation_lock)
+            .send(lock_message.revocation_pair)
             .await
-            .context("Failed to send revocation lock")?
-            .send(lock_message.revocation_secret)
-            .await
-            .context("Failed to send revocation secret")?
+            .context("Failed to send revocation pair")?
             .send(lock_message.revocation_lock_blinding_factor)
             .await
             .context("Failed to send revocation lock blinding factor")?;

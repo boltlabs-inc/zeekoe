@@ -660,22 +660,11 @@ mod tests {
     use crate::database::SqlitePoolOptions;
     use {rand::SeedableRng, strum::IntoEnumIterator, tezedge::OriginatedAddress};
 
-    use zkabacus_crypto::internal::{
-        test_new_nonce, test_new_revocation_lock, test_new_revocation_secret, test_verify_pair,
-    };
-    use zkabacus_crypto::{CustomerRandomness, MerchantRandomness, Verification};
+    use zkabacus_crypto::internal::{test_new_nonce, test_new_revocation_pair};
+    use zkabacus_crypto::{CustomerRandomness, MerchantRandomness};
 
     // The default dummy originated contract address, per https://tezos.stackexchange.com/a/2270
     const DEFAULT_ADDR: &str = "KT1Mjjcb6tmSsLm7Cb3DSQszePjfchPM4Uxm";
-
-    fn assert_valid_pair(lock: &RevocationLock, secret: &RevocationSecret) {
-        assert!(
-            matches!(test_verify_pair(lock, secret), Verification::Verified),
-            "revocation lock {:?} unlocks with {:?}",
-            lock,
-            secret
-        );
-    }
 
     async fn create_migrated_db() -> Result<SqlitePool> {
         let conn = SqlitePoolOptions::new()
@@ -711,8 +700,9 @@ mod tests {
         let conn = create_migrated_db().await?;
         let mut rng = rand::thread_rng();
 
-        let secret1 = test_new_revocation_secret(&mut rng);
-        let lock1 = test_new_revocation_lock(&secret1);
+        let pair1 = test_new_revocation_pair(&mut rng);
+        let secret1 = pair1.revocation_secret();
+        let lock1 = pair1.revocation_lock();
 
         // Each time we insert a lock (& optional secret), it returns all previously
         // stored pairs for that lock.
@@ -724,12 +714,12 @@ mod tests {
         let result = conn.insert_revocation(&lock1, None).await?;
         assert!(result[0].is_none());
         assert!(result[1].is_some());
-        assert_valid_pair(&lock1, result[1].as_ref().unwrap());
         assert_eq!(result.len(), 2);
 
         // Inserting a previously-unseen lock should not return any old pairs.
-        let secret2 = test_new_revocation_secret(&mut rng);
-        let lock2 = test_new_revocation_lock(&secret2);
+        let pair2 = test_new_revocation_pair(&mut rng);
+        let secret2 = pair2.revocation_secret();
+        let lock2 = pair2.revocation_lock();
         let result = conn.insert_revocation(&lock2, Some(&secret2)).await?;
         assert_eq!(result.len(), 0);
 
