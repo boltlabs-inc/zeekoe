@@ -56,7 +56,7 @@ To build the project, you will need:
   $ rustup override set nightly-2021-08-31
   ```
 - A recent version of Python. This project has been tested with Python 3.8.10. 
-- Cryptographic and system dependencies for our Tezos clients:
+- The PyTezos library and its dependencies:
   ```
   $ sudo apt install libsodium-dev libsecp256k1-dev libgmp-dev libudev-dev
   ```
@@ -65,13 +65,11 @@ To build the project, you will need:
   $ brew tap cuber/homebrew-libsecp256k1
   $ brew install libsodium libsecp256k1 gmp
   ```
-  Please see the installation guides for [PyTezos](https://pytezos.org/quick_start.html) and 
-  [tezedge-client](https://github.com/boltlabs-inc/tezedge-client/tree/develop) for further details.
-
-- The PyTezos library:
+  Finally, to install PyTezos itself:
   ```
   $ pip install pytezos
   ```
+  Please see the installation guides for [PyTezos](https://pytezos.org/quick_start.html) for further details.
 - This repository, installed with submodules:
   ```
   $ git clone git@github.com:boltlabs-inc/zeekoe.git --recurse-submodules
