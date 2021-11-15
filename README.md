@@ -60,10 +60,14 @@ To build the project, you will need:
   ```
   $ sudo apt install libsodium-dev libsecp256k1-dev libgmp-dev libudev-dev
   ```
-  If you are using a non-Linux machine, please see the installation guides for 
-  [PyTezos](https://pytezos.org/quick_start.html) and 
-  [tezedge-client](https://github.com/boltlabs-inc/tezedge-client/tree/develop)
-  for further details.
+  If you're on OSX, install dependencies via [Homebrew](https://brew.sh/):
+  ```
+  $ brew tap cuber/homebrew-libsecp256k1
+  $ brew install libsodium libsecp256k1 gmp
+  ```
+  Please see the installation guides for [PyTezos](https://pytezos.org/quick_start.html) and 
+  [tezedge-client](https://github.com/boltlabs-inc/tezedge-client/tree/develop) for further details.
+
 - The PyTezos library:
   ```
   $ pip install pytezos
