@@ -704,7 +704,7 @@ pub struct MerchantDisputeError(#[from] JoinError);
 pub struct CustomerClaimError(#[from] JoinError);
 /// Merchant authorization signature for a mutual close operation.
 ///
-/// The internals of this type are a dupe for the tezedge [`OperationSigantureInfo`] type.
+/// The internals of this type are a dupe for the tezedge `OperationSignatureInfo` type.
 /// We're not reusing that type because it isn't serializable, and because we may want to
 /// change the internal storage here.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1013,8 +1013,8 @@ impl TezosClient {
     /// Add merchant funding via the `addFunding` entrypoint to the given [`ContractId`],
     /// according to the [`MerchantFundingInformation`]
     ///
-    /// This should only be called if [`verify_origination()`] and [`verify_customer_funding()`]
-    /// both returned successfully.
+    /// This should only be called if [`TezosClient::verify_origination()`] and
+    /// [`TezosClient::verify_customer_funding()`] both returned successfully.
     ///
     /// This function will wait until the merchant funding operation is confirmed at depth. It
     /// is called by the merchant.
@@ -1130,7 +1130,7 @@ impl TezosClient {
     ///
     /// This operation is invalid if:
     /// - the contract status is not EXPIRY
-    /// - the [`TezosKeyPair`] does not match the `merch_addr` field in the specified
+    /// - the [`TezosKeyMaterial`] does not match the `merch_addr` field in the specified
     ///   contract
     pub fn merch_claim(
         &self,
@@ -1167,7 +1167,7 @@ impl TezosClient {
     ///
     /// This operation is invalid if:
     /// - the contract status is neither OPEN nor EXPIRY
-    /// - the [`TezosKeyPair`] does not match the `cust_addr` field in the specified contract
+    /// - the [`TezosKeyMaterial`] does not match the `cust_addr` field in the specified contract
     /// - the signature in the [`ClosingMessage`] is not a well-formed signature
     /// - the signature in the [`ClosingMessage`] is not a valid signature under the merchant
     ///   public key on the expected tuple
@@ -1209,7 +1209,7 @@ impl TezosClient {
         }
     }
 
-    /// Dispute balances posted by a customer (via [`cust_close()`]) by posting a revocation
+    /// Dispute balances posted by a customer (via [`TezosClient::cust_close()`]) by posting a revocation
     /// secret that matches the posted revocation lock. On successful completion, this call
     /// will transfer the posted customer balance to the merchant.
     ///
@@ -1217,7 +1217,7 @@ impl TezosClient {
     ///
     /// This operation is invalid if:
     /// - the contract status is not CUST_CLOSE
-    /// - the [`TezosKeyPair`] does not match the `merch_addr` field in the specified contract
+    /// - the [`TezosKeyMaterial`] does not match the `merch_addr` field in the specified contract
     /// - the [`RevocationSecret`] does not hash to the `rev_lock` field in the specified contract
     pub fn merch_dispute(
         &self,
@@ -1249,7 +1249,7 @@ impl TezosClient {
         }
     }
 
-    /// Claim customer funds (posted via [`cust_close()`]) after the timeout period has elapsed
+    /// Claim customer funds (posted via [`TezosClient::cust_close()`]) after the timeout period has elapsed
     /// via the `custClaim` entrypoint.
     ///
     /// This function will wait until the timeout period from the `custClose` entrypoint call has
@@ -1258,7 +1258,7 @@ impl TezosClient {
     ///
     /// This operation is invalid if:
     /// - the contract status is not CUST_CLOSE
-    /// - the [`TezosKeyPair`] does not match the `cust_addr` field in the specified contract
+    /// - the [`TezosKeyMaterial`] does not match the `cust_addr` field in the specified contract
     pub fn cust_claim(
         &self,
     ) -> impl Future<Output = Result<OperationStatus, CustomerClaimError>> + Send + 'static {
@@ -1373,7 +1373,7 @@ impl TezosClient {
     ///
     /// This operation is invalid if:
     /// - the contract status is not OPEN
-    /// - the [`TezosKeyPair`] does not match the `cust_addr` field in the specified contract
+    /// - the [`TezosKeyMaterial`] does not match the `cust_addr` field in the specified contract
     /// - the `authorization_signature` is not a valid signature under the merchant public key
     ///   on the expected tuple
     pub fn mutual_close(
