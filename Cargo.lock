@@ -3067,7 +3067,7 @@ dependencies = [
 [[package]]
 name = "zkabacus-crypto"
 version = "0.1.0"
-source = "git+https://github.com/boltlabs-inc/libzkchannels-crypto.git?branch=main#dc66beb3975e0b7cb13d19f3f1880a3406ecaf4f"
+source = "git+https://github.com/boltlabs-inc/libzkchannels-crypto.git?branch=add-verified-revocation-pair#3b4b19fde4145b966f30715bc91a0da85914b4d1"
 dependencies = [
  "base64",
  "bincode",
@@ -3085,7 +3085,7 @@ dependencies = [
 [[package]]
 name = "zkchannels-crypto"
 version = "0.1.0"
-source = "git+https://github.com/boltlabs-inc/libzkchannels-crypto.git?branch=main#dc66beb3975e0b7cb13d19f3f1880a3406ecaf4f"
+source = "git+https://github.com/boltlabs-inc/libzkchannels-crypto.git?branch=add-verified-revocation-pair#3b4b19fde4145b966f30715bc91a0da85914b4d1"
 dependencies = [
  "arrayvec 0.7.2",
  "bincode",
