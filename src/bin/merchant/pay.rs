@@ -165,10 +165,7 @@ async fn zkabacus_pay(
             {
                 // Check to see if the revocation lock was already present in the database
                 let prior_revocations = database
-                    .insert_revocation(
-                        &revocation_pair.revocation_lock(),
-                        Some(&revocation_pair.revocation_secret()),
-                    )
+                    .insert_revocation_pair(&revocation_pair)
                     .await
                     .context("Failed to insert revocation lock/secret pair in database")?;
 
