@@ -251,6 +251,14 @@ $ ./target/debug/zkchannel customer --config "./dev/Customer.toml" list
 
 The merchant server and customer chain watcher may now be stopped by pressing ^C.
 
+## Troubleshooting
+- When using the sandbox, you will not be able to establish a channel until at least 60 blocks 
+have been posted. With the default configuration, this will take approximately 5 minutes.
+
+- The current Tezos client integration does not support multiple operations posted by a single
+user in a single block. This limits the parallelization of establish and close operations. See
+[issue #212](https://github.com/boltlabs-inc/zeekoe/issues/212) for status updates on this.
+
 ## Development
 
 While developing on the project, here are some more things you may wish to know:
