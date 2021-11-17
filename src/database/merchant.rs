@@ -217,7 +217,7 @@ impl QueryMerchant for SqlitePool {
         revocation: &RevocationLock,
     ) -> Result<Vec<Option<RevocationSecret>>> {
         // Call insert_revocation with None
-        insert_revocation(&self, &revocation, None).await
+        insert_revocation(self, revocation, None).await
     }
 
     async fn insert_revocation_pair(
@@ -226,7 +226,7 @@ impl QueryMerchant for SqlitePool {
     ) -> Result<Vec<Option<RevocationSecret>>> {
         // Call insert_revocation with Some secret pulled out of the pair
         insert_revocation(
-            &self,
+            self,
             &revocation_pair.revocation_lock(),
             Some(&revocation_pair.revocation_secret()),
         )
