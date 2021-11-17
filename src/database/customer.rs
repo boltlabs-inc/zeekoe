@@ -153,11 +153,11 @@ pub trait QueryCustomer: Send + Sync {
     /// Perform all the DB migrations defined in src/database/migrations/customer/*.sql
     async fn migrate(&self) -> Result<()>;
 
-    /// Insert a newly initialized [`Requested`] channel into the customer database, associated with
-    /// a unique name and [`ZkChannelAddress`].
+    /// Insert a newly initialized [`zkabacus_crypto::customer::Requested`] channel into the
+    /// customer database, associated with a unique name and [`ZkChannelAddress`].
     ///
-    /// If the [`Requested`] could not be inserted, it is returned along with the error that
-    /// prevented its insertion.
+    /// If the [`zkabacus_crypto::customer::Requested`] could not be inserted, it is returned along
+    /// with the error that prevented its insertion.
     async fn new_channel(
         &self,
         channel_name: &ChannelName,
@@ -228,20 +228,20 @@ pub trait QueryCustomer: Send + Sync {
     /// details about the originated contract, and any money that has been paid out.
     async fn get_channel(&self, channel_name: &ChannelName) -> Result<ChannelDetails>;
 
-    /// **Don't call this function directly:** instead call [`QueryCustomer::with_channel_state`]
-    /// or [`QueryCustomer::mark_closing_channel`].
-    /// This method retrieves the current state from the database, retrieves an updated state by
-    /// executing `with_state` on the current state, and updates the database.
-    /// This method uses `Box<dyn Any + Send>` to avoid the use of generic parameters,
+    /// **Don't call this function directly:** instead call
+    /// [`QueryCustomerExt::with_channel_state`] or [`QueryCustomerExt::with_closeable_channel`].  This
+    /// method retrieves the current state from the database, retrieves an updated state by executing
+    /// `with_state` on the current state, and updates the database.  This method uses `Box<dyn Any +
+    /// Send>` to avoid the use of generic parameters,
     /// which is what allows the trait to be object safe.
     ///
     /// # Panics
     ///
-    /// The corresponding method [`QueryCustomer::with_channel_state`] and
-    /// [`QueryCustomer::mark_closing_channel`] will panic if the boxed
-    /// [`Any`] types returned by this method do not match that function's type parameters.
-    /// It is expected that any implementation of this function merely forwards these values to
-    /// the returned `Result<Box<dyn Any>, Box<dyn Any>>`.
+    /// The corresponding method [`QueryCustomerExt::with_channel_state`] and
+    /// [`QueryCustomerExt::with_closeable_channel`] will panic if the boxed [`Any`] types returned by this
+    /// method do not match that function's type parameters.  It is expected that any implementation of
+    /// this function merely forwards these values to the returned `Result<Box<dyn Any>, Box<dyn
+    /// Any>>`.
     async fn with_channel_state_erased<'a>(
         &'a self,
         channel_name: &ChannelName,

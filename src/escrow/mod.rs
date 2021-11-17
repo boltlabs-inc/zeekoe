@@ -90,7 +90,7 @@ pub mod types {
         /// Extract a `TezosKeyPair` from a file.
         ///
         /// The file should use the key file json formatting that is also used by faucet:
-        /// https://faucet.tzalpha.net/
+        /// <https://faucet.tzalpha.net/>
         pub fn read_key_pair(key_specifier: &KeySpecifier) -> Result<TezosKeyMaterial, Error> {
             let path = key_specifier.into_python_type();
 

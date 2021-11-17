@@ -30,7 +30,7 @@ mod watch;
 
 /// A single customer-side command, parameterized by the currently loaded configuration.
 ///
-/// All subcommands of [`Customer`] should implement this, except [`Configure`], which does not need
+/// All subcommands of [`cli::Customer`] should implement this, except [`Configure`], which does not need
 /// to start with a valid loaded configuration.
 #[async_trait]
 pub trait Command {
