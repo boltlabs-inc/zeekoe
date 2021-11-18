@@ -4,13 +4,18 @@ use {
     std::{
         convert::TryInto,
         fmt::{self, Display},
+        num::TryFromIntError,
         str::FromStr,
     },
     thiserror::Error,
 };
 
 pub use supported::*;
-use zkabacus_crypto::{Error as PaymentAmountError, PaymentAmount};
+use zkabacus_crypto::{
+    CustomerBalance, Error as PaymentAmountError, MerchantBalance, PaymentAmount,
+};
+
+use crate::protocol::Party;
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Amount {
@@ -52,6 +57,34 @@ impl TryInto<PaymentAmount> for Amount {
             PaymentAmount::pay_merchant(minor_units as u64)
         }?)
     }
+}
+
+macro_rules! try_into_balance {
+    ($balance_type:ident, $party:ident) => {
+        impl TryInto<$balance_type> for Amount {
+            type Error = BalanceConversionError;
+
+            fn try_into(self) -> Result<$balance_type, Self::Error> {
+                $balance_type::try_new(
+                    self.try_into_minor_units()
+                        .ok_or_else(|| Self::Error::InvalidDeposit(Party::Customer))?
+                        .try_into()?,
+                )
+                .map_err(|_| Self::Error::InvalidDeposit(Party::$party))
+            }
+        }
+    };
+}
+
+try_into_balance!(CustomerBalance, Customer);
+try_into_balance!(MerchantBalance, Merchant);
+
+#[derive(Debug, Error)]
+pub enum BalanceConversionError {
+    #[error("Could not convert {0} deposit into a valid balance")]
+    InvalidDeposit(Party),
+    #[error(transparent)]
+    BalanceTooLarge(#[from] TryFromIntError),
 }
 
 impl Display for Amount {
@@ -155,5 +188,31 @@ mod test {
     fn round_trip_minor_units_tezos() {
         let microtez = Amount::from_minor_units_of_currency(1, XTZ);
         assert_eq!(1, microtez.try_into_minor_units().unwrap());
+    }
+
+    #[test]
+    fn test_balance_parsing() {
+        // Parsing fails with too many decimal places
+        let too_many_decimals_amount = Amount::from_str("1.55555555 XTZ").unwrap();
+
+        let customer_balance: Result<CustomerBalance, _> =
+            too_many_decimals_amount.clone().try_into();
+        assert!(customer_balance.is_err());
+
+        let merchant_balance: Result<MerchantBalance, _> = too_many_decimals_amount.try_into();
+        assert!(merchant_balance.is_err());
+
+        // Pasring fails on too-large numbers
+        let bad_amount = Amount::from_str("9223372036854775810 XTZ");
+        assert!(
+            bad_amount.is_err()
+                || TryInto::<CustomerBalance>::try_into(bad_amount.unwrap()).is_err()
+        );
+
+        let bad_amount = Amount::from_str("9223372036854775810 XTZ");
+        assert!(
+            bad_amount.is_err()
+                || TryInto::<MerchantBalance>::try_into(bad_amount.unwrap()).is_err()
+        );
     }
 }

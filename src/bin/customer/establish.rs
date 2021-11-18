@@ -16,7 +16,6 @@ use zkabacus_crypto::{
 
 use zeekoe::{
     abort,
-    amount::Amount,
     customer::{
         cli::{Establish, Note},
         client::ZkChannelAddress,
@@ -29,10 +28,7 @@ use zeekoe::{
         types::{ContractDetails, KeyHash},
     },
     offer_abort, proceed,
-    protocol::{
-        establish,
-        Party::{Customer, Merchant},
-    },
+    protocol::{establish, Party::Customer},
     timeout::WithTimeout,
 };
 
@@ -63,8 +59,13 @@ impl Command for Establish {
             .await
             .context("Failed to connect to local database")?;
 
-        let (customer_balance, merchant_balance) =
-            parse_initial_balances(self.deposit, self.merchant_deposit)?;
+        // Format deposit amounts as the correct types
+        let customer_balance = self.deposit.try_into()?;
+
+        let merchant_balance = match self.merchant_deposit {
+            None => MerchantBalance::try_new(0)?,
+            Some(deposit) => deposit.try_into()?,
+        };
 
         // Run a **separate** session to get the merchant's public parameters
         let (zkabacus_customer_config, contract_details) =
@@ -432,7 +433,7 @@ async fn store_inactive_local(
     channel_name: Option<ChannelName>,
 ) -> Result<ChannelName, anyhow::Error> {
     // Use the specified label, or else use the `ZkChannelAddress` as a string
-    let label = channel_name.unwrap_or_else(|| ChannelName::new(format!("{}", address)));
+    let label = channel_name.unwrap_or_else(|| ChannelName::new(address.to_string()));
 
     // Try inserting the inactive state with this label
     match database
@@ -505,32 +506,6 @@ fn write_establish_json(establishment: &Establishment) -> Result<(), anyhow::Err
 
     eprintln!("Establishment data written to {:?}", &establish_json_path);
     Ok(())
-}
-
-/// Parse the [`Amount`]s passed on the command line into the `Balance` types used throughout.
-fn parse_initial_balances(
-    deposit: Amount,
-    merchant_deposit: Option<Amount>,
-) -> Result<(CustomerBalance, MerchantBalance), anyhow::Error> {
-    // Format deposit amounts as the correct types
-    let customer_balance = CustomerBalance::try_new(
-        deposit
-            .try_into_minor_units()
-            .ok_or(establish::Error::InvalidDeposit(Customer))?
-            .try_into()?,
-    )
-    .map_err(|_| establish::Error::InvalidDeposit(Customer))?;
-
-    let merchant_balance = MerchantBalance::try_new(match merchant_deposit {
-        None => 0,
-        Some(d) => d
-            .try_into_minor_units()
-            .ok_or(establish::Error::InvalidDeposit(Merchant))?
-            .try_into()?,
-    })
-    .map_err(|_| establish::Error::InvalidDeposit(Merchant))?;
-
-    Ok((customer_balance, merchant_balance))
 }
 
 /// Set up the communication channel with the merchant.
@@ -761,36 +736,4 @@ async fn refresh_daemon(_config: &Config) -> anyhow::Result<()> {
     //     .close();
 
     Ok(())
-}
-
-#[cfg(test)]
-mod test {
-
-    use super::parse_initial_balances;
-    use std::str::FromStr;
-    use zeekoe::amount::Amount;
-
-    #[test]
-    fn test_balance_parser() {
-        // Customer version of "into_minor_units" fails (e.g. too many decimal places)
-        let bad_amount = Amount::from_str("1.55555555 XTZ").unwrap();
-        assert!(parse_initial_balances(bad_amount, None).is_err());
-
-        // Customer version of "to_customer_balance" fails (e.g. bigger than i64_MAX)
-        let bad_amount = Amount::from_str("9223372036854775810 XTZ");
-        assert!(bad_amount.is_err() || parse_initial_balances(bad_amount.unwrap(), None).is_err());
-
-        // Merchant version of "into_minor_units" fails (e.g. too many decimal places)
-        let bad_amount = Amount::from_str("1.55555555 XTZ").unwrap();
-        let customer_balance = Amount::from_str("1.5 XTZ").unwrap();
-        assert!(parse_initial_balances(customer_balance, Some(bad_amount)).is_err());
-
-        // Merchant version of "to_customer_balance" fails (e.g. bigger than i64_MAX)
-        let bad_amount = Amount::from_str("9223372036854775810 XTZ");
-        let customer_balance = Amount::from_str("1.5 XTZ").unwrap();
-        assert!(
-            bad_amount.is_err()
-                || parse_initial_balances(customer_balance, Some(bad_amount.unwrap())).is_err()
-        );
-    }
 }
