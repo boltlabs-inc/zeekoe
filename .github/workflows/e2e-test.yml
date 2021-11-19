@@ -54,9 +54,6 @@ jobs:
           image: ${{ steps.tags.outputs.tagged_image }}
           docker_network: host
           run: |
-            wget https://github.com/serokell/tezos-packaging/releases/latest/download/tezos-client
-            chmod +x tezos-client
-            mv tezos-client /usr/local/bin
             tezos-client config reset
             tezos-client --endpoint http://my-sandbox:20000 bootstrapped
             tezos-client --endpoint http://my-sandbox:20000 config update
