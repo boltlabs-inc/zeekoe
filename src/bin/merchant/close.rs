@@ -7,7 +7,7 @@ use zeekoe::{
     abort,
     merchant::{
         cli,
-        database::{Error, QueryMerchant},
+        database::{Error, QueryMerchant, QueryMerchantExt},
         Chan, Config,
     },
     offer_abort, proceed,

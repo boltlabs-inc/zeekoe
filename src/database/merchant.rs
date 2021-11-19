@@ -21,16 +21,12 @@ pub trait QueryMerchant: Send + Sync {
     /// and `false` if it already exists.
     async fn insert_nonce(&self, nonce: &Nonce) -> Result<bool>;
 
-    /// Insert a revocation lock, returning all revocations that existed prior.
-    async fn insert_revocation_lock(
+    /// Insert a revocation lock and optional secret, returning all revocations
+    /// that existed prior.
+    async fn insert_revocation(
         &self,
         revocation: &RevocationLock,
-    ) -> Result<Vec<Option<RevocationSecret>>>;
-
-    /// Insert a revocation pair, returning all revocations that existed prior.
-    async fn insert_revocation_pair(
-        &self,
-        revocation_pair: &RevocationPair,
+        secret: Option<&RevocationSecret>,
     ) -> Result<Vec<Option<RevocationSecret>>>;
 
     /// Fetch a singleton merchant config, creating it if it doesn't already exist.
@@ -99,6 +95,21 @@ pub trait QueryMerchant: Send + Sync {
     async fn get_channel_details_by_prefix(&self, prefix: &str) -> Result<ChannelDetails>;
 }
 
+#[async_trait]
+pub trait QueryMerchantExt: QueryMerchant {
+    /// Insert a revocation lock, returning all revocations that existed prior.
+    async fn insert_revocation_lock(
+        &self,
+        revocation: &RevocationLock,
+    ) -> Result<Vec<Option<RevocationSecret>>>;
+
+    /// Insert a revocation pair, returning all revocations that existed prior.
+    async fn insert_revocation_pair(
+        &self,
+        revocation_pair: &RevocationPair,
+    ) -> Result<Vec<Option<RevocationSecret>>>;
+}
+
 /// An error when accessing the merchant database.
 #[derive(Debug, Error)]
 pub enum Error {
@@ -160,38 +171,6 @@ impl Default for ClosingBalances {
     }
 }
 
-async fn insert_revocation(
-    sqlite_pool: &SqlitePool,
-    lock: &RevocationLock,
-    secret: Option<&RevocationSecret>,
-) -> Result<Vec<Option<RevocationSecret>>> {
-    let mut transaction = sqlite_pool.begin().await?;
-    let existing_pairs = sqlx::query!(
-        r#"
-            SELECT secret AS "secret: RevocationSecret"
-            FROM revocations
-            WHERE lock = ?
-            "#,
-        lock,
-    )
-    .fetch_all(&mut transaction)
-    .await?
-    .into_iter()
-    .map(|r| r.secret)
-    .collect();
-
-    sqlx::query!(
-        "INSERT INTO revocations (lock, secret) VALUES (?, ?)",
-        lock,
-        secret,
-    )
-    .execute(&mut transaction)
-    .await?;
-
-    transaction.commit().await?;
-    Ok(existing_pairs)
-}
-
 #[async_trait]
 impl QueryMerchant for SqlitePool {
     async fn migrate(&self) -> Result<()> {
@@ -212,25 +191,36 @@ impl QueryMerchant for SqlitePool {
         Ok(res.rows_affected() > 0)
     }
 
-    async fn insert_revocation_lock(
+    async fn insert_revocation(
         &self,
-        revocation: &RevocationLock,
+        lock: &RevocationLock,
+        secret: Option<&RevocationSecret>,
     ) -> Result<Vec<Option<RevocationSecret>>> {
-        // Call insert_revocation with None
-        insert_revocation(self, revocation, None).await
-    }
-
-    async fn insert_revocation_pair(
-        &self,
-        revocation_pair: &RevocationPair,
-    ) -> Result<Vec<Option<RevocationSecret>>> {
-        // Call insert_revocation with Some secret pulled out of the pair
-        insert_revocation(
-            self,
-            &revocation_pair.revocation_lock(),
-            Some(&revocation_pair.revocation_secret()),
+        let mut transaction = self.begin().await?;
+        let existing_pairs = sqlx::query!(
+            r#"
+            SELECT secret AS "secret: RevocationSecret"
+            FROM revocations
+            WHERE lock = ?
+            "#,
+            lock,
         )
-        .await
+        .fetch_all(&mut transaction)
+        .await?
+        .into_iter()
+        .map(|r| r.secret)
+        .collect();
+
+        sqlx::query!(
+            "INSERT INTO revocations (lock, secret) VALUES (?, ?)",
+            lock,
+            secret,
+        )
+        .execute(&mut transaction)
+        .await?;
+
+        transaction.commit().await?;
+        Ok(existing_pairs)
     }
 
     async fn fetch_or_create_config(
@@ -676,6 +666,29 @@ impl QueryMerchant for SqlitePool {
         }
 
         Ok(details)
+    }
+}
+
+#[async_trait]
+impl<Q: QueryMerchant + ?Sized> QueryMerchantExt for Q {
+    async fn insert_revocation_lock(
+        &self,
+        revocation: &RevocationLock,
+    ) -> Result<Vec<Option<RevocationSecret>>> {
+        // Call insert_revocation with None
+        self.insert_revocation(revocation, None).await
+    }
+
+    async fn insert_revocation_pair(
+        &self,
+        revocation_pair: &RevocationPair,
+    ) -> Result<Vec<Option<RevocationSecret>>> {
+        // Call insert_revocation with Some secret pulled out of the pair
+        self.insert_revocation(
+            &revocation_pair.revocation_lock(),
+            Some(&revocation_pair.revocation_secret()),
+        )
+        .await
     }
 }
 

@@ -2,7 +2,12 @@ use {anyhow::Context, rand::rngs::StdRng, url::Url};
 
 use zeekoe::{
     abort,
-    merchant::{config::Service, database::QueryMerchant, server::SessionKey, Chan},
+    merchant::{
+        config::Service,
+        database::{QueryMerchant, QueryMerchantExt},
+        server::SessionKey,
+        Chan,
+    },
     offer_abort, proceed,
     protocol::{self, pay, Party::Merchant},
     timeout::WithTimeout,
