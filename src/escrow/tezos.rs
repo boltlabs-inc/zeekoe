@@ -419,7 +419,9 @@ fn hex_string(bytes: &[u8]) -> String {
 fn pointcheval_sanders_public_key_to_python_input(
     public_key: &zkabacus_crypto::PublicKey,
 ) -> (String, Vec<String>, String) {
-    let zkabacus_crypto::PublicKey { g2, y2s, x2, .. } = public_key;
+    let g2 = public_key.g2();
+    let y2s = public_key.y2s();
+    let x2 = public_key.x2();
     let g2 = hex_string(&g2.to_uncompressed());
     let y2s = y2s
         .iter()
