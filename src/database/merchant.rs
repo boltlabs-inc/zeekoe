@@ -21,6 +21,10 @@ pub trait QueryMerchant: Send + Sync {
     /// and `false` if it already exists.
     async fn insert_nonce(&self, nonce: &Nonce) -> Result<bool>;
 
+    /// Don't use this function! Use the more descriptive
+    /// [`QueryMerchantExt::insert_revocation_lock()`] and
+    /// [`QueryMerchantExt::insert_revocation_pair()`] functions instead!
+    ///
     /// Insert a revocation lock and optional secret, returning all revocations
     /// that existed prior.
     async fn insert_revocation(
@@ -734,7 +738,6 @@ mod tests {
     }
 
     #[tokio::test]
-    // TODO: modify test to use the two trait functions
     async fn test_insert_revocation() -> Result<()> {
         let conn = create_migrated_db().await?;
         let mut rng = rand::thread_rng();
