@@ -42,13 +42,13 @@ pub enum State {
     PendingCustomerClaim(zkabacus::ClosingMessage),
     /// Merchant posted evidence that disputes the close balances proposed by the customer.
     ///
-    /// Note: this [`ClosingMessage`](zkabcus::ClosingMessage) indicates the disputed channel
-    /// state proposed by the customer.
+    /// Note: this [`ClosingMessage`](zkabacus::ClosingMessage) indicates the
+    /// disputed channel state proposed by the customer.
     Dispute(zkabacus::ClosingMessage),
     /// Channel has been closed on chain: the total balance that can be claimed by the customer
     /// has been claimed and confirmed.
     ///
-    /// Note: this [`ClosingMessage`](zkabcus::ClosingMessage) indicates the channel state as
+    /// Note: this [`ClosingMessage`](zkabacus::ClosingMessage) indicates the channel state as
     /// proposed by the customer, which may be different from the final balances.
     Closed(zkabacus::ClosingMessage),
 }

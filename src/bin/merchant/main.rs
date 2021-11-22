@@ -48,7 +48,7 @@ const MAX_INTERVAL_SECONDS: u64 = 60;
 
 /// A single merchant-side command, parameterized by the currently loaded configuration.
 ///
-/// All subcommands of [`Merchant`] should implement this, except [`Configure`], which does not need
+/// All subcommands of [`cli::Merchant`] should implement this, except [`cli::Merchant::Configure`], which does not need
 /// to start with a valid loaded configuration.
 #[async_trait]
 pub trait Command {

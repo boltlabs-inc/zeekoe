@@ -7,7 +7,7 @@ use zeekoe::{
     abort,
     merchant::{
         cli,
-        database::{Error, QueryMerchant},
+        database::{Error, QueryMerchant, QueryMerchantExt},
         Chan, Config,
     },
     offer_abort, proceed,
@@ -108,7 +108,7 @@ pub async fn process_customer_close(
     // Save the provided revocation lock (from the entrypoint call) and retrieve any existing
     // revocation secrets associated with it.
     let possible_secrets = database
-        .insert_revocation(revocation_lock, None)
+        .insert_revocation_lock(revocation_lock)
         .await
         .context(format!(
             "Failed to look up revocation lock (id: {})",
@@ -336,7 +336,7 @@ async fn zkabacus_close(
         Verification::Verified => {
             // Check that the revocation lock is fresh and insert
             if database
-                .insert_revocation(close_state.revocation_lock(), None)
+                .insert_revocation_lock(close_state.revocation_lock())
                 .await
                 .context("Failed to insert revocation lock into database")?
                 .is_empty()

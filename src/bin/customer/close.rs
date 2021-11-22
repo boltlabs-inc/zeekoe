@@ -125,7 +125,7 @@ pub async fn unilateral_close(
             merchant_balance: *close_message.merchant_balance(),
             customer_balance: *close_message.customer_balance(),
             closing_signature: close_message.closing_signature().clone(),
-            revocation_lock: close_message.revocation_lock().clone(),
+            revocation_lock: *close_message.revocation_lock(),
             channel_id: *close_message.channel_id(),
         };
         write_close_json(&closing)?;

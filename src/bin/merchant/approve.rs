@@ -183,7 +183,7 @@ pub async fn establish_success(client: &reqwest::Client, response_url: Option<Ur
 /// Send a `DELETE` request to a resource at the specified `url`, with the query parameter
 /// `?success=true` or `?success=false`, depending on the value of `success`.
 ///
-/// This is common functionality between [`payment_success`] and [`payment_failure`].
+/// This is common functionality between [`payment_success`] and [`failure`].
 pub async fn delete_resource(client: &reqwest::Client, url: Url, success: bool) {
     client
         .delete(url)

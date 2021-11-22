@@ -381,8 +381,7 @@ pub mod pay {
     };
 
     pub type CustomerRevokePreviousPayToken = Session! {
-        send RevocationLock;
-        send RevocationSecret;
+        send RevocationPair;
         send RevocationLockBlindingFactor;
         // Merchant verifies that the revocation information is valid
         OfferAbort<MerchantIssueNewPayToken, Error>;

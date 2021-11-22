@@ -56,18 +56,20 @@ To build the project, you will need:
   $ rustup override set nightly-2021-08-31
   ```
 - A recent version of Python. This project has been tested with Python 3.8.10. 
-- Cryptographic and system dependencies for our Tezos clients:
+- The PyTezos library and its dependencies:
   ```
   $ sudo apt install libsodium-dev libsecp256k1-dev libgmp-dev libudev-dev
   ```
-  If you are using a non-Linux machine, please see the installation guides for 
-  [PyTezos](https://pytezos.org/quick_start.html) and 
-  [tezedge-client](https://github.com/boltlabs-inc/tezedge-client/tree/develop)
-  for further details.
-- The PyTezos library:
+  If you're on OSX, install dependencies via [Homebrew](https://brew.sh/):
+  ```
+  $ brew tap cuber/homebrew-libsecp256k1
+  $ brew install libsodium libsecp256k1 gmp
+  ```
+  Finally, to install PyTezos itself:
   ```
   $ pip install pytezos
   ```
+  Please see the installation guides for [PyTezos](https://pytezos.org/quick_start.html) for further details.
 - This repository, installed with submodules:
   ```
   $ git clone git@github.com:boltlabs-inc/zeekoe.git --recurse-submodules
@@ -248,6 +250,14 @@ $ ./target/debug/zkchannel customer --config "./dev/Customer.toml" list
 ```
 
 The merchant server and customer chain watcher may now be stopped by pressing ^C.
+
+## Troubleshooting
+- When using the sandbox, you will not be able to establish a channel until at least 60 blocks 
+have been posted. With the default configuration, this will take approximately 5 minutes.
+
+- The current Tezos client integration does not support multiple operations posted by a single
+user in a single block. This limits the parallelization of establish and close operations. See
+[issue #212](https://github.com/boltlabs-inc/zeekoe/issues/212) for status updates on this.
 
 ## Development
 

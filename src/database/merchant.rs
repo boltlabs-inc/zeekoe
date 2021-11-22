@@ -5,7 +5,7 @@ use crate::database::SqlitePool;
 use crate::{escrow::types::ContractId, protocol::ChannelStatus};
 use serde::{Deserialize, Serialize};
 use zkabacus_crypto::{
-    revlock::{RevocationLock, RevocationSecret},
+    revlock::{RevocationLock, RevocationPair, RevocationSecret},
     ChannelId, CommitmentParameters, CustomerBalance, KeyPair, MerchantBalance, Nonce,
     RangeConstraintParameters,
 };
@@ -21,6 +21,10 @@ pub trait QueryMerchant: Send + Sync {
     /// and `false` if it already exists.
     async fn insert_nonce(&self, nonce: &Nonce) -> Result<bool>;
 
+    /// Don't use this function! Use the more descriptive
+    /// [`QueryMerchantExt::insert_revocation_lock()`] and
+    /// [`QueryMerchantExt::insert_revocation_pair()`] functions instead!
+    ///
     /// Insert a revocation lock and optional secret, returning all revocations
     /// that existed prior.
     async fn insert_revocation(
@@ -93,6 +97,21 @@ pub trait QueryMerchant: Send + Sync {
 
     /// Get details about a particular channel based on a unique prefix of its [`ChannelId`].
     async fn get_channel_details_by_prefix(&self, prefix: &str) -> Result<ChannelDetails>;
+}
+
+#[async_trait]
+pub trait QueryMerchantExt: QueryMerchant {
+    /// Insert a revocation lock, returning all revocations that existed prior.
+    async fn insert_revocation_lock(
+        &self,
+        revocation: &RevocationLock,
+    ) -> Result<Vec<Option<RevocationSecret>>>;
+
+    /// Insert a revocation pair, returning all revocations that existed prior.
+    async fn insert_revocation_pair(
+        &self,
+        revocation_pair: &RevocationPair,
+    ) -> Result<Vec<Option<RevocationSecret>>>;
 }
 
 /// An error when accessing the merchant database.
@@ -654,28 +673,40 @@ impl QueryMerchant for SqlitePool {
     }
 }
 
+#[async_trait]
+impl<Q: QueryMerchant + ?Sized> QueryMerchantExt for Q {
+    async fn insert_revocation_lock(
+        &self,
+        revocation: &RevocationLock,
+    ) -> Result<Vec<Option<RevocationSecret>>> {
+        // Call insert_revocation with None
+        self.insert_revocation(revocation, None).await
+    }
+
+    async fn insert_revocation_pair(
+        &self,
+        revocation_pair: &RevocationPair,
+    ) -> Result<Vec<Option<RevocationSecret>>> {
+        // Call insert_revocation with Some secret pulled out of the pair
+        self.insert_revocation(
+            &revocation_pair.revocation_lock(),
+            Some(&revocation_pair.revocation_secret()),
+        )
+        .await
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::database::SqlitePoolOptions;
     use {rand::SeedableRng, strum::IntoEnumIterator, tezedge::OriginatedAddress};
 
-    use zkabacus_crypto::internal::{
-        test_new_nonce, test_new_revocation_lock, test_new_revocation_secret, test_verify_pair,
-    };
-    use zkabacus_crypto::{CustomerRandomness, MerchantRandomness, Verification};
+    use zkabacus_crypto::internal::{test_new_nonce, test_new_revocation_pair};
+    use zkabacus_crypto::{CustomerRandomness, MerchantRandomness};
 
     // The default dummy originated contract address, per https://tezos.stackexchange.com/a/2270
     const DEFAULT_ADDR: &str = "KT1Mjjcb6tmSsLm7Cb3DSQszePjfchPM4Uxm";
-
-    fn assert_valid_pair(lock: &RevocationLock, secret: &RevocationSecret) {
-        assert!(
-            matches!(test_verify_pair(lock, secret), Verification::Verified),
-            "revocation lock {:?} unlocks with {:?}",
-            lock,
-            secret
-        );
-    }
 
     async fn create_migrated_db() -> Result<SqlitePool> {
         let conn = SqlitePoolOptions::new()
@@ -711,26 +742,26 @@ mod tests {
         let conn = create_migrated_db().await?;
         let mut rng = rand::thread_rng();
 
-        let secret1 = test_new_revocation_secret(&mut rng);
-        let lock1 = test_new_revocation_lock(&secret1);
-
         // Each time we insert a lock (& optional secret), it returns all previously
         // stored pairs for that lock.
-        let result = conn.insert_revocation(&lock1, None).await?;
+        let pair1 = test_new_revocation_pair(&mut rng);
+
+        let result = conn
+            .insert_revocation_lock(&pair1.revocation_lock())
+            .await?;
         assert_eq!(result.len(), 0);
+        conn.insert_revocation_pair(&pair1).await?;
 
-        conn.insert_revocation(&lock1, Some(&secret1)).await?;
-
-        let result = conn.insert_revocation(&lock1, None).await?;
+        let result = conn
+            .insert_revocation_lock(&pair1.revocation_lock())
+            .await?;
         assert!(result[0].is_none());
         assert!(result[1].is_some());
-        assert_valid_pair(&lock1, result[1].as_ref().unwrap());
         assert_eq!(result.len(), 2);
 
         // Inserting a previously-unseen lock should not return any old pairs.
-        let secret2 = test_new_revocation_secret(&mut rng);
-        let lock2 = test_new_revocation_lock(&secret2);
-        let result = conn.insert_revocation(&lock2, Some(&secret2)).await?;
+        let pair2 = test_new_revocation_pair(&mut rng);
+        let result = conn.insert_revocation_pair(&pair2).await?;
         assert_eq!(result.len(), 0);
 
         Ok(())
