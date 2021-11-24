@@ -1,4 +1,4 @@
-use {anyhow::Context, rand::rngs::StdRng, url::Url};
+use {anyhow::Context, rand::rngs::StdRng};
 
 use zeekoe::{
     abort,
@@ -44,8 +44,18 @@ impl Pay {
             .context("Payment timed out while receiving payment note")??;
 
         // Query approver service to determine whether to allow the payment
-        let (response_url, chan) =
-            approve_payment(payment_amount, payment_note, chan, client, service).await?;
+        let response_url =
+            match approve::payment(client, &service.approve, &payment_amount, payment_note).await {
+                Ok(response_url) => response_url,
+                Err(approval_error) => {
+                    // If the payment was not approved, indicate to the client why
+                    let error = pay::Error::Rejected(
+                        approval_error.unwrap_or_else(|| "internal error".into()),
+                    );
+                    abort!(in chan return error);
+                }
+            };
+        proceed!(in chan);
 
         // Run the zkAbacus.Pay protocol
         // Timeout is set to 10 messages, which includes all sent & received messages and aborts
@@ -54,64 +64,30 @@ impl Pay {
             .await
             .context("Payment timed out while updating channel status")?;
 
-        provide_service(response_url, maybe_chan, client).await?;
+        // Inform the approver service whether the payment succeeded and pass the resulting fulfillment
+        // to the customer.
+        match maybe_chan {
+            Ok(chan) => {
+                // Send the response note (i.e. the fulfillment of the service) and close the
+                // connection to the customer
+                let response_note = approve::payment_success(client, response_url).await;
+                let (note, result) = match response_note {
+                    Err(err) => (None, Err(err)),
+                    Ok(o) => (o, Ok(())),
+                };
+                chan.send(note)
+                    .await
+                    .context("Failed to send response note")?
+                    .close();
+                result
+            }
+            Err(err) => {
+                approve::failure(client, response_url).await;
+                Err(err)
+            }
+        }?;
 
         Ok(())
-    }
-}
-
-/// Query the approver service using payment details provided by the customer to determine whether
-/// to allow the payment. If not, terminate the pay session.
-async fn approve_payment(
-    payment_amount: PaymentAmount,
-    payment_note: String,
-    chan: Chan<pay::GetPaymentApproval>,
-    client: &reqwest::Client,
-    service: &Service,
-) -> Result<(Option<Url>, Chan<pay::CustomerStartPayment>), anyhow::Error> {
-    // Determine whether to accept the payment
-    let response_url =
-        match approve::payment(client, &service.approve, &payment_amount, payment_note).await {
-            Ok(response_url) => response_url,
-            Err(approval_error) => {
-                // If the payment was not approved, indicate to the client why
-                let error =
-                    pay::Error::Rejected(approval_error.unwrap_or_else(|| "internal error".into()));
-                abort!(in chan return error);
-            }
-        };
-
-    proceed!(in chan);
-
-    Ok((response_url, chan))
-}
-
-/// Inform the approver service whether the payment succeeded and pass the resulting fulfillment
-/// to the customer.
-async fn provide_service(
-    response_url: Option<Url>,
-    maybe_chan: Result<Chan<pay::MerchantProvideService>, anyhow::Error>,
-    client: &reqwest::Client,
-) -> Result<(), anyhow::Error> {
-    match maybe_chan {
-        Ok(chan) => {
-            // Send the response note (i.e. the fulfillment of the service) and close the
-            // connection to the customer
-            let response_note = approve::payment_success(client, response_url).await;
-            let (note, result) = match response_note {
-                Err(err) => (None, Err(err)),
-                Ok(o) => (o, Ok(())),
-            };
-            chan.send(note)
-                .await
-                .context("Failed to send response note")?
-                .close();
-            result
-        }
-        Err(err) => {
-            approve::failure(client, response_url).await;
-            Err(err)
-        }
     }
 }
 
