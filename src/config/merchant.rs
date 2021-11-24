@@ -70,12 +70,6 @@ impl Config {
             .parent()
             .expect("Merchant configuration path must exist in some parent directory");
 
-        if config.self_delay < 120 {
-            eprintln!("Warning: `self_delay` should not be less than 120 outside of");
-            eprintln!("testing. If this is an error, please update the merchant");
-            eprintln!("configuration.");
-        }
-
         // Adjust contained paths to be relative to the config path
         config.database = config.database.relative_to(config_dir);
         config.tezos_account.set_relative_path(config_dir);
