@@ -227,9 +227,6 @@ async fn establish_channel(
     .context("Establish timed out while initializing channel")?
     .context("Failed to initialize channel")?;
 
-    // Load tezos client to use in upcoming on-chain operations
-    let tezos_client = load_tezos_client(config, &channel_id, database.as_ref()).await?;
-
     // Verify that the customer originated and funded the channel correctly
     // Timeout accounts for posting and verification of two Tezos operations
     let chan = async {
@@ -280,7 +277,7 @@ async fn establish_channel(
             .await
             .context("Failed to receive notification that the customer funded the contract")?;
 
-        match tezos_client
+        match proposed_tezos_client
             .verify_customer_funding(&merchant_deposit)
             .await
         {
@@ -318,6 +315,7 @@ async fn establish_channel(
 
     // If the merchant contribution was greater than zero, fund the channel on chain, and await
     // confirmation that the funding has gone through to the required confirmation depth
+    let tezos_client = load_tezos_client(config, &channel_id, database.as_ref()).await?;
     if merchant_deposit.into_inner() > 0 {
         match tezos_client
             .add_merchant_funding(&tezos::MerchantFundingInformation {
