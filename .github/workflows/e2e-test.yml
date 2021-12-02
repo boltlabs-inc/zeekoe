@@ -62,8 +62,7 @@ jobs:
             cd dev
             nohup python3 test-zeekoe.py merch-setup --url "http://my-sandbox:20000" -v &
             nohup python3 test-zeekoe.py cust-setup --url "http://my-sandbox:20000" -v &
-            python3 test-zeekoe.py scenario --channel 1 -v --command-list establish pay pay pay_all close
-            python3 test-zeekoe.py scenario --channel 2 -v --command-list establish pay store pay restore close
+            python3 test-zeekoe.py test-all
 
       - name: Move cache
         run: |
