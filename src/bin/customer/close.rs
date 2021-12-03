@@ -123,8 +123,8 @@ pub async fn unilateral_close(
         // TODO: Print out information necessary to produce custClose transaction
         // Wait for customer confirmation that it posted
         let closing = Closing {
-            merchant_balance: *close_message.merchant_balance(),
-            customer_balance: *close_message.customer_balance(),
+            merchant_balance: close_message.merchant_balance(),
+            customer_balance: close_message.customer_balance(),
             closing_signature: close_message.closing_signature().clone(),
             revocation_lock: *close_message.revocation_lock(),
             channel_id: *close_message.channel_id(),
@@ -133,7 +133,7 @@ pub async fn unilateral_close(
     }
 
     // React to a successfully posted custClose: update final merchant balance
-    finalize_customer_close(database, channel_name, *close_message.merchant_balance()).await?;
+    finalize_customer_close(database, channel_name, close_message.merchant_balance()).await?;
 
     // Notify the on-chain monitoring daemon this channel has started to close.
     //refresh_daemon(&config).await
@@ -202,7 +202,7 @@ pub async fn claim_funds(
             channel_name,
             zkchannels_state::PendingClose,
             |closing_message| -> Result<_, Infallible> {
-                let customer_balance = *closing_message.customer_balance();
+                let customer_balance = closing_message.customer_balance();
                 Ok((
                     State::PendingCustomerClaim(closing_message),
                     customer_balance,
@@ -284,8 +284,8 @@ pub async fn finalize_dispute(
             zkchannels_state::Dispute,
             |closing_message| -> Result<_, anyhow::Error> {
                 let balances = transfer_balances_to_merchant(
-                    *closing_message.customer_balance(),
-                    *closing_message.merchant_balance(),
+                    closing_message.customer_balance(),
+                    closing_message.merchant_balance(),
                 )?;
                 Ok((State::Closed(closing_message), balances))
             },
@@ -324,8 +324,8 @@ pub async fn finalize_customer_claim(
             zkchannels_state::PendingCustomerClaim,
             |closing_message| -> Result<_, Infallible> {
                 let balances = (
-                    *closing_message.merchant_balance(),
-                    *closing_message.customer_balance(),
+                    closing_message.merchant_balance(),
+                    closing_message.customer_balance(),
                 );
                 Ok((State::Closed(closing_message), balances))
             },
@@ -365,8 +365,8 @@ pub async fn finalize_expiry(
             zkchannels_state::PendingExpiry,
             |closing_message| -> Result<_, anyhow::Error> {
                 let balances = transfer_balances_to_merchant(
-                    *closing_message.customer_balance(),
-                    *closing_message.merchant_balance(),
+                    closing_message.customer_balance(),
+                    closing_message.merchant_balance(),
                 )?;
                 Ok((State::Closed(closing_message), balances))
             },
@@ -482,8 +482,8 @@ async fn finalize_mutual_close(
             zkchannels_state::PendingMutualClose,
             |closing_message| {
                 let balances = (
-                    *closing_message.customer_balance(),
-                    *closing_message.merchant_balance(),
+                    closing_message.customer_balance(),
+                    closing_message.merchant_balance(),
                 );
                 Ok::<_, Infallible>((State::Closed(closing_message), balances))
             },

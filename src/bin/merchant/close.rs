@@ -86,8 +86,8 @@ impl Close {
         finalize_mutual_close(
             database.as_ref(),
             close_state.channel_id(),
-            *close_state.customer_balance(),
-            *close_state.merchant_balance(),
+            close_state.customer_balance(),
+            close_state.merchant_balance(),
         )
         .await
         .context(

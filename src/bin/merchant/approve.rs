@@ -85,8 +85,8 @@ pub async fn payment(
 pub async fn establish(
     client: &reqwest::Client,
     approver: &Approver,
-    customer_balance: &CustomerBalance,
-    merchant_balance: &MerchantBalance,
+    customer_balance: CustomerBalance,
+    merchant_balance: MerchantBalance,
     establish_note: String,
 ) -> Result<Option<Url>, Option<String>> {
     match approver {

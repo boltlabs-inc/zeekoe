@@ -274,8 +274,8 @@ impl QueryCustomer for SqlitePool {
         contract_details: &ContractDetails,
         zkabacus_config: &zkabacus_crypto::customer::Config,
     ) -> std::result::Result<(), (Inactive, Error)> {
-        let merchant_deposit = *inactive.merchant_balance();
-        let customer_deposit = *inactive.customer_balance();
+        let merchant_deposit = inactive.merchant_balance();
+        let customer_deposit = inactive.customer_balance();
         let state = State::Inactive(inactive);
         (|| async {
             let mut transaction = self.begin().await?;

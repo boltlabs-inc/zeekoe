@@ -140,8 +140,8 @@ impl Establish {
         let response_url = match approve::establish(
             client,
             &service.approve,
-            &customer_deposit,
-            &merchant_deposit,
+            customer_deposit,
+            merchant_deposit,
             note,
         )
         .await
@@ -263,8 +263,8 @@ async fn establish_channel(
             .new_channel(
                 &channel_id,
                 &contract_id,
-                &merchant_deposit,
-                &customer_deposit,
+                merchant_deposit,
+                customer_deposit,
             )
             .await
             .context("Failed to insert new channel_id, contract_id in database")?;
@@ -278,7 +278,7 @@ async fn establish_channel(
             .context("Failed to receive notification that the customer funded the contract")?;
 
         match proposed_tezos_client
-            .verify_customer_funding(&merchant_deposit)
+            .verify_customer_funding(merchant_deposit)
             .await
         {
             Ok(()) => {}

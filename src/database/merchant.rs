@@ -44,8 +44,8 @@ pub trait QueryMerchant: Send + Sync {
         &self,
         channel_id: &ChannelId,
         contract_id: &ContractId,
-        merchant_deposit: &MerchantBalance,
-        customer_deposit: &CustomerBalance,
+        merchant_deposit: MerchantBalance,
+        customer_deposit: CustomerBalance,
     ) -> Result<()>;
 
     /// Update an existing merchant channel's status to a new state, only if it is currently in the
@@ -291,8 +291,8 @@ impl QueryMerchant for SqlitePool {
         &self,
         channel_id: &ChannelId,
         contract_id: &ContractId,
-        merchant_deposit: &MerchantBalance,
-        customer_deposit: &CustomerBalance,
+        merchant_deposit: MerchantBalance,
+        customer_deposit: CustomerBalance,
     ) -> Result<()> {
         let default_balances = ClosingBalances::default();
         sqlx::query!(
@@ -830,8 +830,8 @@ mod tests {
         conn.new_channel(
             &channel_id,
             &contract_id,
-            &merchant_deposit,
-            &customer_deposit,
+            merchant_deposit,
+            customer_deposit,
         )
         .await?;
 

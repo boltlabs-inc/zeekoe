@@ -981,7 +981,7 @@ impl TezosClient {
     /// and is called by the merchant.
     pub async fn verify_customer_funding(
         &self,
-        merchant_balance: &MerchantBalance,
+        merchant_balance: MerchantBalance,
     ) -> Result<(), VerificationError> {
         let expected = if !merchant_balance.is_zero() {
             ContractStatus::AwaitingMerchantFunding
@@ -1336,8 +1336,8 @@ impl TezosClient {
         &self,
         channel_id: &ChannelId,
         merchant_pubkey: &TezosPublicKey,
-        customer_balance: &CustomerBalance,
-        merchant_balance: &MerchantBalance,
+        customer_balance: CustomerBalance,
+        merchant_balance: MerchantBalance,
         authorization_signature: &MutualCloseAuthorizationSignature,
     ) -> impl Future<Output = Result<(), InvalidAuthorizationSignatureError>> + Send + 'static {
         let (uri, _, contract_id) = self.as_python_types();
@@ -1380,8 +1380,8 @@ impl TezosClient {
     ///   on the expected tuple
     pub fn mutual_close(
         &self,
-        customer_balance: &CustomerBalance,
-        merchant_balance: &MerchantBalance,
+        customer_balance: CustomerBalance,
+        merchant_balance: MerchantBalance,
         authorization_signature: &MutualCloseAuthorizationSignature,
     ) -> impl Future<Output = Result<OperationStatus, MutualCloseError>> + Send + 'static {
         let (uri, customer_private_key, contract_id) = self.as_python_types();
