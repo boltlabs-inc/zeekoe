@@ -97,7 +97,7 @@ pub async fn unilateral_close(
 
     // If the customer has no money to claim in expiry, just update the status
     if close_kind == UnilateralCloseKind::MerchantInitiated
-        && close_message.customer_balance().into_inner() == 0
+        && close_message.customer_balance().is_zero()
     {
         database
             .with_channel_state(
@@ -215,7 +215,7 @@ pub async fn claim_funds(
             channel_name
         ))??;
 
-    if customer_balance.into_inner() == 0 {
+    if customer_balance.is_zero() {
         return Ok(());
     }
 
@@ -603,8 +603,8 @@ fn transfer_balances_to_merchant(
     merchant_balance: MerchantBalance,
 ) -> Result<(CustomerBalance, MerchantBalance), anyhow::Error> {
     Ok((
-        CustomerBalance::try_new(0)?,
-        MerchantBalance::try_new(customer_balance.into_inner() + merchant_balance.into_inner())?,
+        CustomerBalance::zero(),
+        merchant_balance.try_add(customer_balance)?,
     ))
 }
 

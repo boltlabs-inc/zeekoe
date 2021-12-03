@@ -936,14 +936,14 @@ impl TezosClient {
         let merchant_balance = contract_state.merchant_balance()?;
         let customer_balance = contract_state.customer_balance()?;
 
-        if merchant_balance.into_inner() != expected_merchant_balance.into_inner() {
+        if merchant_balance != expected_merchant_balance {
             return Err(VerificationError::UnexpectedMerchantBalance {
                 expected: expected_merchant_balance,
                 actual: merchant_balance,
             });
         }
 
-        if customer_balance.into_inner() != expected_customer_balance.into_inner() {
+        if customer_balance != expected_customer_balance {
             return Err(VerificationError::UnexpectedCustomerBalance {
                 expected: expected_customer_balance,
                 actual: customer_balance,
@@ -983,7 +983,7 @@ impl TezosClient {
         &self,
         merchant_balance: &MerchantBalance,
     ) -> Result<(), VerificationError> {
-        let expected = if merchant_balance.into_inner() > 0 {
+        let expected = if !merchant_balance.is_zero() {
             ContractStatus::AwaitingMerchantFunding
         } else {
             ContractStatus::Open

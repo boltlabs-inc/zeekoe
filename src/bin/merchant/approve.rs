@@ -92,7 +92,7 @@ pub async fn establish(
     match approver {
         // The automatic approver approves all establishment requests
         Approver::Automatic => {
-            if merchant_balance.into_inner() == 0 {
+            if merchant_balance.is_zero() {
                 Ok(None)
             } else {
                 Err(Some(

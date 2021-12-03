@@ -316,7 +316,7 @@ async fn establish_channel(
     // If the merchant contribution was greater than zero, fund the channel on chain, and await
     // confirmation that the funding has gone through to the required confirmation depth
     let tezos_client = load_tezos_client(config, &channel_id, database.as_ref()).await?;
-    if merchant_deposit.into_inner() > 0 {
+    if !merchant_deposit.is_zero() {
         match tezos_client
             .add_merchant_funding(&tezos::MerchantFundingInformation {
                 balance: merchant_deposit,

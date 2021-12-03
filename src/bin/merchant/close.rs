@@ -529,10 +529,8 @@ async fn merchant_take_all_balances(
         .context("Failed to fetch initial channel balances")?;
 
     // Compute fund transfer to the merchant
-    let merchant_balance = MerchantBalance::try_new(
-        initial_merchant_deposit.into_inner() + initial_customer_deposit.into_inner(),
-    )?;
-    let customer_balance = CustomerBalance::try_new(0)?;
+    let merchant_balance = initial_merchant_deposit.try_add(initial_customer_deposit)?;
+    let customer_balance = CustomerBalance::zero();
 
     Ok((merchant_balance, customer_balance))
 }

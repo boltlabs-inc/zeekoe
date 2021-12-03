@@ -446,8 +446,8 @@ impl QueryMerchant for SqlitePool {
                 let closing_balances = result.closing_balances;
 
                 // Make sure we're not decreasing merchant balance.
-                if let Some(original) = closing_balances.merchant_balance {
-                    if original.into_inner() > merchant_balance.into_inner() {
+                if let Some(original_balance) = closing_balances.merchant_balance {
+                    if original_balance > merchant_balance {
                         return Err(Error::InvalidBalanceUpdate(
                             merchant_balance,
                             customer_balance,
@@ -867,7 +867,7 @@ mod tests {
 
         // update closing balances
         let new_merchant_balance = MerchantBalance::try_new(10).unwrap();
-        let new_customer_balance = Some(CustomerBalance::try_new(0).unwrap());
+        let new_customer_balance = Some(CustomerBalance::zero());
         conn.update_closing_balances(
             &channel_id,
             &ChannelStatus::Originated,
@@ -880,12 +880,11 @@ mod tests {
         closing_balances = conn.closing_balances(&channel_id).await?;
         assert!(
             matches!(closing_balances.merchant_balance, Some(_))
-                && closing_balances.merchant_balance.unwrap().into_inner()
-                    == new_merchant_balance.into_inner()
+                && closing_balances.merchant_balance.unwrap() == new_merchant_balance
         );
         assert!(
             matches!(closing_balances.customer_balance, Some(_))
-                && closing_balances.customer_balance.unwrap().into_inner() == 0
+                && closing_balances.customer_balance.unwrap().is_zero()
         );
 
         Ok(())

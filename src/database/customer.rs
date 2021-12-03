@@ -430,8 +430,8 @@ impl QueryCustomer for SqlitePool {
         .map(|record| record.closing_balances)?;
 
         // Make sure we're not decreasing merchant balance.
-        if let Some(original) = closing_balances.merchant_balance {
-            if original.into_inner() > merchant_balance.into_inner() {
+        if let Some(original_balance) = closing_balances.merchant_balance {
+            if original_balance > merchant_balance {
                 return Err(Error::InvalidBalanceUpdate(
                     merchant_balance,
                     customer_balance,

@@ -66,7 +66,7 @@ impl Command for Establish {
         let customer_balance = deposit.try_into()?;
 
         let merchant_balance = match merchant_deposit {
-            None => MerchantBalance::try_new(0)?,
+            None => MerchantBalance::zero(),
             Some(deposit) => deposit.try_into()?,
         };
 

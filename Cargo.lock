@@ -1437,6 +1437,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "paste"
+version = "1.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0744126afe1a6dd7f394cb50a716dbe086cb06e255e53d8d0185d82828358fb5"
+
+[[package]]
 name = "paste-impl"
 version = "0.1.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1608,7 +1614,7 @@ dependencies = [
  "indoc",
  "libc",
  "parking_lot",
- "paste",
+ "paste 0.1.18",
  "pyo3-build-config",
  "pyo3-macros",
  "unindent",
@@ -3067,7 +3073,7 @@ dependencies = [
 [[package]]
 name = "zkabacus-crypto"
 version = "0.1.0"
-source = "git+https://github.com/boltlabs-inc/libzkchannels-crypto.git#e290b53184f16078fa079a62db2e15ef2753ade2"
+source = "git+https://github.com/boltlabs-inc/libzkchannels-crypto.git#da9b356a4ec075aeeb5875962f9783a24f6961a8"
 dependencies = [
  "base64",
  "bincode",
@@ -3085,13 +3091,14 @@ dependencies = [
 [[package]]
 name = "zkchannels-crypto"
 version = "0.1.0"
-source = "git+https://github.com/boltlabs-inc/libzkchannels-crypto.git#e290b53184f16078fa079a62db2e15ef2753ade2"
+source = "git+https://github.com/boltlabs-inc/libzkchannels-crypto.git#da9b356a4ec075aeeb5875962f9783a24f6961a8"
 dependencies = [
  "arrayvec 0.7.2",
  "bincode",
  "bls12_381",
  "ff",
  "group",
+ "paste 1.0.6",
  "rand 0.8.4",
  "rand_core 0.6.3",
  "rust-crypto",
