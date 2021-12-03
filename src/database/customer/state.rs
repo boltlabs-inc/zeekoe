@@ -208,8 +208,8 @@ impl State {
     }
 
     /// Get the current [`CustomerBalance`] of this state.
-    pub fn customer_balance(&self) -> &CustomerBalance {
-        match self {
+    pub fn customer_balance(&self) -> CustomerBalance {
+        *match self {
             State::Inactive(inactive) => inactive.customer_balance(),
             State::Originated(inactive) => inactive.customer_balance(),
             State::CustomerFunded(inactive) => inactive.customer_balance(),
@@ -229,8 +229,8 @@ impl State {
         }
     }
 
-    pub fn merchant_balance(&self) -> &MerchantBalance {
-        match self {
+    pub fn merchant_balance(&self) -> MerchantBalance {
+        *match self {
             State::Inactive(inactive) => inactive.merchant_balance(),
             State::Originated(inactive) => inactive.merchant_balance(),
             State::CustomerFunded(inactive) => inactive.merchant_balance(),

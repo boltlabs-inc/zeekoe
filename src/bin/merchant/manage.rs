@@ -1,7 +1,7 @@
 use super::{database, Command};
 use serde_json::json;
 use zeekoe::{
-    amount::{Amount, XTZ},
+    amount::Amount,
     merchant::{
         cli::{List, Show},
         Config,
@@ -11,7 +11,6 @@ use {
     anyhow::Context,
     async_trait::async_trait,
     comfy_table::{Cell, Table},
-    std::convert::TryInto,
 };
 
 #[async_trait]
@@ -59,17 +58,18 @@ impl Command for Show {
             .context("Failed to connect to local database")?;
         let details = database.get_channel_details_by_prefix(&self.prefix).await?;
 
-        // TODO: don't hard-code XTZ here, instead store currency in database
-        let amount = |b: u64| Amount::from_minor_units_of_currency(b.try_into().unwrap(), XTZ);
-
         if self.json {
-            println!("{}", json!({
-                "channel_id": format!("{}", details.channel_id),
-                "status": format!("{}", details.status),
-                "contract_id": format!("{}", details.contract_id),
-                "merchant_deposit": format!("{}", amount(details.merchant_deposit.into_inner())),
-                "customer_deposit": format!("{}", amount(details.customer_deposit.into_inner())),
-            }).to_string());
+            println!(
+                "{}",
+                json!({
+                    "channel_id": format!("{}", details.channel_id),
+                    "status": format!("{}", details.status),
+                    "contract_id": format!("{}", details.contract_id),
+                    "merchant_deposit": format!("{}", Amount::from(details.merchant_deposit)),
+                    "customer_deposit": format!("{}", Amount::from(details.customer_deposit)),
+                })
+                .to_string()
+            );
         } else {
             let mut table = Table::new();
             table.load_preset(comfy_table::presets::UTF8_FULL);
@@ -82,11 +82,11 @@ impl Command for Show {
             ]);
             table.add_row(vec![
                 Cell::new("Merchant Deposit"),
-                Cell::new(amount(details.merchant_deposit.into_inner())),
+                Cell::new(Amount::from(details.merchant_deposit)),
             ]);
             table.add_row(vec![
                 Cell::new("Customer Deposit"),
-                Cell::new(amount(details.customer_deposit.into_inner())),
+                Cell::new(Amount::from(details.customer_deposit)),
             ]);
 
             println!("{}", table);

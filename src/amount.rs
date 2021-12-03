@@ -41,6 +41,26 @@ impl FromStr for Amount {
     }
 }
 
+impl From<CustomerBalance> for Amount {
+    fn from(value: CustomerBalance) -> Self {
+        // This unwrap is safe because the `into_inner` function guarantees a u64
+        // with value < i64::Max
+        // Developer note: to extend to multiple currencies, we will have to do something more
+        // clever than hardcoding XTZ here.
+        Amount::from_minor_units_of_currency(value.into_inner().try_into().unwrap(), XTZ)
+    }
+}
+
+impl From<MerchantBalance> for Amount {
+    fn from(value: MerchantBalance) -> Self {
+        // This unwrap is safe because the `into_inner` function guarantees a u64
+        // with value < i64::Max
+        // Developer note: to extend to multiple currencies, we will have to do something more
+        // clever than hardcoding XTZ here.
+        Amount::from_minor_units_of_currency(value.into_inner().try_into().unwrap(), XTZ)
+    }
+}
+
 impl TryInto<PaymentAmount> for Amount {
     type Error = AmountParseError;
 

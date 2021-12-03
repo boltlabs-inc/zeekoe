@@ -2,11 +2,10 @@ use {
     async_trait::async_trait,
     comfy_table::{Cell, Table},
     rand::rngs::StdRng,
-    std::convert::TryInto,
 };
 
 use zeekoe::{
-    amount::{Amount, XTZ},
+    amount::Amount,
     customer::{
         cli::{List, Rename},
         Config,
@@ -25,17 +24,14 @@ impl Command for List {
             .context("Failed to connect to local database")?;
         let channels = database.get_channels().await?;
 
-        // TODO: don't hard-code XTZ here, instead store currency in database
-        let amount = |b: u64| Amount::from_minor_units_of_currency(b.try_into().unwrap(), XTZ);
-
         if self.json {
             let mut output = Vec::new();
             for details in channels {
                 output.push(json!({
                     "label": details.label,
                     "state": details.state.state_name(),
-                    "balance": format!("{}", amount(details.state.customer_balance().into_inner())),
-                    "max_refund": format!("{}", amount(details.state.merchant_balance().into_inner())),
+                    "balance": format!("{}", Amount::from(details.state.customer_balance())),
+                    "max_refund": format!("{}", Amount::from(details.state.merchant_balance())),
                     "channel_id": format!("{}", details.state.channel_id()),
                     "contract_id": details.contract_details.contract_id.map_or_else(|| "N/A".to_string(), |contract_id| format!("{}", contract_id))
                 }));
@@ -57,8 +53,8 @@ impl Command for List {
                 table.add_row(vec![
                     Cell::new(details.label),
                     Cell::new(details.state.state_name()),
-                    Cell::new(amount(details.state.customer_balance().into_inner())),
-                    Cell::new(amount(details.state.merchant_balance().into_inner())),
+                    Cell::new(Amount::from(details.state.customer_balance())),
+                    Cell::new(Amount::from(details.state.merchant_balance())),
                     Cell::new(details.state.channel_id()),
                     Cell::new(details.contract_details.contract_id.map_or_else(
                         || "N/A".to_string(),
