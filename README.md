@@ -55,17 +55,17 @@ To build the project, you will need:
   ```
   $ rustup override set nightly-2021-08-31
   ```
-- A recent version of Python. This project has been tested with Python 3.8.10. 
-- The PyTezos library and its dependencies:
+- A recent version of Python. This project has been tested with Python 3.9.9. 
+- The PyTezos library (version 3.2.11 tested) and its dependencies:
   ```
   $ sudo apt install libsodium-dev libsecp256k1-dev libgmp-dev libudev-dev
   ```
-  If you're on OSX, install dependencies via [Homebrew](https://brew.sh/):
+  If you're on OSX (this also works on arm64 (M1) macs), install dependencies via [Homebrew](https://brew.sh/):
   ```
   $ brew tap cuber/homebrew-libsecp256k1
   $ brew install libsodium libsecp256k1 gmp
   ```
-  Finally, to install PyTezos itself:
+  Finally, to install PyTezos (3.2.11) itself:
   ```
   $ pip install pytezos
   ```
@@ -126,6 +126,10 @@ tezos_account = { alias = "alice" }
 ```
 
 The zkchannels protocol does not activate accounts on chain, reveal their public keys, or fund the accounts; the user will have to do this separately.
+
+### Installing tezos-client on arm64 (M1) mac
+
+When installing the `tezos-client` on an M1 mac, please be advised to install this using Rosetta2. More information can be found on [this github issue](https://github.com/serokell/tezos-packaging/issues/205#issuecomment-871438693). [This MR](https://gitlab.com/tezos/tezos/-/merge_requests/2462) should have solved the issue, but we weren't able to build `tezos-client` for M1 directly, please use the workaround as described in the above github issue.
 
 ## Running the `zkchannel` merchant and customer
 
