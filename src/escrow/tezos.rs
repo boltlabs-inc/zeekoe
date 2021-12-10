@@ -983,7 +983,7 @@ impl TezosClient {
         &self,
         merchant_balance: MerchantBalance,
     ) -> Result<(), VerificationError> {
-        let expected = if !merchant_balance.is_zero() {
+        let expected = if merchant_balance.is_positive() {
             ContractStatus::AwaitingMerchantFunding
         } else {
             ContractStatus::Open
