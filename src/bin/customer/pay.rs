@@ -1,6 +1,14 @@
-use {anyhow::Context, async_trait::async_trait, rand::rngs::StdRng, std::convert::TryInto};
+use {
+    anyhow::Context,
+    async_trait::async_trait,
+    rand::rngs::StdRng,
+    std::convert::{Infallible, TryInto},
+};
 
-use zkabacus_crypto::{Context as ProofContext, PaymentAmount};
+use zkabacus_crypto::{
+    customer::{LockMessage, StartMessage},
+    Context as ProofContext, PaymentAmount,
+};
 
 use zeekoe::{
     abort,
@@ -118,9 +126,24 @@ async fn zkabacus_pay(
 
     let zkabacus_config = database.channel_zkabacus_config(label).await?;
 
+    // If a channel in [`State::PendingPayment`] and the merchant posts expiry, we ignore it.
+    database
+        .with_channel_state(
+            label,
+            zkchannels_state::Ready,
+            |ready| -> Result<_, Infallible> { Ok((State::PendingPayment(ready), ())) },
+        )
+        .await
+        .with_context(|| {
+            format!(
+                "Failed to update channel {} to PendingPayment status",
+                label
+            )
+        })??;
+
     // Try to start the zkAbacus payment protocol. If successful, update channel status to `Started`
     let start_message = database
-        .with_channel_state(label, zkchannels_state::Ready, |ready| {
+        .with_channel_state(label, zkchannels_state::PendingPayment, |ready| {
             // Try to start the payment using the payment amount and proof context
             match ready.start(&mut rng, payment_amount, &context, &zkabacus_config) {
                 Ok((started, start_message)) => Ok((State::Started(started), start_message)),
@@ -130,6 +153,51 @@ async fn zkabacus_pay(
         .await
         .with_context(|| format!("Failed to update channel {} to Started status", &label))??;
 
+    let (chan, lock_message) =
+        match zkabacus_lock(chan, label, database, &zkabacus_config, start_message).await {
+            Ok(out) => out,
+            Err(err) => {
+                database
+                    .with_channel_state(
+                        label,
+                        zkchannels_state::Started,
+                        |started| -> Result<_, Infallible> {
+                            Ok((State::StartedFailed(started), ()))
+                        },
+                    )
+                    .await
+                    .with_context(|| {
+                        format!("Failed to update channel {} to StartedFailed", &label)
+                    })??;
+                return Err(err);
+            }
+        };
+
+    match zkabacus_unlock(chan, label, database, &zkabacus_config, lock_message).await {
+        Ok(chan) => Ok(chan),
+        Err(err) => {
+            database
+                .with_channel_state(
+                    label,
+                    zkchannels_state::Locked,
+                    |locked| -> Result<_, Infallible> { Ok((State::LockedFailed(locked), ())) },
+                )
+                .await
+                .with_context(|| {
+                    format!("Failed to update channel {} to LockedFailed", &label)
+                })??;
+            Err(err)
+        }
+    }
+}
+
+async fn zkabacus_lock(
+    chan: Chan<pay::CustomerStartPayment>,
+    label: &ChannelName,
+    database: &dyn QueryCustomer,
+    zkabacus_config: &zkabacus_crypto::customer::Config,
+    start_message: StartMessage,
+) -> Result<(Chan<pay::CustomerChooseAbort>, LockMessage), anyhow::Error> {
     // Send the initial proofs and commitments to the merchant
     let chan = chan
         .send(start_message.nonce)
@@ -149,10 +217,10 @@ async fn zkabacus_pay(
         .context("Failed to receive closing signature")?;
 
     // Verify the closing signature and transition into a locked channel state
-    let lock_message = match database
+    match database
         .with_channel_state(label, zkchannels_state::Started, |started| {
             // Attempt to lock the state using the closing signature. If it fails, raise a `pay::Error`.
-            match started.lock(closing_signature, &zkabacus_config) {
+            match started.lock(closing_signature, zkabacus_config) {
                 Ok((locked, lock_message)) => Ok((State::Locked(locked), lock_message)),
                 Err(_) => Err(pay::Error::InvalidClosingSignature),
             }
@@ -160,11 +228,19 @@ async fn zkabacus_pay(
         .await
         .with_context(|| format!("Failed to update channel {} to Locked status", &label))?
     {
-        Ok(lock_message) => lock_message,
+        Ok(lock_message) => Ok((chan, lock_message)),
         // An error means that closing signature does not verify; abort the protocol
         Err(_) => abort!(in chan return pay::Error::InvalidPayToken),
-    };
+    }
+}
 
+async fn zkabacus_unlock(
+    chan: Chan<pay::CustomerChooseAbort>,
+    label: &ChannelName,
+    database: &dyn QueryCustomer,
+    zkabacus_config: &zkabacus_crypto::customer::Config,
+    lock_message: LockMessage,
+) -> Result<Chan<pay::MerchantProvideService>, anyhow::Error> {
     proceed!(in chan);
 
     // If the closing signature verifies, reveal our lock, secret, and blinding factor
@@ -189,7 +265,7 @@ async fn zkabacus_pay(
     database
         .with_channel_state(label, zkchannels_state::Locked, |locked| {
             // Attempt to unlock the state using the pay token
-            match locked.unlock(pay_token, &zkabacus_config) {
+            match locked.unlock(pay_token, zkabacus_config) {
                 Ok(ready) => Ok((State::Ready(ready), ())),
                 Err(_) => Err(pay::Error::InvalidPayToken),
             }

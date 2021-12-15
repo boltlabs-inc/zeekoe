@@ -147,14 +147,21 @@ async fn dispatch_channel(
 
     // The channel has not reacted to an expiry transaction being posted
     // The condition is
+    //
     // - the contract is in Expiry state
-    // - the local state is neither PendingClose nor PendingExpiry
+    //
+    // - you should not have *already* reacted to it (if the channel is in
+    // [`zkchannels_state::PendingClose`] or [`zkchannels_state::PendingExpiry`])
+    //
+    // - you should not have a payment in progress ([`zkchannels_state::PendingPayment`],
+    // [`zkchannels_state::Started`], or [`zkchannels_state::Locked`]).
     if contract_state.status()? == ContractStatus::Expiry
-        && !(zkchannels_state::PendingClose.matches(&channel.state)
-            || zkchannels_state::PendingExpiry.matches(&channel.state))
+        && !zkchannels_state::PendingClose.matches(&channel.state)
+        && !zkchannels_state::PendingExpiry.matches(&channel.state)
+        && !zkchannels_state::PendingPayment.matches(&channel.state)
+        && !zkchannels_state::Started.matches(&channel.state)
+        && !zkchannels_state::Locked.matches(&channel.state)
     {
-        // TODO: this should wait for any payments to complete.
-
         close::unilateral_close(
             &channel.label,
             config,
