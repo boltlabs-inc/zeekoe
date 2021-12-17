@@ -377,8 +377,10 @@ pub mod pay {
     pub type MerchantAcceptPayment = Session! {
         recv ClosingSignature;
         // Customer verifies the signature
-        ChooseAbort<CustomerRevokePreviousPayToken, Error>;
+        CustomerChooseAbort;
     };
+
+    pub type CustomerChooseAbort = ChooseAbort<CustomerRevokePreviousPayToken, Error>;
 
     pub type CustomerRevokePreviousPayToken = Session! {
         send RevocationPair;

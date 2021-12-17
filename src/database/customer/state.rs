@@ -23,11 +23,17 @@ pub enum State {
     MerchantFunded(zkabacus::Inactive),
     /// Channel is ready for payment.
     Ready(zkabacus::Ready),
+    /// Channel has started Pay.
+    PendingPayment(zkabacus::Ready),
     /// Payment has been started, which means customer can close on new or old balance.
     Started(zkabacus::Started),
+    /// There was an unrecoverable error during the [`State::Started`] state.
+    StartedFailed(zkabacus::Started),
     /// Customer has revoked their ability to close on the old balance, but has not yet received
     /// the ability to make a new payment.
     Locked(zkabacus::Locked),
+    /// There was an unrecoverable error during the [`State::Locked`] state.
+    LockedFailed(zkabacus::Locked),
     /// The customer initiated a mutual close procedure.
     PendingMutualClose(zkabacus::ClosingMessage),
     /// The merchant posted a request to close the channel, claiming all the balances, and the
@@ -120,8 +126,11 @@ pub mod zkchannels_state {
     impl_zkchannel_state!(CustomerFunded, Inactive);
     impl_zkchannel_state!(MerchantFunded, Inactive);
     impl_zkchannel_state!(Ready, Ready);
+    impl_zkchannel_state!(PendingPayment, Ready);
     impl_zkchannel_state!(Started, Started);
+    impl_zkchannel_state!(StartedFailed, Started);
     impl_zkchannel_state!(Locked, Locked);
+    impl_zkchannel_state!(LockedFailed, Locked);
     impl_zkchannel_state!(PendingMutualClose, ClosingMessage);
     impl_zkchannel_state!(PendingExpiry, ClosingMessage);
     impl_zkchannel_state!(PendingClose, ClosingMessage);
@@ -138,8 +147,11 @@ pub enum StateName {
     CustomerFunded,
     MerchantFunded,
     Ready,
+    PendingPayment,
     Started,
+    StartedFailed,
     Locked,
+    LockedFailed,
     PendingMutualClose,
     PendingExpiry,
     PendingClose,
@@ -156,8 +168,11 @@ impl Display for StateName {
             StateName::CustomerFunded => "customer funded",
             StateName::MerchantFunded => "merchant funded",
             StateName::Ready => "ready",
+            StateName::PendingPayment => "pending payment",
             StateName::Started => "started",
+            StateName::StartedFailed => "started error",
             StateName::Locked => "locked",
+            StateName::LockedFailed => "locked error",
             StateName::PendingMutualClose => "pending mutual close",
             StateName::PendingExpiry => "pending expiry",
             StateName::PendingClose => "pending close",
@@ -178,8 +193,11 @@ impl State {
             State::CustomerFunded(_) => StateName::CustomerFunded,
             State::MerchantFunded(_) => StateName::MerchantFunded,
             State::Ready(_) => StateName::Ready,
+            State::PendingPayment(_) => StateName::PendingPayment,
             State::Started(_) => StateName::Started,
+            State::StartedFailed(_) => StateName::StartedFailed,
             State::Locked(_) => StateName::Locked,
+            State::LockedFailed(_) => StateName::LockedFailed,
             State::PendingMutualClose(_) => StateName::PendingMutualClose,
             State::PendingExpiry(_) => StateName::PendingExpiry,
             State::PendingClose(_) => StateName::PendingClose,
@@ -197,8 +215,11 @@ impl State {
             State::CustomerFunded(inactive) => inactive.customer_balance(),
             State::MerchantFunded(inactive) => inactive.customer_balance(),
             State::Ready(ready) => ready.customer_balance(),
+            State::PendingPayment(ready) => ready.customer_balance(),
             State::Started(started) => started.customer_balance(),
+            State::StartedFailed(started) => started.customer_balance(),
             State::Locked(locked) => locked.customer_balance(),
+            State::LockedFailed(locked) => locked.customer_balance(),
             State::PendingMutualClose(closing_message) => closing_message.customer_balance(),
             State::PendingExpiry(closing_message) => closing_message.customer_balance(),
             State::PendingClose(closing_message) => closing_message.customer_balance(),
@@ -215,8 +236,11 @@ impl State {
             State::CustomerFunded(inactive) => inactive.merchant_balance(),
             State::MerchantFunded(inactive) => inactive.merchant_balance(),
             State::Ready(ready) => ready.merchant_balance(),
+            State::PendingPayment(ready) => ready.merchant_balance(),
             State::Started(started) => started.merchant_balance(),
+            State::StartedFailed(started) => started.merchant_balance(),
             State::Locked(locked) => locked.merchant_balance(),
+            State::LockedFailed(locked) => locked.merchant_balance(),
             State::PendingMutualClose(closing_message) => closing_message.merchant_balance(),
             State::PendingExpiry(closing_message) => closing_message.merchant_balance(),
             State::PendingClose(closing_message) => closing_message.merchant_balance(),
@@ -233,8 +257,11 @@ impl State {
             State::MerchantFunded(inactive) => inactive.channel_id(),
             State::CustomerFunded(inactive) => inactive.channel_id(),
             State::Ready(ready) => ready.channel_id(),
+            State::PendingPayment(ready) => ready.channel_id(),
             State::Started(started) => started.channel_id(),
+            State::StartedFailed(started) => started.channel_id(),
             State::Locked(locked) => locked.channel_id(),
+            State::LockedFailed(locked) => locked.channel_id(),
             State::PendingMutualClose(closing_message) => closing_message.channel_id(),
             State::PendingExpiry(closing_message) => closing_message.channel_id(),
             State::PendingClose(closing_message) => closing_message.channel_id(),

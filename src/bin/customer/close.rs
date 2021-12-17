@@ -569,8 +569,11 @@ async fn get_close_message(
                 State::CustomerFunded(inactive) => inactive.close(rng),
                 State::MerchantFunded(inactive) => inactive.close(rng),
                 State::Ready(ready) => ready.close(rng),
+                State::PendingPayment(ready) => ready.close(rng),
                 State::Started(started) => started.close(rng),
+                State::StartedFailed(started) => started.close(rng),
                 State::Locked(locked) => locked.close(rng),
+                State::LockedFailed(locked) => locked.close(rng),
                 State::PendingMutualClose(close_message) => close_message,
                 // Cannot enter PendingClose on a channel that has passed that point
                 State::PendingClose(_)
