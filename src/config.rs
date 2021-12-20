@@ -43,14 +43,9 @@ pub fn deserialize_self_delay<'de, D: Deserializer<'de>>(
                 &"at least 10",
             ));
         }
-
-        if num < 120 {
-            eprintln!("Warning: `self_delay` should not be less than 120 outside of");
-            eprintln!("testing. If this is an error, please update the customer");
-            eprintln!("configuration.");
-        }
         Ok(num)
     }
+
     #[cfg(not(feature = "allow_custom_self_delay"))]
     {
         eprintln!(
