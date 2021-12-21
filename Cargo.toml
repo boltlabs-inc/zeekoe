@@ -24,6 +24,8 @@ path = "src/bin/merchant/main.rs"
 
 [features]
 allow_explicit_certificate_trust = []
+allow_custom_self_delay = []
+
 
 [dependencies]
 zkabacus-crypto = { git = "https://github.com/boltlabs-inc/libzkchannels-crypto.git", features = ["sqlite"] }
