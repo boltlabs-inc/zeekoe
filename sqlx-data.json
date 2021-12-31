@@ -222,54 +222,6 @@
       ]
     }
   },
-  "78137f6eabb79ca5fa9c28cbf49d15cebbc9e2626254ef2614d0b4bb410d4ea2": {
-    "query": "\n            SELECT\n                channel_id AS \"channel_id: ChannelId\",\n                status as \"status: ChannelStatus\",\n                contract_id AS \"contract_id: ContractId\",\n                merchant_deposit AS \"merchant_deposit: MerchantBalance\",\n                customer_deposit AS \"customer_deposit: CustomerBalance\",\n                closing_balances AS \"closing_balances: ClosingBalances\"\n            FROM merchant_channels\n            WHERE channel_id LIKE ?\n            LIMIT 2\n            ",
-    "describe": {
-      "columns": [
-        {
-          "name": "channel_id: ChannelId",
-          "ordinal": 0,
-          "type_info": "Text"
-        },
-        {
-          "name": "status: ChannelStatus",
-          "ordinal": 1,
-          "type_info": "Text"
-        },
-        {
-          "name": "contract_id: ContractId",
-          "ordinal": 2,
-          "type_info": "Blob"
-        },
-        {
-          "name": "merchant_deposit: MerchantBalance",
-          "ordinal": 3,
-          "type_info": "Blob"
-        },
-        {
-          "name": "customer_deposit: CustomerBalance",
-          "ordinal": 4,
-          "type_info": "Blob"
-        },
-        {
-          "name": "closing_balances: ClosingBalances",
-          "ordinal": 5,
-          "type_info": "Blob"
-        }
-      ],
-      "parameters": {
-        "Right": 1
-      },
-      "nullable": [
-        false,
-        false,
-        false,
-        false,
-        false,
-        false
-      ]
-    }
-  },
   "7dda293c8dc3b6752f97f08b0f310f7e289229f1845df7f1452ed376b1e6c759": {
     "query": "\n            SELECT data AS \"data: zkabacus_crypto::customer::Config\"\n            FROM configs\n            INNER JOIN customer_channels ON configs.id = customer_channels.config_id\n            WHERE customer_channels.label = ?\n            LIMIT 1\n            ",
     "describe": {
@@ -580,8 +532,8 @@
       ]
     }
   },
-  "e7093650130533f459a84f8c59498a0b094f8b075898407c5ad79b970a7abca5": {
-    "query": "\n            SELECT\n                channel_id AS \"channel_id: ChannelId\",\n                status as \"status: ChannelStatus\",\n                contract_id AS \"contract_id: ContractId\",\n                merchant_deposit AS \"merchant_deposit: MerchantBalance\",\n                customer_deposit AS \"customer_deposit: CustomerBalance\",\n                closing_balances AS \"closing_balances: ClosingBalances\"\n            FROM merchant_channels\n            ",
+  "e81865613729e1b58aaf3c7eb2af367900ed5f85e5159558dee4fd1a51a0539a": {
+    "query": "\n            SELECT\n                channel_id AS \"channel_id: ChannelId\",\n                status as \"status: ChannelStatus\",\n                contract_id AS \"contract_id: ContractId\",\n                merchant_deposit AS \"merchant_deposit: MerchantBalance\",\n                customer_deposit AS \"customer_deposit: CustomerBalance\",\n                closing_balances AS \"closing_balances: ClosingBalances\",\n                mutual_close_balances AS \"mutual_close_balances: ClosingBalances\"\n            FROM merchant_channels\n            WHERE channel_id LIKE ?\n            LIMIT 2\n            ",
     "describe": {
       "columns": [
         {
@@ -613,6 +565,65 @@
           "name": "closing_balances: ClosingBalances",
           "ordinal": 5,
           "type_info": "Blob"
+        },
+        {
+          "name": "mutual_close_balances: ClosingBalances",
+          "ordinal": 6,
+          "type_info": "Blob"
+        }
+      ],
+      "parameters": {
+        "Right": 1
+      },
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true
+      ]
+    }
+  },
+  "f7574a535f3c5e9aacc1f34ccb6a863383bf83e714a863f011c1913c83c3643a": {
+    "query": "\n            SELECT\n                channel_id AS \"channel_id: ChannelId\",\n                status as \"status: ChannelStatus\",\n                contract_id AS \"contract_id: ContractId\",\n                merchant_deposit AS \"merchant_deposit: MerchantBalance\",\n                customer_deposit AS \"customer_deposit: CustomerBalance\",\n                closing_balances AS \"closing_balances: ClosingBalances\",\n                mutual_close_balances AS \"mutual_close_balances: ClosingBalances\"\n            FROM merchant_channels\n            ",
+    "describe": {
+      "columns": [
+        {
+          "name": "channel_id: ChannelId",
+          "ordinal": 0,
+          "type_info": "Text"
+        },
+        {
+          "name": "status: ChannelStatus",
+          "ordinal": 1,
+          "type_info": "Text"
+        },
+        {
+          "name": "contract_id: ContractId",
+          "ordinal": 2,
+          "type_info": "Blob"
+        },
+        {
+          "name": "merchant_deposit: MerchantBalance",
+          "ordinal": 3,
+          "type_info": "Blob"
+        },
+        {
+          "name": "customer_deposit: CustomerBalance",
+          "ordinal": 4,
+          "type_info": "Blob"
+        },
+        {
+          "name": "closing_balances: ClosingBalances",
+          "ordinal": 5,
+          "type_info": "Blob"
+        },
+        {
+          "name": "mutual_close_balances: ClosingBalances",
+          "ordinal": 6,
+          "type_info": "Blob"
         }
       ],
       "parameters": {
@@ -624,7 +635,8 @@
         false,
         false,
         false,
-        false
+        false,
+        true
       ]
     }
   },

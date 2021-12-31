@@ -2,6 +2,7 @@ use {async_trait::async_trait, futures::StreamExt, rand::rngs::StdRng, thiserror
 
 pub use super::connect_sqlite;
 use crate::database::SqlitePool;
+use crate::escrow::tezos::MutualCloseAuthorizationSignature;
 use crate::{escrow::types::ContractId, protocol::ChannelStatus};
 use serde::{Deserialize, Serialize};
 use zkabacus_crypto::{
@@ -74,6 +75,14 @@ pub trait QueryMerchant: Send + Sync {
         expected_status: &ChannelStatus,
         merchant_balance: MerchantBalance,
         customer_balance: Option<CustomerBalance>,
+    ) -> Result<()>;
+
+    /// Set the agreed-upon mutual close balances.
+    async fn set_mutual_close_balances(
+        &self,
+        channel_id: &ChannelId,
+        merchant_balance: MerchantBalance,
+        customer_balance: CustomerBalance,
     ) -> Result<()>;
 
     /// Get information about every channel in the database.
@@ -154,7 +163,10 @@ pub struct ChannelDetails {
     pub contract_id: ContractId,
     pub merchant_deposit: MerchantBalance,
     pub customer_deposit: CustomerBalance,
+    /// Closing channel balances that have been confirmed paid on chain
     pub closing_balances: ClosingBalances,
+    /// Balances agreed upon in mutual close, but not yet confirmed as paid
+    pub mutual_close_balances: Option<MutualCloseBalances>,
 }
 
 /// The balances of a channel at closing. These may change during a close flow.
@@ -174,6 +186,14 @@ impl Default for ClosingBalances {
         }
     }
 }
+
+/// The closing balances agreed on during mutual close.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MutualCloseBalances {
+    pub merchant_balance: MerchantBalance,
+    pub customer_balance: CustomerBalance,
+}
+zkabacus_crypto::impl_sqlx_for_bincode_ty!(MutualCloseBalances);
 
 #[async_trait]
 impl QueryMerchant for SqlitePool {
@@ -494,6 +514,20 @@ impl QueryMerchant for SqlitePool {
         }
     }
 
+    async fn set_mutual_close_balances(
+        &self,
+        channel_id: &ChannelId,
+        merchant_balance: MerchantBalance,
+        customer_balance: CustomerBalance,
+    ) -> Result<()> {
+        // Make sure state is pendingMutualClose
+
+        // Set balances
+
+        todo!()
+    }
+
+
     async fn get_channels(&self) -> Result<Vec<ChannelDetails>> {
         let channels = sqlx::query!(
             r#"
@@ -503,7 +537,8 @@ impl QueryMerchant for SqlitePool {
                 contract_id AS "contract_id: ContractId",
                 merchant_deposit AS "merchant_deposit: MerchantBalance",
                 customer_deposit AS "customer_deposit: CustomerBalance",
-                closing_balances AS "closing_balances: ClosingBalances"
+                closing_balances AS "closing_balances: ClosingBalances",
+                mutual_close_balances AS "mutual_close_balances: MutualCloseBalances"
             FROM merchant_channels
             "#
         )
@@ -517,6 +552,7 @@ impl QueryMerchant for SqlitePool {
             merchant_deposit: r.merchant_deposit,
             customer_deposit: r.customer_deposit,
             closing_balances: r.closing_balances,
+            mutual_close_balances: r.mutual_close_balances,
         })
         .collect();
 
@@ -642,7 +678,8 @@ impl QueryMerchant for SqlitePool {
                 contract_id AS "contract_id: ContractId",
                 merchant_deposit AS "merchant_deposit: MerchantBalance",
                 customer_deposit AS "customer_deposit: CustomerBalance",
-                closing_balances AS "closing_balances: ClosingBalances"
+                closing_balances AS "closing_balances: ClosingBalances",
+                mutual_close_balances AS "mutual_close_balances: (MerchantBalance, CustomerBalance)"
             FROM merchant_channels
             WHERE channel_id LIKE ?
             LIMIT 2
@@ -662,6 +699,7 @@ impl QueryMerchant for SqlitePool {
                 merchant_deposit: channel.merchant_deposit,
                 customer_deposit: channel.customer_deposit,
                 closing_balances: channel.closing_balances,
+                mutual_close_balances: channel.mutual_close_balances,
             },
         };
 

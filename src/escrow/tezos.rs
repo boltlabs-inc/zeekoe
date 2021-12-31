@@ -1411,15 +1411,6 @@ impl TezosClient {
             .map_err(MutualCloseError)
         }
     }
-
-    /// Verify that the specified contract is closed.
-    ///
-    /// This function will wait until the contract status is CLOSED at the expected confirmation
-    /// depth and is called by the merchant.
-    #[allow(unused)]
-    pub async fn verify_contract_closed(&self, contract_id: &ContractId) -> Result<(), Error> {
-        todo!()
-    }
 }
 
 fn is_zero(buf: &[u8]) -> bool {

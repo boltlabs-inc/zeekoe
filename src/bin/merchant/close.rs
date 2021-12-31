@@ -73,26 +73,7 @@ impl Close {
         .await
         .context("Mutual close timed out while waiting for signature verification")??;
 
-        // Wait for the contract to be closed on chain
-        tezos_client
-            .verify_contract_closed(&contract_id)
-            .await
-            .context(format!(
-                "Failed to confirm that the contract closed in mutual close protocol (id: {})",
-                contract_id
-            ))?;
-
-        // Update the database to indicate a successful mutual close
-        finalize_mutual_close(
-            database.as_ref(),
-            close_state.channel_id(),
-            close_state.customer_balance(),
-            close_state.merchant_balance(),
-        )
-        .await
-        .context(
-            "Failed to finalize mutual close - perhaps the contract was closed by a different flow",
-        )
+        Ok(())
     }
 }
 
@@ -274,8 +255,6 @@ async fn finalize_dispute(
 pub async fn finalize_mutual_close(
     database: &dyn QueryMerchant,
     channel_id: &ChannelId,
-    customer_balance: CustomerBalance,
-    merchant_balance: MerchantBalance,
 ) -> Result<(), anyhow::Error> {
     // Update database to indicate the channel closed successfully.
     database
@@ -290,7 +269,10 @@ pub async fn finalize_mutual_close(
             &channel_id
         ))?;
 
-    // Update database to final channel balances as indicated by the mutualClose entrypoint call.
+    // Retrieve saved mutual close balances
+    let (merchant_balance, customer_balance) = todo!()
+     
+    // Update final channel balances to mutual close values 
     database
         .update_closing_balances(
             channel_id,

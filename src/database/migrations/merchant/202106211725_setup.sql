@@ -37,7 +37,8 @@ CREATE TABLE merchant_channels (
       "dispute",
       "closed"
     )),
-  closing_balances BLOB NOT NULL
+  closing_balances BLOB NOT NULL,
+  mutual_close_balances BLOB
 );
 
 CREATE INDEX merchant_channels_channel_id ON merchant_channels (channel_id);

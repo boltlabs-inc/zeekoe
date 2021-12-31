@@ -277,6 +277,20 @@ async fn dispatch_channel(
         .await?;
     }
 
+    if contract_state.status()? == ContractStatus::Closed
+        && channel.status == ChannelStatus::PendingMutualClose
+    {
+        // Update the database to indicate a successful mutual close
+        close::finalize_mutual_close(
+            database,
+            &channel.channel_id,
+        )
+        .await
+        .context(
+            "Failed to finalize mutual close - perhaps the contract was closed by a different flow",
+        )?;
+    }
+
     Ok(())
 }
 
