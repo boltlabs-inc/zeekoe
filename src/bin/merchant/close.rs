@@ -8,7 +8,7 @@ use zeekoe::{
     merchant::{
         cli,
         config::Service,
-        database::{Error, QueryMerchant, QueryMerchantExt},
+        database::{Error, MutualCloseBalances, QueryMerchant, QueryMerchantExt},
         Chan, Config,
     },
     offer_abort, proceed,
@@ -40,15 +40,6 @@ impl Close {
             .context("Mutual close timed out while preparing to close")?
             .context("Mutual close failed")?;
 
-        // Get contract ID for this channel
-        let contract_id = database
-            .contract_details(close_state.channel_id())
-            .await
-            .context(format!(
-                "Failed to retrieve contract ID (id: {})",
-                close_state.channel_id()
-            ))?;
-
         // Generate an authorization signature under the merchant's EdDSA Tezos key
         let tezos_client =
             load_tezos_client(config, close_state.channel_id(), database.as_ref()).await?;
@@ -72,6 +63,17 @@ impl Close {
         .with_timeout(service.verification_timeout)
         .await
         .context("Mutual close timed out while waiting for signature verification")??;
+
+        // The mutual close is not finalized until the chain watcher observes the confirmed mutual
+        // close operation and calls `finalize_mutual_close()`. Save the expected balances for that
+        // occasion.
+        database
+            .set_mutual_close_balances(
+                close_state.channel_id(),
+                close_state.merchant_balance(),
+                close_state.customer_balance(),
+            )
+            .await?;
 
         Ok(())
     }
@@ -270,9 +272,12 @@ pub async fn finalize_mutual_close(
         ))?;
 
     // Retrieve saved mutual close balances
-    let (merchant_balance, customer_balance) = todo!()
-     
-    // Update final channel balances to mutual close values 
+    let MutualCloseBalances {
+        merchant_balance,
+        customer_balance,
+    } = database.get_mutual_close_balances(channel_id).await?;
+
+    // Update final channel balances to mutual close values
     database
         .update_closing_balances(
             channel_id,

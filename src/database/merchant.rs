@@ -2,7 +2,6 @@ use {async_trait::async_trait, futures::StreamExt, rand::rngs::StdRng, thiserror
 
 pub use super::connect_sqlite;
 use crate::database::SqlitePool;
-use crate::escrow::tezos::MutualCloseAuthorizationSignature;
 use crate::{escrow::types::ContractId, protocol::ChannelStatus};
 use serde::{Deserialize, Serialize};
 use zkabacus_crypto::{
@@ -85,6 +84,12 @@ pub trait QueryMerchant: Send + Sync {
         customer_balance: CustomerBalance,
     ) -> Result<()>;
 
+    /// Retrieve the agreed-upon mutual close balances for the given channel.
+    async fn get_mutual_close_balances(
+        &self,
+        channel_id: &ChannelId,
+    ) -> Result<MutualCloseBalances>;
+
     /// Get information about every channel in the database.
     async fn get_channels(&self) -> Result<Vec<ChannelDetails>>;
 
@@ -148,6 +153,8 @@ pub enum Error {
     /// A channel balance update was invalid.
     #[error("Failed to update channel balance to invalid set (merchant: {0:?}, customer: {1:?})")]
     InvalidBalanceUpdate(MerchantBalance, Option<CustomerBalance>),
+    #[error("Failed to retrieve mutual close balances: not set for channel {0}")]
+    MutualCloseBalancesNotSet(ChannelId),
     /// An underlying database error occurred.
     #[error(transparent)]
     Database(#[from] sqlx::Error),
@@ -520,13 +527,88 @@ impl QueryMerchant for SqlitePool {
         merchant_balance: MerchantBalance,
         customer_balance: CustomerBalance,
     ) -> Result<()> {
-        // Make sure state is pendingMutualClose
+        let mut transaction = self.begin().await?;
 
-        // Set balances
+        // Make sure state is PendingMutualClose: get current status...
+        let result = sqlx::query!(
+            r#"
+            SELECT
+                status AS "status: Option<ChannelStatus>",
+                closing_balances AS "closing_balances: ClosingBalances"
+            FROM merchant_channels
+            WHERE channel_id = ?
+            "#,
+            channel_id,
+        )
+        .fetch_one(&mut transaction)
+        .await?;
 
-        todo!()
+        // ...and make sure it's correct.
+        match result.status {
+            Some(ChannelStatus::PendingMutualClose) => {} // continue
+            Some(unexpected_status) => {
+                return Err(Error::UnexpectedChannelStatus {
+                    channel_id: *channel_id,
+                    expected: vec![ChannelStatus::PendingMutualClose],
+                    found: unexpected_status,
+                })
+            }
+            None => return Err(Error::ChannelNotFound(*channel_id)),
+        };
+
+        let mutual_close_balances = MutualCloseBalances {
+            merchant_balance,
+            customer_balance,
+        };
+
+        // If so, set the mutual close balances
+        sqlx::query!(
+            "UPDATE merchant_channels
+             SET mutual_close_balances = ?
+             WHERE channel_id = ?",
+            mutual_close_balances,
+            channel_id,
+        )
+        .execute(&mut transaction)
+        .await?;
+
+        transaction.commit().await?;
+        Ok(())
     }
 
+    async fn get_mutual_close_balances(
+        &self,
+        channel_id: &ChannelId,
+    ) -> Result<MutualCloseBalances> {
+        let mut result = sqlx::query!(
+            r#"
+            SELECT
+                mutual_close_balances AS "mutual_close_balances: MutualCloseBalances"
+            FROM merchant_channels
+            WHERE channel_id = ?
+            "#,
+            channel_id,
+        )
+        .fetch_all(self)
+        .await?
+        .into_iter();
+
+        // Make sure that exactly one result exists
+        let maybe_mutual_close_balances = match result.next() {
+            None => return Err(Error::ChannelNotFound(*channel_id)),
+            Some(record) => record.mutual_close_balances,
+        };
+
+        if result.next().is_some() {
+            return Err(Error::ChannelIdCollision(channel_id.to_string()));
+        }
+
+        // Make sure balances were set in the first place
+        match maybe_mutual_close_balances {
+            None => Err(Error::MutualCloseBalancesNotSet(*channel_id)),
+            Some(mutual_close_balances) => Ok(mutual_close_balances),
+        }
+    }
 
     async fn get_channels(&self) -> Result<Vec<ChannelDetails>> {
         let channels = sqlx::query!(
@@ -679,7 +761,7 @@ impl QueryMerchant for SqlitePool {
                 merchant_deposit AS "merchant_deposit: MerchantBalance",
                 customer_deposit AS "customer_deposit: CustomerBalance",
                 closing_balances AS "closing_balances: ClosingBalances",
-                mutual_close_balances AS "mutual_close_balances: (MerchantBalance, CustomerBalance)"
+                mutual_close_balances AS "mutual_close_balances: MutualCloseBalances"
             FROM merchant_channels
             WHERE channel_id LIKE ?
             LIMIT 2

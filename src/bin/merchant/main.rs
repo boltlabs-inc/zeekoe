@@ -277,6 +277,10 @@ async fn dispatch_channel(
         .await?;
     }
 
+    // The channel has not reacted to a customer posting a mutual close transaction on chain
+    // The condition is
+    // - the contract is closed, but
+    // - the channel status is `PendingMutualClose`
     if contract_state.status()? == ContractStatus::Closed
         && channel.status == ChannelStatus::PendingMutualClose
     {

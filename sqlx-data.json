@@ -38,6 +38,16 @@
       "nullable": []
     }
   },
+  "369ab7505c238e78d2e6c44cbda53355e8f751275a738fcf15f645f3cbae43f7": {
+    "query": "UPDATE merchant_channels\n             SET mutual_close_balances = ?\n             WHERE channel_id = ?",
+    "describe": {
+      "columns": [],
+      "parameters": {
+        "Right": 2
+      },
+      "nullable": []
+    }
+  },
   "46ea459c9d2e371ace67299de61c55d6e17a6c8b3a8d10e6bfd0771ffc907b0e": {
     "query": "\n            SELECT secret AS \"secret: RevocationSecret\"\n            FROM revocations\n            WHERE lock = ?\n            ",
     "describe": {
@@ -508,6 +518,78 @@
       ]
     }
   },
+  "d3d67ac30fb4289cc50c23f82d662df2f0a13603a59c4fb2ef478963601cc314": {
+    "query": "\n            SELECT\n                mutual_close_balances AS \"mutual_close_balances: MutualCloseBalances\"\n            FROM merchant_channels\n            WHERE channel_id = ?\n            ",
+    "describe": {
+      "columns": [
+        {
+          "name": "mutual_close_balances: MutualCloseBalances",
+          "ordinal": 0,
+          "type_info": "Blob"
+        }
+      ],
+      "parameters": {
+        "Right": 1
+      },
+      "nullable": [
+        true
+      ]
+    }
+  },
+  "d74b5e711d312afed219c829be2f3002fd1a7ed9e9cfe2b9ab0483c5746ccf9d": {
+    "query": "\n            SELECT\n                channel_id AS \"channel_id: ChannelId\",\n                status as \"status: ChannelStatus\",\n                contract_id AS \"contract_id: ContractId\",\n                merchant_deposit AS \"merchant_deposit: MerchantBalance\",\n                customer_deposit AS \"customer_deposit: CustomerBalance\",\n                closing_balances AS \"closing_balances: ClosingBalances\",\n                mutual_close_balances AS \"mutual_close_balances: MutualCloseBalances\"\n            FROM merchant_channels\n            WHERE channel_id LIKE ?\n            LIMIT 2\n            ",
+    "describe": {
+      "columns": [
+        {
+          "name": "channel_id: ChannelId",
+          "ordinal": 0,
+          "type_info": "Text"
+        },
+        {
+          "name": "status: ChannelStatus",
+          "ordinal": 1,
+          "type_info": "Text"
+        },
+        {
+          "name": "contract_id: ContractId",
+          "ordinal": 2,
+          "type_info": "Blob"
+        },
+        {
+          "name": "merchant_deposit: MerchantBalance",
+          "ordinal": 3,
+          "type_info": "Blob"
+        },
+        {
+          "name": "customer_deposit: CustomerBalance",
+          "ordinal": 4,
+          "type_info": "Blob"
+        },
+        {
+          "name": "closing_balances: ClosingBalances",
+          "ordinal": 5,
+          "type_info": "Blob"
+        },
+        {
+          "name": "mutual_close_balances: MutualCloseBalances",
+          "ordinal": 6,
+          "type_info": "Blob"
+        }
+      ],
+      "parameters": {
+        "Right": 1
+      },
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true
+      ]
+    }
+  },
   "d899fc4f2db3fd9360822e5f2c70610aa7961c8926b507824351d16a0cec3d34": {
     "query": "\n            SELECT \n                merchant_deposit as \"merchant_balance: MerchantBalance\",\n                customer_deposit as \"customer_balance: CustomerBalance\"\n            FROM merchant_channels\n            WHERE channel_id = ?\n            LIMIT 2\n            ",
     "describe": {
@@ -532,8 +614,8 @@
       ]
     }
   },
-  "e81865613729e1b58aaf3c7eb2af367900ed5f85e5159558dee4fd1a51a0539a": {
-    "query": "\n            SELECT\n                channel_id AS \"channel_id: ChannelId\",\n                status as \"status: ChannelStatus\",\n                contract_id AS \"contract_id: ContractId\",\n                merchant_deposit AS \"merchant_deposit: MerchantBalance\",\n                customer_deposit AS \"customer_deposit: CustomerBalance\",\n                closing_balances AS \"closing_balances: ClosingBalances\",\n                mutual_close_balances AS \"mutual_close_balances: ClosingBalances\"\n            FROM merchant_channels\n            WHERE channel_id LIKE ?\n            LIMIT 2\n            ",
+  "f4e7912daa7a08c17c12664f55ee7aeea394ab76bb40858446a98221d3a592ac": {
+    "query": "\n            SELECT\n                channel_id AS \"channel_id: ChannelId\",\n                status as \"status: ChannelStatus\",\n                contract_id AS \"contract_id: ContractId\",\n                merchant_deposit AS \"merchant_deposit: MerchantBalance\",\n                customer_deposit AS \"customer_deposit: CustomerBalance\",\n                closing_balances AS \"closing_balances: ClosingBalances\",\n                mutual_close_balances AS \"mutual_close_balances: MutualCloseBalances\"\n            FROM merchant_channels\n            ",
     "describe": {
       "columns": [
         {
@@ -567,61 +649,7 @@
           "type_info": "Blob"
         },
         {
-          "name": "mutual_close_balances: ClosingBalances",
-          "ordinal": 6,
-          "type_info": "Blob"
-        }
-      ],
-      "parameters": {
-        "Right": 1
-      },
-      "nullable": [
-        false,
-        false,
-        false,
-        false,
-        false,
-        false,
-        true
-      ]
-    }
-  },
-  "f7574a535f3c5e9aacc1f34ccb6a863383bf83e714a863f011c1913c83c3643a": {
-    "query": "\n            SELECT\n                channel_id AS \"channel_id: ChannelId\",\n                status as \"status: ChannelStatus\",\n                contract_id AS \"contract_id: ContractId\",\n                merchant_deposit AS \"merchant_deposit: MerchantBalance\",\n                customer_deposit AS \"customer_deposit: CustomerBalance\",\n                closing_balances AS \"closing_balances: ClosingBalances\",\n                mutual_close_balances AS \"mutual_close_balances: ClosingBalances\"\n            FROM merchant_channels\n            ",
-    "describe": {
-      "columns": [
-        {
-          "name": "channel_id: ChannelId",
-          "ordinal": 0,
-          "type_info": "Text"
-        },
-        {
-          "name": "status: ChannelStatus",
-          "ordinal": 1,
-          "type_info": "Text"
-        },
-        {
-          "name": "contract_id: ContractId",
-          "ordinal": 2,
-          "type_info": "Blob"
-        },
-        {
-          "name": "merchant_deposit: MerchantBalance",
-          "ordinal": 3,
-          "type_info": "Blob"
-        },
-        {
-          "name": "customer_deposit: CustomerBalance",
-          "ordinal": 4,
-          "type_info": "Blob"
-        },
-        {
-          "name": "closing_balances: ClosingBalances",
-          "ordinal": 5,
-          "type_info": "Blob"
-        },
-        {
-          "name": "mutual_close_balances: ClosingBalances",
+          "name": "mutual_close_balances: MutualCloseBalances",
           "ordinal": 6,
           "type_info": "Blob"
         }
