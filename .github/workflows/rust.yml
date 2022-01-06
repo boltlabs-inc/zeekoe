@@ -28,7 +28,9 @@ jobs:
           components: rustfmt, clippy
 
       - name: Install dependencies
-        run: sudo apt install libudev-dev
+        run: |
+          sudo apt-get update
+          sudo apt install libudev-dev
 
       - name: Format check
         run: cargo fmt -- --check
