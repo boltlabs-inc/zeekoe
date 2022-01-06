@@ -125,7 +125,8 @@ pub trait QueryCustomerExt {
     ) -> Result<std::result::Result<T, E>>;
 
     /// Given a channel's unique name, mutate its state in the database using a provided closure,
-    /// that is given the current state and must convert it to [`State::PendingClose`].
+    /// that is given the current state and must convert it to [`State::PendingClose`] or
+    /// [`State::PendingExpiry`].
     ///
     /// The return type can be interpreted as follows:
     /// - A successful run returns `Ok(Ok([`ClosingMessage`]))`. This indicates that the database
@@ -133,7 +134,7 @@ pub trait QueryCustomerExt {
     /// - An `Ok(Err(e))` indicates an error raised by the closure
     /// - An `Err(e)` indicates an error raised outside the closure. This could be a database
     ///   failure or an incorrect state error (e.g. the closure returns a [`State`] variant other
-    ///   than [`State::PendingClose`]).
+    ///   than [`State::PendingClose`] or [`State::PendingExpiry`]).
     ///
     /// **Important:** The given closure should be idempotent on the state of the world.
     /// In particular, the closure **should not result in communication with the merchant**.
@@ -800,11 +801,12 @@ impl<Q: QueryCustomer + ?Sized> QueryCustomerExt for Q {
             channel_name,
             Box::new(|state| match with_closeable_state(state) {
                 Ok((state, t)) => {
-                    // Only allow updates that result in the PendingClose status.
-                    if let State::PendingClose(_) = state {
-                        Ok((state, Box::new(t)))
-                    } else {
-                        Err(Box::new(Err::<E, Error>(Error::CloseFailure)))
+                    // Only allow updates that result in the PendingClose or PendingExpiry status
+                    match state {
+                        State::PendingClose(_) | State::PendingExpiry(_) => {
+                            Ok((state, Box::new(t)))
+                        }
+                        _ => Err(Box::new(Err::<E, Error>(Error::CloseFailure))),
                     }
                 }
                 // Closure function failed somehow

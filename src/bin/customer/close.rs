@@ -69,7 +69,7 @@ struct Closing {
     revocation_lock: RevocationLock,
 }
 
-#[derive(PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum UnilateralCloseKind {
     MerchantInitiated,
     CustomerInitiated,
@@ -90,29 +90,31 @@ pub async fn unilateral_close(
     database: &dyn QueryCustomer,
     close_kind: UnilateralCloseKind,
 ) -> Result<(), anyhow::Error> {
-    // Read the closing message and set the channel state to PendingClose
-    let close_message = get_close_message(rng, database, channel_name)
+    // Read the closing message and set the channel state to PendingClose or PendingExpiry
+    let close_message = get_close_message(rng, database, channel_name, close_kind)
         .await
         .context("Failed to fetch closing message from database")?;
 
-    // If the customer has no money to claim in expiry, just update the status
-    if close_kind == UnilateralCloseKind::MerchantInitiated
-        && close_message.customer_balance().is_zero()
-    {
-        database
-            .with_channel_state(
-                channel_name,
-                zkchannels_state::PendingClose,
-                |closing_message| -> Result<_, Infallible> {
-                    Ok((State::PendingExpiry(closing_message), ()))
-                },
-            )
-            .await
-            .context(format!(
-                "Failed to update channel status to PendingExpiry for {}",
-                channel_name
-            ))??;
-        return Ok(());
+    if close_kind == UnilateralCloseKind::MerchantInitiated {
+        // If the customer has no money to claim in expiry, do nothing
+        if close_message.customer_balance().is_zero() {
+            return Ok(());
+        } else {
+            // Otherwise, update status to PendingClose and continue as in a CustomerInitiated close
+            database
+                .with_channel_state(
+                    channel_name,
+                    zkchannels_state::PendingExpiry,
+                    |closing_message| -> Result<_, Infallible> {
+                        Ok((State::PendingClose(closing_message), ()))
+                    },
+                )
+                .await
+                .context(format!(
+                    "Failed to update channel status to PendingClose for {}",
+                    channel_name
+                ))??;
+        }
     }
 
     if !off_chain {
@@ -149,7 +151,7 @@ async fn finalize_customer_close(
     channel_name: &ChannelName,
     merchant_balance: MerchantBalance,
 ) -> anyhow::Result<()> {
-    // TODO: assert that the db status is PendingClose,
+    // TODO: assert that the db status is PendingClose?
 
     // Indicate that the merchant balance has been paid out to the merchant
     database
@@ -558,11 +560,14 @@ async fn zkabacus_close(
 }
 
 /// Extract the close message from the saved channel status (including the current state
-/// any stored signatures) and update the channel state to PendingClose atomically.
+/// any stored signatures) and update the channel state atomically according to the close kind:
+/// if `MerchantInitiated` (expiry), the new state is `PendingExpiry`.
+/// If `CustomerInitiated`, the new state is `PendingClose`
 async fn get_close_message(
     rng: &mut StdRng,
     database: &dyn QueryCustomer,
     channel_name: &ChannelName,
+    close_kind: UnilateralCloseKind,
 ) -> Result<ClosingMessage, anyhow::Error> {
     let closing_message = database
         .with_closeable_channel(channel_name, |state| {
@@ -578,7 +583,7 @@ async fn get_close_message(
                 State::Locked(locked) => locked.close(rng),
                 State::LockedFailed(locked) => locked.close(rng),
                 State::PendingMutualClose(close_message) => close_message,
-                // Cannot enter PendingClose on a channel that has passed that point
+                // Cannot enter PendingClose/Expiry on a channel that has passed that point
                 State::PendingClose(_)
                 | State::PendingExpiry(_)
                 | State::PendingCustomerClaim(_)
@@ -587,11 +592,19 @@ async fn get_close_message(
                     return Err(close::Error::UncloseableState(state.state_name()))
                 }
             };
-            Ok((State::PendingClose(close_message.clone()), close_message))
+
+            match close_kind {
+                UnilateralCloseKind::CustomerInitiated => {
+                    Ok((State::PendingClose(close_message.clone()), close_message))
+                }
+                UnilateralCloseKind::MerchantInitiated => {
+                    Ok((State::PendingExpiry(close_message.clone()), close_message))
+                }
+            }
         })
         .await
         .context(format!(
-            "Failed to update channel status to PendingClose for {}",
+            "Failed to update channel status to PendingClose or PendingExpiry for {}",
             channel_name
         ))??;
 

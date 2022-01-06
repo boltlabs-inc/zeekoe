@@ -70,6 +70,9 @@ def info(msg):
 def log(msg, debug=True):
     if debug: print("%s%s%s" % (BBlack, msg, NC))
 
+def err(msg):
+    print("%sERROR?%s %s%s%s" % (BBlack, NC, RED, msg, NC))
+
 def fatal_error(msg):
     print("%sERROR:%s %s%s%s" % (BBlack, NC, RED, msg, NC))
     sys.exit(-1)
@@ -127,16 +130,17 @@ def run_command(cmd, verbose):
     while True:
         try:
             output = process.stdout.readline()
-            if process.poll() is not None:
-                break
             if output:
                 output_text = output.strip().decode('utf-8')
                 log("-> %s" % output_text, verbose)
+            error = process.stderr.readline()
+            if error:
+                err("-> %s" % error.strip().decode('utf-8'))
+            if process.poll() is not None:
+                break
         except KeyboardInterrupt:
             process.terminate()
     rc = process.poll()
-    error = process.stderr.readline()
-    log("-> %s" % error.strip().decode('utf-8'), verbose)
     return output_text, rc
 
 def zkchannel_merchant(*args, config, verbose, **kwargs):
