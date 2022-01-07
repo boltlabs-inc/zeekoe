@@ -1,6 +1,9 @@
 name: E2E tests
 
 on:
+  # REMOVE the pull request branch after testing is complete
+  pull_request:
+    branches: [ main ]
   schedule:
     - cron: "0 12 * * 1"
 
@@ -62,7 +65,7 @@ jobs:
             cd dev
             nohup python3 test-zeekoe.py merch-setup --url "http://my-sandbox:20000" -v &
             nohup python3 test-zeekoe.py cust-setup --url "http://my-sandbox:20000" -v &
-            python3 test-zeekoe.py test-all
+            python3 test-zeekoe.py test-all -v 
 
       - name: Move cache
         run: |

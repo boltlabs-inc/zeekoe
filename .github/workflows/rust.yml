@@ -3,8 +3,9 @@ name: Rust
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
+  # ADD these lines back in
+  # pull_request:
+  #   branches: [ main ]
 
 jobs:
   build:
