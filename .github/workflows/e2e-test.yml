@@ -57,6 +57,7 @@ jobs:
           image: ${{ steps.tags.outputs.tagged_image }}
           docker_network: host
           run: |
+            CARGO_NET_GIT_FETCH_WITH_CLI=true cargo build --features "allow_explicit_certificate_trust" "allow_custom_self_delay"
             tezos-client config reset
             tezos-client --endpoint http://my-sandbox:20000 bootstrapped
             tezos-client --endpoint http://my-sandbox:20000 config update
@@ -65,7 +66,7 @@ jobs:
             cd dev
             nohup python3 test-zeekoe.py merch-setup --url "http://my-sandbox:20000" -v &
             nohup python3 test-zeekoe.py cust-setup --url "http://my-sandbox:20000" -v &
-            python3 test-zeekoe.py test-all -v 
+            python3 test-zeekoe.py test-all --url "http://my-sandbox:20000" -v 
 
       - name: Move cache
         run: |
