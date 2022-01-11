@@ -248,11 +248,17 @@ async fn dispatch_channel(
     // The channel has not reacted to a customer posting close balances on chain
     // The condition is
     // - the contract is in customer close state
-    // - the channel status is either Active (if the customer initiated the close flow)
-    //   or PendingExpiry (if the merchant initiated the close flow)
+    // - the channel status indicates a funded channel that has not already entered a close flow:
+    //   MerchantFunded, if the the customer didn't receive a valid pay token in activate
+    //   Active, if the customer initiated the close flow on a channel without any error
+    //   PendingExpiry, if the merchant initiated the close flow on a channel
+    //   PendingMutualClose, if the customer posted a unilateral close operation instead of the
+    //     agreed-upon mutual close transaction
     if contract_state.status()? == ContractStatus::CustomerClose
-        && (channel.status == ChannelStatus::Active
-            || channel.status == ChannelStatus::PendingExpiry)
+        && (channel.status == ChannelStatus::MerchantFunded
+            || channel.status == ChannelStatus::Active
+            || channel.status == ChannelStatus::PendingExpiry
+            || channel.status == ChannelStatus::PendingMutualClose)
     {
         let revocation_lock = contract_state.revocation_lock()?.ok_or_else(|| {
             anyhow::anyhow!(
