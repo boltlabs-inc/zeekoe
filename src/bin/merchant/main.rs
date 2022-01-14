@@ -43,7 +43,6 @@ use close::Close;
 use establish::Establish;
 use parameters::Parameters;
 use pay::Pay;
-use tracing_subscriber::filter::EnvFilter;
 use zkabacus_crypto::ChannelId;
 
 const MAX_INTERVAL_SECONDS: u64 = 60;
@@ -307,9 +306,6 @@ async fn dispatch_channel(
 }
 
 pub async fn main_with_cli(cli: Cli) -> Result<(), anyhow::Error> {
-    let filter = EnvFilter::try_new("info,sqlx::query=warn")?;
-    tracing_subscriber::fmt().with_env_filter(filter).init();
-
     let config_path = cli.config.ok_or_else(config_path).or_else(identity)?;
     let config = Config::load(&config_path).map(|result| {
         result.with_context(|| {
