@@ -32,6 +32,7 @@ use zeekoe::{
 };
 
 use tezedge::crypto::Prefix;
+use tracing::{error, info};
 
 use super::{connect, database, load_tezos_client, Command};
 
@@ -334,7 +335,7 @@ impl Command for Establish {
                     load_tezos_client(&config, &channel_name, database.as_ref()).await?;
                 tezos_client.verify_merchant_funding().await.map_or_else(
                     |err| {
-                        eprintln!("Could not verify merchant funding: {}", err);
+                        error!("Could not verify merchant funding: {}", err);
                         false
                     },
                     |_| true,
@@ -389,7 +390,7 @@ impl Command for Establish {
         .context("Failed to activate channel")?;
 
         // Print success
-        eprintln!(
+        info!(
             "Successfully established new channel with label \"{}\"",
             channel_name
         );

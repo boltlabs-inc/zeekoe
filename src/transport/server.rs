@@ -1,5 +1,6 @@
 //! The server side of Zeekoe's transport layer.
 
+use tracing::{error, info};
 use {
     dialectic::prelude::*,
     dialectic_reconnect::resume,
@@ -193,7 +194,7 @@ where
 
         // Bind to the address and serve
         let address = address.into();
-        println!("serving on: {:?}", address);
+        info!("serving on: {:?}", address);
         let listener = TcpListener::bind(address).await?;
 
         // Loop over incoming TCP connections until `initialize` returns `None`
@@ -214,7 +215,7 @@ where
                         Some(ref acceptor) => match acceptor.accept(tcp_stream).await {
                             Ok(tls_stream) => IoStream::from(tls_stream),
                             Err(e) => {
-                                eprintln!("Server TLS initialization error [{}]: {}", addr, e);
+                                error!("Server TLS initialization error [{}]: {}", addr, e);
                                 continue;
                             }
                         },
@@ -285,13 +286,13 @@ async fn error_handler<Error: Debug>(
                         let join_handle: JoinHandle<Error> = join_handle;
                         join_handle.await.map_err(ServerError::Join).and_then(|r| r)
                     }),
-                    Err(err) => eprintln!("{}", err),
+                    Err(err) => error!("{}", err),
                 }
             },
             Some(result) = results.next() => {
                 match result {
                     Ok(()) => {},
-                    Err(err) => eprintln!("{}", err),
+                    Err(err) => error!("{}", err),
                 }
             },
             else => break,

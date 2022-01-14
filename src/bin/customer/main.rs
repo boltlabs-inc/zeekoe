@@ -1,3 +1,5 @@
+#[cfg(not(feature = "allow_explicit_certificate_trust"))]
+use tracing::warn;
 use {
     anyhow::Context,
     async_trait::async_trait,
@@ -7,6 +9,7 @@ use {
     std::{convert::identity, sync::Arc, time::Duration},
     structopt::StructOpt,
     thiserror::Error,
+    tracing_subscriber::filter::EnvFilter,
     webpki::DNSNameRef,
 };
 
@@ -40,6 +43,9 @@ pub trait Command {
 }
 
 pub async fn main_with_cli(cli: Cli) -> Result<(), anyhow::Error> {
+    let filter = EnvFilter::try_new("info,sqlx::query=warn")?;
+    tracing_subscriber::fmt().with_env_filter(filter).init();
+
     let config_path = cli.config.ok_or_else(config_path).or_else(identity)?;
     let config = Config::load(&config_path).map(|result| {
         result.with_context(|| {
@@ -99,7 +105,7 @@ pub async fn connect(
         })?;
 
         #[cfg(not(feature = "allow_explicit_certificate_trust"))]
-        eprintln!(
+        warn!(
             "Ignoring explicitly trusted certificate at {:?} because \
             this binary was built to only trust webpki roots of trust",
             path

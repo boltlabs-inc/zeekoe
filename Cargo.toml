@@ -79,6 +79,8 @@ comfy-table = "3.0.0"
 sqlx = { version = "0.5.2", features = ["any", "migrate", "offline", "runtime-tokio-rustls", "sqlite"] }
 tezedge = { package = "lib", git = "https://github.com/boltlabs-inc/tezedge-client", branch = "develop" }
 canonicalize_json_micheline = { path = "src/canonicalize_json_micheline" }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
 rand = "0.8.3"

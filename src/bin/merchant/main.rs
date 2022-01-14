@@ -15,6 +15,7 @@ use {
 };
 
 use std::time::Duration;
+use tracing::{error, info};
 
 use zeekoe::{
     escrow::{
@@ -42,6 +43,7 @@ use close::Close;
 use establish::Establish;
 use parameters::Parameters;
 use pay::Pay;
+use tracing_subscriber::filter::EnvFilter;
 use zkabacus_crypto::ChannelId;
 
 const MAX_INTERVAL_SECONDS: u64 = 60;
@@ -195,9 +197,9 @@ impl Command for Run {
                     let config = config.clone();
                     tokio::spawn(async move {
                         match dispatch_channel(database.as_ref(), &channel, &config).await {
-                            Ok(()) => eprintln!("Successfully dispatched {}", &channel.channel_id),
+                            Ok(()) => info!("Successfully dispatched {}", &channel.channel_id),
                             Err(e) => {
-                                eprintln!("Error dispatching on {}: {}", &channel.channel_id, e)
+                                error!("Error dispatching on {}: {}", &channel.channel_id, e)
                             }
                         }
                     });
@@ -208,15 +210,15 @@ impl Command for Run {
 
         // Wait for either the servers or the polling service to finish
         tokio::select! {
-            _ = signal::ctrl_c() => eprintln!("Terminated by user"),
+            _ = signal::ctrl_c() => info!("Terminated by user"),
             Some(Err(e)) = server_futures.next() => {
-                eprintln!("Error: {}", e);
+                error!("Error: {}", e);
             },
             Err(e) = polling_service_join_handle => {
-                eprintln!("Error: {}", e);
+                error!("Error: {}", e);
             }
             else => {
-                eprintln!("Shutting down...")
+                info!("Shutting down...")
             }
         }
 
@@ -305,6 +307,9 @@ async fn dispatch_channel(
 }
 
 pub async fn main_with_cli(cli: Cli) -> Result<(), anyhow::Error> {
+    let filter = EnvFilter::try_new("info,sqlx::query=warn")?;
+    tracing_subscriber::fmt().with_env_filter(filter).init();
+
     let config_path = cli.config.ok_or_else(config_path).or_else(identity)?;
     let config = Config::load(&config_path).map(|result| {
         result.with_context(|| {

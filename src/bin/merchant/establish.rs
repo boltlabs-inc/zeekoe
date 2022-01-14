@@ -18,6 +18,7 @@ use zeekoe::{
 };
 
 use tezedge::crypto::Prefix;
+use tracing::error;
 
 use super::{approve, database, load_tezos_client};
 
@@ -253,7 +254,7 @@ async fn establish_channel(
         {
             Ok(()) => {}
             Err(err) => {
-                eprintln!("Warning: {}", err);
+                error!("Warning: {}", err);
                 abort!(in chan return establish::Error::FailedVerifyOrigination);
             }
         };
@@ -283,7 +284,7 @@ async fn establish_channel(
         {
             Ok(()) => {}
             Err(err) => {
-                eprintln!("Warning: {}", err);
+                error!("Warning: {}", err);
                 abort!(in chan return establish::Error::FailedVerifyCustomerFunding);
             }
         };

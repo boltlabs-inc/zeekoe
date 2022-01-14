@@ -1,4 +1,5 @@
 use std::time::Duration;
+use tracing::{error, info};
 
 use {
     anyhow::Context, async_trait::async_trait, rand::rngs::StdRng, std::sync::Arc, tokio::signal,
@@ -100,8 +101,8 @@ impl Command for Watch {
                         )
                         .await
                         {
-                            Ok(()) => eprintln!("Successfully dispatched {}", &channel.label),
-                            Err(e) => eprintln!("Error dispatching on {}: {}", &channel.label, e),
+                            Ok(()) => info!("Successfully dispatched {}", &channel.label),
+                            Err(e) => error!("Error dispatching on {}: {}", &channel.label, e),
                         }
                     });
                 }
@@ -111,7 +112,7 @@ impl Command for Watch {
 
         tokio::select! {
             _ = signal::ctrl_c() => {
-                eprintln!("Terminated by user");
+                info!("Terminated by user");
                 Ok(())
             },
             result = polling_service_join_handle => result?,
