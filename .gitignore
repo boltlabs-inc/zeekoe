@@ -23,3 +23,7 @@ dev/merchant.db-wal
 
 # This is a build output dependent on tezos-contract.
 src/escrow/zkchannels_contract_canonical.json
+
+# Testing artifacts
+TestCustomer.toml
+TestMerchant.toml
