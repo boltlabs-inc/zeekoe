@@ -1,13 +1,15 @@
 mod common;
-use zeekoe::customer::Config;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn setup_works() {
     common::setup();
 
-    let _config = Config::load("TestCustomer.toml")
+    // Make sure that the config files were encoded validly
+    let _customer_config = zeekoe::customer::Config::load(common::CUSTOMER_CONFIG)
         .await
         .expect("failed to load customer config");
 
-    assert!(true);
+    let _merch_config = zeekoe::merchant::Config::load(common::MERCHANT_CONFIG)
+        .await
+        .expect("failed to load merchant config");
 }
