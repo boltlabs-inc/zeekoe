@@ -2,7 +2,7 @@ use {anyhow::Context, url::Url};
 
 use zkabacus_crypto::{CustomerBalance, MerchantBalance, PaymentAmount};
 
-use zeekoe::merchant::config::Approver;
+use crate::merchant::config::Approver;
 
 /// Ask the specified approver to approve the payment amount and note (or not), returning either
 /// `Ok` if it is approved, and `Err` if it is not approved.

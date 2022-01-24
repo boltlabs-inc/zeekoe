@@ -12,7 +12,7 @@ use {
     std::{convert::Infallible, fs::File, path::PathBuf},
 };
 
-use zeekoe::{
+use crate::{
     abort,
     customer::{
         cli::Close,

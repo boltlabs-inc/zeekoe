@@ -11,7 +11,7 @@ use zkabacus_crypto::{
     Context as ProofContext, PaymentAmount,
 };
 
-use zeekoe::{
+use crate::{
     abort,
     customer::{
         cli::{Pay, Refund},

@@ -5,7 +5,7 @@ use zkabacus_crypto::{
     CustomerRandomness, MerchantBalance, MerchantRandomness, VerifiedBlindedState,
 };
 
-use zeekoe::{
+use crate::{
     abort,
     escrow::{
         tezos::{self, TezosClient},

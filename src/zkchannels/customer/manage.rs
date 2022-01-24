@@ -4,7 +4,7 @@ use {
     rand::rngs::StdRng,
 };
 
-use zeekoe::{
+use crate::{
     amount::Amount,
     customer::{
         cli::{List, Rename},

@@ -14,7 +14,7 @@ use zkabacus_crypto::{
     PublicKey, CLOSE_SCALAR,
 };
 
-use zeekoe::{
+use crate::{
     abort,
     customer::{
         cli::Establish,

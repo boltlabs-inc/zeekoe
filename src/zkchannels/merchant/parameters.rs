@@ -1,4 +1,4 @@
-use zeekoe::{
+use crate::{
     merchant::{Chan, Config},
     protocol,
 };

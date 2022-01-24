@@ -2,14 +2,10 @@ use {
     anyhow::Context,
     async_trait::async_trait,
     dialectic::offer,
-    futures::{
-        stream::{FuturesUnordered, StreamExt},
-        FutureExt,
-    },
+    futures::stream::{FuturesUnordered, StreamExt},
     rand::{rngs::StdRng, SeedableRng},
     sqlx::SqlitePool,
-    std::{convert::identity, sync::Arc},
-    structopt::StructOpt,
+    std::sync::Arc,
     tokio::signal,
     tokio::sync::broadcast,
 };
@@ -17,17 +13,16 @@ use {
 use std::time::Duration;
 use tracing::{error, info};
 
-use zeekoe::{
+use crate::{
     escrow::{
         tezos::TezosClient,
         types::{ContractStatus, TezosKeyMaterial},
     },
     merchant::{
-        cli::{self, Run},
+        cli::Run,
         config::DatabaseLocation,
         database::{connect_sqlite, ChannelDetails, QueryMerchant},
-        defaults::config_path,
-        Chan, Cli, Config, Server,
+        Chan, Config, Server,
     },
     protocol::{ChannelStatus, ZkChannels},
 };
@@ -43,6 +38,7 @@ use close::Close;
 use establish::Establish;
 use parameters::Parameters;
 use pay::Pay;
+
 use zkabacus_crypto::ChannelId;
 
 const MAX_INTERVAL_SECONDS: u64 = 60;
@@ -305,30 +301,6 @@ async fn dispatch_channel(
     Ok(())
 }
 
-pub async fn main_with_cli(cli: Cli) -> Result<(), anyhow::Error> {
-    let config_path = cli.config.ok_or_else(config_path).or_else(identity)?;
-    let config = Config::load(&config_path).map(|result| {
-        result.with_context(|| {
-            format!(
-                "Could not load merchant configuration from {:?}",
-                config_path
-            )
-        })
-    });
-
-    use cli::Merchant::*;
-    match cli.merchant {
-        Configure(cli::Configure { .. }) => {
-            drop(config);
-            tokio::task::spawn_blocking(|| Ok(edit::edit_file(config_path)?)).await?
-        }
-        List(list) => list.run(config.await?).await,
-        Show(show) => show.run(config.await?).await,
-        Run(run) => run.run(config.await?).await,
-        Close(close) => close.run(config.await?).await,
-    }
-}
-
 /// Connect to the database specified by the configuration.
 pub async fn database(config: &Config) -> Result<Arc<dyn QueryMerchant>, anyhow::Error> {
     let database = match config.database {
@@ -365,10 +337,4 @@ pub async fn load_tezos_client(
         confirmation_depth: config.confirmation_depth,
         self_delay: config.self_delay,
     })
-}
-
-#[allow(unused)]
-#[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
-    main_with_cli(Cli::from_args()).await
 }

@@ -5,7 +5,7 @@ use {
     anyhow::Context, async_trait::async_trait, rand::rngs::StdRng, std::sync::Arc, tokio::signal,
 };
 
-use zeekoe::{
+use crate::{
     customer::database::zkchannels_state::{self, ZkChannelState},
     customer::{
         cli::Watch,

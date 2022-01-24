@@ -1,6 +1,6 @@
 use {anyhow::Context, rand::rngs::StdRng};
 
-use zeekoe::{
+use crate::{
     abort,
     merchant::{
         config::Service,

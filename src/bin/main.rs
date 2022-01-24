@@ -2,10 +2,8 @@ use structopt::StructOpt;
 use tracing::error;
 use tracing_subscriber::EnvFilter;
 
-#[path = "customer/main.rs"]
 pub(crate) mod customer;
 
-#[path = "merchant/main.rs"]
 mod merchant;
 
 #[derive(Debug, StructOpt)]

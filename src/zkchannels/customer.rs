@@ -1,24 +1,22 @@
 #[cfg(not(feature = "allow_explicit_certificate_trust"))]
 use tracing::warn;
+
 use {
     anyhow::Context,
     async_trait::async_trait,
-    futures::FutureExt,
-    rand::{rngs::StdRng, SeedableRng},
+    rand::rngs::StdRng,
     sqlx::SqlitePool,
-    std::{convert::identity, sync::Arc, time::Duration},
-    structopt::StructOpt,
+    std::{sync::Arc, time::Duration},
     thiserror::Error,
     webpki::DNSNameRef,
 };
 
-use zeekoe::{
+use crate::{
     customer::{
-        cli::{self, Customer::*},
         client::{Backoff, SessionKey, ZkChannelAddress},
+        config::DatabaseLocation,
         database::{self, connect_sqlite, QueryCustomer},
-        defaults::config_path,
-        Chan, ChannelName, Cli, Client, Config,
+        defaults, Chan, ChannelName, Client, Config,
     },
     escrow::tezos::TezosClient,
     protocol,
@@ -39,36 +37,6 @@ pub trait Command {
     /// Run the command to completion using the given random number generator for all randomness and
     /// the given customer configuration.
     async fn run(self, rng: StdRng, config: Config) -> Result<(), anyhow::Error>;
-}
-
-pub async fn main_with_cli(cli: Cli) -> Result<(), anyhow::Error> {
-    let config_path = cli.config.ok_or_else(config_path).or_else(identity)?;
-    let config = Config::load(&config_path).map(|result| {
-        result.with_context(|| {
-            format!(
-                "Could not load customer configuration from {:?}",
-                config_path
-            )
-        })
-    });
-
-    // TODO: let this be made deterministic during testing
-    let rng = StdRng::from_entropy();
-
-    match cli.customer {
-        Configure(cli::Configure { .. }) => {
-            drop(config);
-            tokio::task::spawn_blocking(|| Ok(edit::edit_file(config_path)?)).await?
-        }
-        List(list) => list.run(rng, config.await?).await,
-        // Show(show) => show.run(rng, config.await?).await,
-        Rename(rename) => rename.run(rng, config.await?).await,
-        Establish(establish) => establish.run(rng, config.await?).await,
-        Pay(pay) => pay.run(rng, config.await?).await,
-        Refund(refund) => refund.run(rng, config.await?).await,
-        Close(close) => close.run(rng, config.await?).await,
-        Watch(watch) => watch.run(rng, config.await?).await,
-    }
 }
 
 /// Connect to a given [`ZkChannelAddress`], configured using the parameters in the [`Config`].
@@ -126,11 +94,10 @@ pub async fn connect_daemon(
 /// Connect to the database specified by the configuration.
 pub async fn database(config: &Config) -> Result<Arc<dyn QueryCustomer>, anyhow::Error> {
     let location = match config.database.clone() {
-        None => zeekoe::customer::defaults::database_location()?,
+        None => defaults::database_location()?,
         Some(l) => l,
     };
 
-    use zeekoe::customer::config::DatabaseLocation;
     let database = match location {
         DatabaseLocation::Ephemeral => Arc::new(
             SqlitePool::connect("file::memory:")
@@ -182,10 +149,4 @@ pub async fn load_tezos_client(
         confirmation_depth: config.confirmation_depth,
         self_delay: config.self_delay,
     })
-}
-
-#[allow(unused)]
-#[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
-    main_with_cli(Cli::from_args()).await
 }

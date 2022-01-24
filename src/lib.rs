@@ -11,3 +11,4 @@ mod config;
 mod database;
 mod defaults;
 mod transport;
+mod zkchannels;
