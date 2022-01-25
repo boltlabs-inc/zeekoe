@@ -27,3 +27,4 @@ src/escrow/zkchannels_contract_canonical.json
 # Testing artifacts
 TestCustomer.toml
 TestMerchant.toml
+errors.log
