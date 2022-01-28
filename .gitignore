@@ -25,6 +25,4 @@ dev/merchant.db-wal
 src/escrow/zkchannels_contract_canonical.json
 
 # Testing artifacts
-TestCustomer.toml
-TestMerchant.toml
-errors.log
+integration_tests/gen/

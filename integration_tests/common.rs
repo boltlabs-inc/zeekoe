@@ -1,39 +1,42 @@
 use std::{
     collections::HashMap,
-    fs::File,
+    fs::{self, File},
     io::{Read, Write},
     sync::Mutex,
 };
 
 use {
     futures::future::{self, Join},
+    rand::prelude::StdRng,
+    structopt::StructOpt,
     thiserror::Error,
     tokio::task::JoinHandle,
     tracing::{error, info_span},
     tracing_futures::Instrument,
 };
 
-use rand::SeedableRng;
-use structopt::StructOpt;
 use zeekoe::{
-    customer::{cli::Customer as CustomerCli, zkchannels::Command},
+    customer::zkchannels::Command,
     merchant::{cli::Merchant as MerchantCli, zkchannels::Command as _},
     timeout::WithTimeout,
 };
 
-pub const CUSTOMER_CONFIG: &str = "TestCustomer.toml";
-pub const MERCHANT_CONFIG: &str = "TestMerchant.toml";
-pub const ERROR_FILENAME: &str = "errors.log";
+pub const CUSTOMER_CONFIG: &str = "integration_tests/gen/TestCustomer.toml";
+pub const MERCHANT_CONFIG: &str = "integration_tests/gen/TestMerchant.toml";
+pub const ERROR_FILENAME: &str = "integration_tests/gen/errors.log";
 
-// Give a name to the slightly annoying type of the joined server futures
+/// Give a name to the slightly annoying type of the joined server futures
 type ServerFuture =
     Join<JoinHandle<Result<(), anyhow::Error>>, JoinHandle<Result<(), anyhow::Error>>>;
 
-#[derive(Debug)]
+/// Set of processes that run during a test.
+#[derive(Debug, PartialEq)]
 #[allow(unused)]
 pub enum Party {
     MerchantServer,
     CustomerWatcher,
+    /// The process corresponding to the `Operation` executed by the test harness
+    ActiveOperation,
 }
 
 #[allow(unused)]
@@ -42,11 +45,32 @@ impl Party {
         match self {
             Party::MerchantServer => "merchant server",
             Party::CustomerWatcher => "customer watcher",
+            Party::ActiveOperation => "active operation",
         }
     }
 }
 
-pub async fn setup() -> ServerFuture {
+// Form a customer CLI request. These cannot be constructed directly because the CLI types are
+// non-exhaustive.
+macro_rules! parse_customer_cli {
+    ($cli:ident, $args:expr) => {
+        match ::zeekoe::customer::cli::Customer::from_iter($args) {
+            ::zeekoe::customer::cli::Customer::$cli(result) => result,
+            _ => panic!("Failed to parse customer CLI"),
+        }
+    };
+}
+pub(crate) use parse_customer_cli;
+
+pub async fn setup(rng: &StdRng) -> ServerFuture {
+    // delete existing data from previous runs
+    let _ = fs::remove_dir_all("integration_tests/gen/");
+    let _ = fs::create_dir("integration_tests/gen");
+
+    // ...copy keys from dev/ directory to here
+    let _ = fs::copy("dev/localhost.crt", "integration_tests/gen/localhost.crt");
+    let _ = fs::copy("dev/localhost.key", "integration_tests/gen/localhost.key");
+
     // write config options for each party
     let customer_config = customer_test_config().await;
     let merchant_config = merchant_test_config().await;
@@ -56,22 +80,6 @@ pub async fn setup() -> ServerFuture {
             File::create(ERROR_FILENAME).expect("Failed to open log file"),
         ))
         .init();
-
-    // Form the customer watch request (cannot construct it directly because `Watch` is
-    // non-exhaustive)
-    let watch = match CustomerCli::from_iter(vec!["./target/debug/zkchannel-customer", "watch"]) {
-        CustomerCli::Watch(watch) => watch,
-        _ => panic!("Failed to parse customer watch CLI"),
-    };
-
-    // TODO: make this a fixed seed?
-    let rng = rand::rngs::StdRng::from_entropy();
-
-    let customer_handle = tokio::spawn(
-        watch
-            .run(rng, customer_config)
-            .instrument(info_span!(Party::CustomerWatcher.to_string())),
-    );
 
     // Form the merchant run request (same non-exhaustive situation here)
     let run = match MerchantCli::from_iter(vec!["./target/debug/zkchannel-merchant", "run"]) {
@@ -83,6 +91,14 @@ pub async fn setup() -> ServerFuture {
     let merchant_handle = tokio::spawn(
         run.run(merchant_config)
             .instrument(info_span!(Party::MerchantServer.to_string())),
+    );
+
+    let watch = parse_customer_cli!(Watch, vec!["./target/debug/zkchannel-customer", "watch"]);
+
+    let customer_handle = tokio::spawn(
+        watch
+            .run(rng.clone(), customer_config)
+            .instrument(info_span!(Party::CustomerWatcher.to_string())),
     );
 
     future::join(customer_handle, merchant_handle)
@@ -98,7 +114,7 @@ pub async fn teardown(server_future: ServerFuture) {
 /// Encode the customizable fields of the zeekoe customer Config struct for testing.
 async fn customer_test_config() -> zeekoe::customer::Config {
     let m = HashMap::from([
-        ("database", "{ sqlite = \"customer-sandbox.db\" }"),
+        ("database", "{ sqlite = \"customer.db\" }"),
         ("trust_certificate", "\"localhost.crt\""),
         ("tezos_account", "{ alias = \"alice\" }"),
         ("tezos_uri", "\"http://localhost:20000\""),
@@ -120,7 +136,7 @@ async fn customer_test_config() -> zeekoe::customer::Config {
 /// Encode the customizable fields of the zeekoe merchant Config struct for testing.
 async fn merchant_test_config() -> zeekoe::merchant::Config {
     let m = HashMap::from([
-        ("database", "{ sqlite = \"merchant-sandbox.db\" }"),
+        ("database", "{ sqlite = \"merchant.db\" }"),
         ("tezos_account", "{ alias = \"bob\" }"),
         ("tezos_uri", "\"http://localhost:20000\""),
         ("self_delay", "120"),
