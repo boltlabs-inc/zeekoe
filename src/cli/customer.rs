@@ -26,7 +26,7 @@ pub struct Cli {
 #[derive(Debug, StructOpt)]
 pub enum Customer {
     List(List),
-    // Show(Show),
+    Show(Show),
     Configure(Configure),
     Rename(Rename),
     Establish(Establish),
@@ -49,8 +49,8 @@ pub struct List {
 #[derive(Debug, StructOpt)]
 #[non_exhaustive]
 pub struct Show {
-    /// The channel ID, or a unique prefix of it.
-    pub prefix: String,
+    /// The channel label.
+    pub label: ChannelName,
 
     /// Get json output.
     #[structopt(long)]

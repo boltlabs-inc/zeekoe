@@ -28,6 +28,8 @@ mod manage;
 mod pay;
 mod watch;
 
+pub use manage::PublicChannelDetails;
+
 /// A single customer-side command, parameterized by the currently loaded configuration.
 ///
 /// All subcommands of [`cli::Customer`] should implement this, except [`Configure`], which does not need

@@ -1,20 +1,74 @@
 use {
+    anyhow::Context,
     async_trait::async_trait,
     comfy_table::{Cell, Table},
     rand::rngs::StdRng,
+    serde::{Deserialize, Serialize},
+    serde_json::json,
+    serde_with::{serde_as, DisplayFromStr},
+    tracing::info,
+    zkabacus_crypto::{ChannelId, CustomerBalance, MerchantBalance},
 };
 
 use crate::{
     amount::Amount,
     customer::{
-        cli::{List, Rename},
-        Config,
+        cli::{List, Rename, Show},
+        ChannelName, Config,
     },
+    database::customer::{ChannelDetails, StateName},
+    escrow::types::ContractId,
 };
 
 use super::{database, Command};
-use anyhow::Context;
-use serde_json::json;
+
+/// The contents of a row of the database for a particular channel that are suitable to share with
+/// the user.
+///
+/// This should be a subset of the [`ChannelDetails`].
+#[serde_as]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PublicChannelDetails {
+    label: ChannelName,
+    state: StateName,
+    customer_balance: CustomerBalance,
+    merchant_balance: MerchantBalance,
+    #[serde_as(as = "DisplayFromStr")]
+    channel_id: ChannelId,
+    contract_id: Option<ContractId>,
+}
+
+impl From<ChannelDetails> for PublicChannelDetails {
+    fn from(details: ChannelDetails) -> Self {
+        PublicChannelDetails {
+            label: details.label,
+            state: details.state.state_name(),
+            customer_balance: details.state.customer_balance(),
+            merchant_balance: details.state.merchant_balance(),
+            channel_id: *details.state.channel_id(),
+            contract_id: details.contract_details.contract_id,
+        }
+    }
+}
+
+#[async_trait]
+impl Command for Show {
+    async fn run(self, _rng: StdRng, config: self::Config) -> Result<(), anyhow::Error> {
+        let database = database(&config)
+            .await
+            .context("Failed to connect to local database")?;
+        let channel_details = database.get_channel(&self.label).await?;
+
+        if self.json {
+            let j = serde_json::to_string(&PublicChannelDetails::from(channel_details))?;
+            info!("{}", j);
+            println!("{}", j);
+        } else {
+            todo!("non-JSON show is not yet implemented")
+        }
+        Ok(())
+    }
+}
 
 #[async_trait]
 impl Command for List {
@@ -33,7 +87,7 @@ impl Command for List {
                     "balance": format!("{}", Amount::from(details.state.customer_balance())),
                     "max_refund": format!("{}", Amount::from(details.state.merchant_balance())),
                     "channel_id": format!("{}", details.state.channel_id()),
-                    "contract_id": details.contract_details.contract_id.map_or_else(|| "N/A".to_string(), |contract_id| format!("{}", contract_id))
+                    "contract_id": details.contract_details.contract_id.map_or_else(|| "N/A".to_string(), |contract_id| format!("{}", contract_id)),
                 }));
             }
             println!("{}", json!(output).to_string());

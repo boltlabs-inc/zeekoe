@@ -33,7 +33,7 @@ pub async fn main_with_cli(cli: Cli) -> Result<(), anyhow::Error> {
             tokio::task::spawn_blocking(|| Ok(edit::edit_file(config_path)?)).await?
         }
         List(list) => list.run(rng, config.await?).await,
-        // Show(show) => show.run(rng, config.await?).await,
+        Show(show) => show.run(rng, config.await?).await,
         Rename(rename) => rename.run(rng, config.await?).await,
         Establish(establish) => establish.run(rng, config.await?).await,
         Pay(pay) => pay.run(rng, config.await?).await,
