@@ -34,7 +34,13 @@ use anyhow::Context;
 
 #[async_trait]
 impl Command for Close {
-    async fn run(self, mut rng: StdRng, config: self::Config) -> Result<(), anyhow::Error> {
+    type Output = ();
+
+    async fn run(
+        self,
+        mut rng: StdRng,
+        config: self::Config,
+    ) -> Result<Self::Output, anyhow::Error> {
         let database = database(&config)
             .await
             .context("Failed to connect to local database")?;

@@ -36,9 +36,11 @@ pub use manage::PublicChannelDetails;
 /// to start with a valid loaded configuration.
 #[async_trait]
 pub trait Command {
+    type Output;
+
     /// Run the command to completion using the given random number generator for all randomness and
     /// the given customer configuration.
-    async fn run(self, rng: StdRng, config: Config) -> Result<(), anyhow::Error>;
+    async fn run(self, rng: StdRng, config: Config) -> Result<Self::Output, anyhow::Error>;
 }
 
 /// Connect to a given [`ZkChannelAddress`], configured using the parameters in the [`Config`].

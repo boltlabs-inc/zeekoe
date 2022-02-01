@@ -21,7 +21,9 @@ const MAX_INTERVAL_SECONDS: u64 = 60;
 
 #[async_trait]
 impl Command for Watch {
-    async fn run(self, rng: StdRng, config: Config) -> Result<(), anyhow::Error> {
+    type Output = ();
+
+    async fn run(self, rng: StdRng, config: Config) -> Result<Self::Output, anyhow::Error> {
         let database = database(&config)
             .await
             .context("Customer chain-watching daemon failed to connect to local database")?;

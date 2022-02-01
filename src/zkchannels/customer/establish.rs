@@ -47,7 +47,13 @@ struct Establishment {
 
 #[async_trait]
 impl Command for Establish {
-    async fn run(self, mut rng: StdRng, config: self::Config) -> Result<(), anyhow::Error> {
+    type Output = ();
+
+    async fn run(
+        self,
+        mut rng: StdRng,
+        config: self::Config,
+    ) -> Result<Self::Output, anyhow::Error> {
         let Self {
             label,
             merchant: address,

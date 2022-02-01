@@ -28,7 +28,13 @@ use super::{connect, database, Command};
 
 #[async_trait]
 impl Command for Pay {
-    async fn run(self, mut rng: StdRng, config: self::Config) -> Result<(), anyhow::Error> {
+    type Output = ();
+
+    async fn run(
+        self,
+        mut rng: StdRng,
+        config: self::Config,
+    ) -> Result<Self::Output, anyhow::Error> {
         let payment_amount = self.pay.try_into()?;
 
         let database = database(&config)
@@ -279,7 +285,9 @@ async fn zkabacus_unlock(
 
 #[async_trait]
 impl Command for Refund {
-    async fn run(self, rng: StdRng, config: Config) -> Result<(), anyhow::Error> {
+    type Output = ();
+
+    async fn run(self, rng: StdRng, config: Config) -> Result<Self::Output, anyhow::Error> {
         // A refund is merely a negative payment
         self.into_negative_pay().run(rng, config).await
     }

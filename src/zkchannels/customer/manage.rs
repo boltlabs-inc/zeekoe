@@ -6,7 +6,6 @@ use {
     serde::{Deserialize, Serialize},
     serde_json::json,
     serde_with::{serde_as, DisplayFromStr},
-    tracing::info,
     zkabacus_crypto::{ChannelId, CustomerBalance, MerchantBalance},
 };
 
@@ -53,26 +52,28 @@ impl From<ChannelDetails> for PublicChannelDetails {
 
 #[async_trait]
 impl Command for Show {
-    async fn run(self, _rng: StdRng, config: self::Config) -> Result<(), anyhow::Error> {
+    type Output = String;
+    async fn run(self, _rng: StdRng, config: self::Config) -> Result<Self::Output, anyhow::Error> {
         let database = database(&config)
             .await
             .context("Failed to connect to local database")?;
         let channel_details = database.get_channel(&self.label).await?;
 
         if self.json {
-            let j = serde_json::to_string(&PublicChannelDetails::from(channel_details))?;
-            info!("{}", j);
-            println!("{}", j);
+            Ok(serde_json::to_string(&PublicChannelDetails::from(
+                channel_details,
+            ))?)
         } else {
             todo!("non-JSON show is not yet implemented")
         }
-        Ok(())
     }
 }
 
 #[async_trait]
 impl Command for List {
-    async fn run(self, _rng: StdRng, config: self::Config) -> Result<(), anyhow::Error> {
+    type Output = ();
+
+    async fn run(self, _rng: StdRng, config: self::Config) -> Result<Self::Output, anyhow::Error> {
         let database = database(&config)
             .await
             .context("Failed to connect to local database")?;
@@ -125,8 +126,9 @@ impl Command for List {
 
 #[async_trait]
 impl Command for Rename {
-    #[allow(unused)]
-    async fn run(self, rng: StdRng, config: self::Config) -> Result<(), anyhow::Error> {
+    type Output = ();
+
+    async fn run(self, _rng: StdRng, config: self::Config) -> Result<Self::Output, anyhow::Error> {
         database(&config)
             .await
             .context("Failed to connect to local database")?
