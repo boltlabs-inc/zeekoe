@@ -36,23 +36,23 @@ pub enum Party {
     MerchantServer,
     CustomerWatcher,
     /// The process corresponding to the `Operation` executed by the test harness
-    ActiveOperation,
+    ActiveOperation(&'static str),
 }
 
 #[allow(unused)]
 impl Party {
-    const fn to_string(&self) -> &str {
+    const fn to_str(&self) -> &str {
         match self {
             Party::MerchantServer => "merchant server",
             Party::CustomerWatcher => "customer watcher",
-            Party::ActiveOperation => "active operation",
+            Party::ActiveOperation(description) => description,
         }
     }
 }
 
 // Form a customer CLI request. These cannot be constructed directly because the CLI types are
 // non-exhaustive.
-macro_rules! parse_customer_cli {
+macro_rules! customer_cli {
     ($cli:ident, $args:expr) => {
         match ::zeekoe::customer::cli::Customer::from_iter($args) {
             ::zeekoe::customer::cli::Customer::$cli(result) => result,
@@ -60,14 +60,13 @@ macro_rules! parse_customer_cli {
         }
     };
 }
-pub(crate) use parse_customer_cli;
+pub(crate) use customer_cli;
 
 pub async fn setup(rng: &StdRng) -> ServerFuture {
-    // delete existing data from previous runs
-    let _ = fs::remove_dir_all("integration_tests/gen/");
     let _ = fs::create_dir("integration_tests/gen");
 
     // ...copy keys from dev/ directory to here
+    // TODO: call the script instead
     let _ = fs::copy("dev/localhost.crt", "integration_tests/gen/localhost.crt");
     let _ = fs::copy("dev/localhost.key", "integration_tests/gen/localhost.key");
 
@@ -75,6 +74,7 @@ pub async fn setup(rng: &StdRng) -> ServerFuture {
     let customer_config = customer_test_config().await;
     let merchant_config = merchant_test_config().await;
 
+    // set up tracing for all of our own log messages
     tracing_subscriber::fmt()
         .with_writer(Mutex::new(
             File::create(ERROR_FILENAME).expect("Failed to open log file"),
@@ -90,15 +90,15 @@ pub async fn setup(rng: &StdRng) -> ServerFuture {
     // Stand-in task for the merchant server
     let merchant_handle = tokio::spawn(
         run.run(merchant_config)
-            .instrument(info_span!(Party::MerchantServer.to_string())),
+            .instrument(info_span!(Party::MerchantServer.to_str())),
     );
 
-    let watch = parse_customer_cli!(Watch, vec!["./target/debug/zkchannel-customer", "watch"]);
+    let watch = customer_cli!(Watch, vec!["./target/debug/zkchannel-customer", "watch"]);
 
     let customer_handle = tokio::spawn(
         watch
             .run(rng.clone(), customer_config)
-            .instrument(info_span!(Party::CustomerWatcher.to_string())),
+            .instrument(info_span!(Party::CustomerWatcher.to_str())),
     );
 
     future::join(customer_handle, merchant_handle)
@@ -109,6 +109,9 @@ pub async fn teardown(server_future: ServerFuture) {
     let _result = server_future
         .with_timeout(tokio::time::Duration::new(1, 0))
         .await;
+
+    // delete data from this run 
+    let _ = fs::remove_dir_all("integration_tests/gen/");
 }
 
 /// Encode the customizable fields of the zeekoe customer Config struct for testing.
@@ -195,17 +198,40 @@ pub enum LogError {
     ReadFailed(std::io::Error),
 }
 
+#[allow(unused)]
+pub enum LogType {
+    Info,
+    Error,
+    Warn,
+}
+
+#[allow(unused)]
+impl LogType {
+    pub fn to_str(&self) -> &str {
+        match self {
+            LogType::Info => "INFO",
+            LogType::Error => "ERROR",
+            LogType::Warn => "WARN",
+        }
+    }
+}
+
 /// Get any errors from the log file.
 ///
 /// Current behavior: outputs the entire log
 /// Ideal behavior: pass a Party, maybe an indicator of which test / channel name we want. Return
 /// only the lines relevant to that setting.
 #[allow(unused)]
-pub fn get_error() -> Result<String, LogError> {
+pub fn get_logs(log_type: LogType, party: Party) -> Result<String, LogError> {
     let mut file = File::open(ERROR_FILENAME).map_err(LogError::OpenFailed)?;
-    let mut error = String::new();
-    file.read_to_string(&mut error)
+    let mut logs = String::new();
+    file.read_to_string(&mut logs)
         .map_err(LogError::ReadFailed)?;
 
-    Ok(error)
+    Ok(logs
+        .lines()
+        .filter(|s| s.contains("zeekoe::"))
+        .filter(|s| s.contains(log_type.to_str()))
+        .filter(|s| s.contains(party.to_str()))
+        .fold("".to_string(), |acc, s| format!("{}{}\n", acc, s)))
 }

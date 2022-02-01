@@ -2,14 +2,19 @@ pub(crate) mod common;
 
 use rand::SeedableRng;
 use zeekoe::{
-    customer::{self, database::StateName as CustomerStatus, zkchannels::Command},
+    customer::{
+        self,
+        database::StateName as CustomerStatus,
+        zkchannels::{Command, PublicChannelDetails},
+    },
     protocol::ChannelStatus as MerchantStatus,
 };
 use {
-    common::{parse_customer_cli, Party},
+    common::{customer_cli, Party},
     rand::prelude::StdRng,
     std::panic,
     structopt::StructOpt,
+    tracing::{info_span, Instrument},
 };
 
 #[tokio::main]
@@ -30,8 +35,8 @@ pub async fn main() {
     for test in tests {
         println!("Now running: {}", test.name);
         let result = test.execute(&rng, &customer_config).await;
-        if result.is_err() {
-            eprintln!("Test failed: {}\n", test.name)
+        if let Err(error) = &result {
+            eprintln!("Test failed: {}\n{}", test.name, error)
         }
         results.push(result);
     }
@@ -43,7 +48,11 @@ pub async fn main() {
     common::teardown(server_future).await;
 }
 
+/// Get a list of tests to execute.
+/// Assumption: none of these will cause a fatal error to the long-running processes (merchant
+/// server or customer watcher).
 fn tests() -> Vec<Test> {
+    /*
     vec![Test {
         name: "Channel establishes correctly".to_string(),
         operations: vec![(
@@ -55,19 +64,29 @@ fn tests() -> Vec<Test> {
             },
         )],
     }]
+    */
+    vec![Test {
+        name: "Channel establishes correctly".to_string(),
+        operations: vec![(
+            Operation::NoOp, // this is a testing-the-tests hack to skip waiting for establish
+            Outcome {
+                customer_status: CustomerStatus::Ready,
+                merchant_status: MerchantStatus::Active,
+                error: None,
+            },
+        )],
+    }]
 }
 
 impl Test {
     async fn execute(&self, rng: &StdRng, config: &customer::Config) -> Result<(), String> {
-        for (op, _expected_outcome) in &self.operations {
+        for (op, expected_outcome) in &self.operations {
             // Clone inputs. A future refactor should look into having the `Command` trait take
             // these by reference instead.
-            let config = config.clone();
-            let rng = rng.clone();
 
             let outcome = match op {
                 Operation::Establish => {
-                    let est = parse_customer_cli!(
+                    let est = customer_cli!(
                         Establish,
                         vec![
                             "./target/debug/zkchannel-customer",
@@ -79,14 +98,32 @@ impl Test {
                             "5 XTZ"
                         ]
                     );
-                    est.run(rng, config)
+                    est.run(rng.clone(), config.clone())
                 }
+                Operation::NoOp => Box::pin(async { Ok(()) }),
                 _ => return Err("Operation not implemented yet".to_string()),
             }
             .await;
 
+            // Check customer status
+            let show = customer_cli!(
+                Show,
+                vec!["zkchannel-customer", "show", &self.name, "--json"]
+            );
+            let channel_detail_json = show
+                .run(rng.clone(), config.clone())
+                .instrument(info_span!("customer show"))
+                .await
+                .map_err(|e| e.to_string())?;
+
+            let channel_details: PublicChannelDetails =
+                serde_json::from_str(&channel_detail_json).map_err(|err| format!("{}", err))?;
+
+            assert_eq!(channel_details.status(), expected_outcome.customer_status);
+
             // TODO: Compare outcome + error log to expected outcome
             eprintln!("op outcome: {:?}", outcome);
+
             //eprintln!("log output: {}", common::get_error().map_err(|e| format!("{:?}", e))?)
 
             // TODO: Call list to check status of each party
@@ -111,6 +148,7 @@ enum Operation {
     MerchantExpiry,
     Store,
     Restore,
+    NoOp,
 }
 
 #[derive(PartialEq)]

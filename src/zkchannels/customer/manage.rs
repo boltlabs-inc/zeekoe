@@ -50,6 +50,32 @@ impl From<ChannelDetails> for PublicChannelDetails {
     }
 }
 
+impl PublicChannelDetails {
+    pub fn label(&self) -> &ChannelName {
+        &self.label
+    }
+
+    pub fn status(&self) -> StateName {
+        self.state
+    }
+
+    pub fn customer_balance(&self) -> CustomerBalance {
+        self.customer_balance
+    }
+
+    pub fn merchant_balance(&self) -> MerchantBalance {
+        self.merchant_balance
+    }
+
+    pub fn channel_id(&self) -> ChannelId {
+        self.channel_id
+    }
+
+    pub fn contract_id(&self) -> Option<&ContractId> {
+        self.contract_id.as_ref()
+    }
+}
+
 #[async_trait]
 impl Command for Show {
     type Output = String;
