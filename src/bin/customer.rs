@@ -32,7 +32,10 @@ pub async fn main_with_cli(cli: Cli) -> Result<(), anyhow::Error> {
             drop(config);
             tokio::task::spawn_blocking(|| Ok(edit::edit_file(config_path)?)).await?
         }
-        List(list) => list.run(rng, config.await?).await,
+        List(list) => {
+            println!("{}", list.run(rng, config.await?).await?);
+            Ok(())
+        }
         Show(show) => {
             println!("{}", show.run(rng, config.await?).await?);
             Ok(())

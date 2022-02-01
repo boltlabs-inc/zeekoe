@@ -353,7 +353,9 @@ async fn zkabacus_close(
 
 #[async_trait]
 impl Command for cli::Close {
-    async fn run(self, config: Config) -> Result<(), anyhow::Error> {
+    type Output = ();
+
+    async fn run(self, config: Config) -> Result<Self::Output, anyhow::Error> {
         // Retrieve zkAbacus config from the database
         let database = database(&config).await?;
 

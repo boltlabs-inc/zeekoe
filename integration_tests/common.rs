@@ -16,9 +16,7 @@ use {
 };
 
 use zeekoe::{
-    customer::zkchannels::Command,
-    merchant::{cli::Merchant as MerchantCli, zkchannels::Command as _},
-    timeout::WithTimeout,
+    customer::zkchannels::Command, merchant::zkchannels::Command as _, timeout::WithTimeout,
 };
 
 pub const CUSTOMER_CONFIG: &str = "integration_tests/gen/TestCustomer.toml";
@@ -54,13 +52,29 @@ impl Party {
 // non-exhaustive.
 macro_rules! customer_cli {
     ($cli:ident, $args:expr) => {
-        match ::zeekoe::customer::cli::Customer::from_iter($args) {
+        match ::zeekoe::customer::cli::Customer::from_iter(
+            ::std::iter::once("zkchannels-customer").chain($args),
+        ) {
             ::zeekoe::customer::cli::Customer::$cli(result) => result,
             _ => panic!("Failed to parse customer CLI"),
         }
     };
 }
 pub(crate) use customer_cli;
+
+/// Form a merchant CLI request. These cannot be constructed directly because the CLI types are
+/// non-exhaustive.
+macro_rules! merchant_cli {
+    ($cli:ident, $args:expr) => {
+        match ::zeekoe::merchant::cli::Merchant::from_iter(
+            ::std::iter::once("zkchannels-merchant").chain($args),
+        ) {
+            ::zeekoe::merchant::cli::Merchant::$cli(result) => result,
+            _ => panic!("Failed to parse merchant CLI"),
+        }
+    };
+}
+pub(crate) use merchant_cli;
 
 pub async fn setup(rng: &StdRng) -> ServerFuture {
     let _ = fs::create_dir("integration_tests/gen");
@@ -81,11 +95,8 @@ pub async fn setup(rng: &StdRng) -> ServerFuture {
         ))
         .init();
 
-    // Form the merchant run request (same non-exhaustive situation here)
-    let run = match MerchantCli::from_iter(vec!["./target/debug/zkchannel-merchant", "run"]) {
-        MerchantCli::Run(run) => run,
-        _ => panic!("Failed to parse merchant run CLI"),
-    };
+    // Form the merchant run request
+    let run = merchant_cli!(Run, vec!["run"]);
 
     // Stand-in task for the merchant server
     let merchant_handle = tokio::spawn(
@@ -93,7 +104,7 @@ pub async fn setup(rng: &StdRng) -> ServerFuture {
             .instrument(info_span!(Party::MerchantServer.to_str())),
     );
 
-    let watch = customer_cli!(Watch, vec!["./target/debug/zkchannel-customer", "watch"]);
+    let watch = customer_cli!(Watch, vec!["watch"]);
 
     let customer_handle = tokio::spawn(
         watch
@@ -110,7 +121,7 @@ pub async fn teardown(server_future: ServerFuture) {
         .with_timeout(tokio::time::Duration::new(1, 0))
         .await;
 
-    // delete data from this run 
+    // delete data from this run
     let _ = fs::remove_dir_all("integration_tests/gen/");
 }
 

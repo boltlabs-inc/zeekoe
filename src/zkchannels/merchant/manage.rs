@@ -1,21 +1,66 @@
 use super::{database, Command};
 use crate::{
     amount::Amount,
+    escrow::types::ContractId,
     merchant::{
         cli::{List, Show},
+        database::ChannelDetails,
         Config,
     },
+    protocol::ChannelStatus,
 };
-use serde_json::json;
 use {
     anyhow::Context,
     async_trait::async_trait,
     comfy_table::{Cell, Table},
+    serde::{Deserialize, Serialize},
+    serde_json::json,
+    serde_with::{serde_as, DisplayFromStr},
+    zkabacus_crypto::ChannelId,
 };
+
+/// The contents of a row of the database for a particular channel that are suitable to share with
+/// the user (especially for testing).
+///
+/// This should be a subset of [`ChannelDetails`].
+#[serde_as]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PublicChannelDetails {
+    #[serde_as(as = "DisplayFromStr")]
+    channel_id: ChannelId,
+    status: ChannelStatus,
+    contract_id: ContractId,
+}
+
+impl From<ChannelDetails> for PublicChannelDetails {
+    fn from(details: ChannelDetails) -> Self {
+        PublicChannelDetails {
+            status: details.status,
+            channel_id: details.channel_id,
+            contract_id: details.contract_id,
+        }
+    }
+}
+
+impl PublicChannelDetails {
+    pub fn channel_id(&self) -> ChannelId {
+        self.channel_id
+    }
+
+    pub fn status(&self) -> ChannelStatus {
+        self.status
+    }
+
+    pub fn contract_id(&self) -> &ContractId {
+        &self.contract_id
+    }
+}
 
 #[async_trait]
 impl Command for List {
-    async fn run(self, config: Config) -> Result<(), anyhow::Error> {
+    type Output = String;
+
+    async fn run(self, config: Config) -> Result<Self::Output, anyhow::Error> {
         let database = database(&config)
             .await
             .context("Failed to connect to local database")?;
@@ -30,7 +75,7 @@ impl Command for List {
                     "status": format!("{}", channel.status),
                 }));
             }
-            println!("{}", json!(output).to_string());
+            Ok(json!(output).to_string())
         } else {
             let mut table = Table::new();
             table.load_preset(comfy_table::presets::UTF8_FULL);
@@ -43,33 +88,23 @@ impl Command for List {
                     Cell::new(channel.status),
                 ]);
             }
-
-            println!("{}", table);
+            Ok(table.to_string())
         }
-        Ok(())
     }
 }
 
 #[async_trait]
 impl Command for Show {
-    async fn run(self, config: Config) -> Result<(), anyhow::Error> {
+    type Output = String;
+
+    async fn run(self, config: Config) -> Result<Self::Output, anyhow::Error> {
         let database = database(&config)
             .await
             .context("Failed to connect to local database")?;
         let details = database.get_channel_details_by_prefix(&self.prefix).await?;
 
         if self.json {
-            println!(
-                "{}",
-                json!({
-                    "channel_id": format!("{}", details.channel_id),
-                    "status": format!("{}", details.status),
-                    "contract_id": format!("{}", details.contract_id),
-                    "merchant_deposit": format!("{}", Amount::from(details.merchant_deposit)),
-                    "customer_deposit": format!("{}", Amount::from(details.customer_deposit)),
-                })
-                .to_string()
-            );
+            Ok(serde_json::to_string(&PublicChannelDetails::from(details))?)
         } else {
             let mut table = Table::new();
             table.load_preset(comfy_table::presets::UTF8_FULL);
@@ -89,8 +124,7 @@ impl Command for Show {
                 Cell::new(Amount::from(details.customer_deposit)),
             ]);
 
-            println!("{}", table);
+            Ok(table.to_string())
         }
-        Ok(())
     }
 }

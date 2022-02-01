@@ -95,7 +95,7 @@ impl Display for Party {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, sqlx::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, sqlx::Type, Serialize, Deserialize)]
 #[cfg_attr(test, derive(EnumIter))]
 #[sqlx(rename_all = "snake_case", type_name = "text")]
 pub enum ChannelStatus {

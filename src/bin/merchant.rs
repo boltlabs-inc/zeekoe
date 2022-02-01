@@ -19,8 +19,14 @@ pub async fn main_with_cli(cli: Cli) -> Result<(), anyhow::Error> {
             drop(config);
             tokio::task::spawn_blocking(|| Ok(edit::edit_file(config_path)?)).await?
         }
-        List(list) => list.run(config.await?).await,
-        Show(show) => show.run(config.await?).await,
+        List(list) => {
+            println!("{}", list.run(config.await?).await?);
+            Ok(())
+        }
+        Show(show) => {
+            println!("{}", show.run(config.await?).await?);
+            Ok(())
+        }
         Run(run) => run.run(config.await?).await,
         Close(close) => close.run(config.await?).await,
     }

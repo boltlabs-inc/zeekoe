@@ -22,9 +22,9 @@ use crate::{
 use super::{database, Command};
 
 /// The contents of a row of the database for a particular channel that are suitable to share with
-/// the user.
+/// the user (especially for testing).
 ///
-/// This should be a subset of the [`ChannelDetails`].
+/// This should be a subset of [`ChannelDetails`].
 #[serde_as]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PublicChannelDetails {
@@ -97,7 +97,7 @@ impl Command for Show {
 
 #[async_trait]
 impl Command for List {
-    type Output = ();
+    type Output = String;
 
     async fn run(self, _rng: StdRng, config: self::Config) -> Result<Self::Output, anyhow::Error> {
         let database = database(&config)
@@ -117,7 +117,7 @@ impl Command for List {
                     "contract_id": details.contract_details.contract_id.map_or_else(|| "N/A".to_string(), |contract_id| format!("{}", contract_id)),
                 }));
             }
-            println!("{}", json!(output).to_string());
+            Ok(json!(output).to_string())
         } else {
             let mut table = Table::new();
             table.load_preset(comfy_table::presets::UTF8_FULL);
@@ -144,9 +144,8 @@ impl Command for List {
                 ]);
             }
 
-            println!("{}", table);
+            Ok(table.to_string())
         }
-        Ok(())
     }
 }
 

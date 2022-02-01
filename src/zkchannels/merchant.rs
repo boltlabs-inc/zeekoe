@@ -34,6 +34,8 @@ mod manage;
 mod parameters;
 mod pay;
 
+pub use manage::PublicChannelDetails;
+
 use close::Close;
 use establish::Establish;
 use parameters::Parameters;
@@ -49,12 +51,15 @@ const MAX_INTERVAL_SECONDS: u64 = 60;
 /// to start with a valid loaded configuration.
 #[async_trait]
 pub trait Command {
-    async fn run(self, config: Config) -> Result<(), anyhow::Error>;
+    type Output;
+
+    async fn run(self, config: Config) -> Result<Self::Output, anyhow::Error>;
 }
 
 #[async_trait]
 impl Command for Run {
-    async fn run(self, config: Config) -> Result<(), anyhow::Error> {
+    type Output = ();
+    async fn run(self, config: Config) -> Result<Self::Output, anyhow::Error> {
         // Either initialize the merchant's config afresh, or get existing config if it exists
         let zkabacus_config = database(&config)
             .await
