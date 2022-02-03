@@ -10,7 +10,7 @@ use zeekoe::{
 use {
     common::{customer_cli, merchant_cli, Party},
     rand::prelude::StdRng,
-    std::panic,
+    std::{panic, time::Duration},
     structopt::StructOpt,
 };
 
@@ -109,6 +109,9 @@ impl Test {
             }
             .await;
 
+            // Sleep until the servers have finished their thing
+            tokio::time::sleep(op.wait_time()).await;
+
             // Check customer status
             let customer_detail_json = customer_cli!(Show, vec!["show", &self.name, "--json"])
                 .run(rng.clone(), customer_config.clone())
@@ -132,13 +135,15 @@ impl Test {
 
             assert_eq!(merchant_channel.status(), expected_outcome.merchant_status);
 
-            // TODO: Compare error log to expected outcome
+            // TODO: Compare error log to expected outcome: check for merchant server error, customer watcher error
+            // TODO: How can we distinguish between errors from each operation and each test?
+            // - the customer watcher prints errors with the label, so we can filter by label for this test
+            // - the merchant watcher prints error with the channel id
+            // - the merchant server just prints the error with no context
+            // we can't span these with the test name.
+            // should we delete error log after each test?
+            // should we declare invariant that tests should only produce error on the last Operation?
             eprintln!("op outcome: {:?}", outcome);
-
-            //eprintln!("log output: {}", common::get_error().map_err(|e| format!("{:?}", e))?)
-
-            // TODO: Call list to check status of each party
-            // Compare statuses to expected status
         }
         Ok(())
     }
@@ -160,6 +165,39 @@ enum Operation {
     Store,
     Restore,
     NoOp,
+}
+
+impl Operation {
+    /// Amount of time to wait before validating that an `Operation` has successfully completed.
+    fn wait_time(&self) -> Duration {
+        // The following actions cause delays:
+        // (a) the watcher notices a contract change (60 seconds)
+        // (b) a watcher posts a transaction on chain (10 seconds)
+        // (c) a watcher waits for self-delay to elapse (60 seconds + noticing)
+        let seconds = match self {
+            Self::Establish
+            | Self::Pay
+            | Self::PayAll
+            | Self::Store
+            | Self::Restore
+            | Self::NoOp => 0,
+
+            // The merchant watcher must notice the contract status change
+            Self::MutualClose => 60,
+            // After the initial close tx is posted inline, either:
+            // - the merchant notices, posts Dispute, and waits for it to confirm. The customer
+            //   watcher notices and updates status (130)
+            // - the merchant notices and does nothing. The customer watcher waits for self-delay to
+            //   elapse, then posts claim (130)
+            Self::CustomerClose => 130,
+            // Expiry is either:
+            // - the same as customer close, but preceded by the customer noticing expiry
+            // and posting the corrected balances (+70)
+            // - the merchant waits for self-delay to elapse, then claims funds (130)
+            Self::MerchantExpiry => 200,
+        };
+        Duration::from_secs(seconds)
+    }
 }
 
 #[derive(PartialEq)]
