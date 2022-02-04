@@ -9,7 +9,7 @@ use zeekoe::{
 
 use {
     anyhow::Context,
-    common::{customer_cli, merchant_cli, Party},
+    common::{customer_cli, merchant_cli, LogType, Party},
     rand::prelude::StdRng,
     std::{fs::OpenOptions, panic, time::Duration},
     structopt::StructOpt,
@@ -27,7 +27,7 @@ pub async fn main() {
         .await
         .expect("Failed to load merchant config");
 
-    // Give the server some time to get set up. Maybe we can log and do this more precisely
+    // Give the server some time to get set up
     tokio::time::sleep(tokio::time::Duration::new(5, 0)).await;
 
     // Run every test, printing out details if it fails
@@ -35,12 +35,19 @@ pub async fn main() {
     println!("Executing {} tests", tests.len());
     let mut results = Vec::with_capacity(tests.len());
     for test in tests {
-        println!("Now running: {}", test.name);
+        println!("\nNow running: {}", test.name);
         let result = test.execute(&rng, &customer_config, &merchant_config).await;
         if let Err(error) = &result {
-            eprintln!("Test failed: {}\n{}", test.name, error)
+            eprintln!("Test failed: {}\n{:?}", test.name, error)
         }
         results.push(result);
+
+        // Clear error log
+        OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(&common::ERROR_FILENAME)
+            .unwrap_or_else(|e| panic!("Failed to clear error file after {}: {:?}", test.name, e));
     }
 
     common::teardown(server_future).await;
@@ -54,40 +61,62 @@ pub async fn main() {
 /// Assumption: none of these will cause a fatal error to the long-running processes (merchant
 /// server or customer watcher).
 fn tests() -> Vec<Test> {
-    vec![Test {
-        name: "Channel establishes correctly".to_string(),
-        operations: vec![(
-            Operation::Establish,
-            Outcome {
-                customer_status: CustomerStatus::Ready,
-                merchant_status: MerchantStatus::Active,
-                error: None,
-            },
-        )],
-    }]
-    /*
-    vec![Test {
-        name: "Channel establishes correctly".to_string(),
-        operations: vec![(
-            Operation::NoOp, // this is a testing-the-tests hack to skip waiting for establish
-            Outcome {
-                customer_status: CustomerStatus::Ready,
-                merchant_status: MerchantStatus::Active,
-                error: None,
-            },
-        )],
-    }]
-    */
+    vec![
+        Test {
+            name: "Channel establishes correctly".to_string(),
+            operations: vec![(
+                Operation::Establish,
+                Outcome {
+                    customer_status: CustomerStatus::Ready,
+                    merchant_status: MerchantStatus::Active,
+                    error: None,
+                },
+            )],
+        },
+        Test {
+            name: "Channels cannot share names".to_string(),
+            operations: vec![
+                (
+                    Operation::Establish,
+                    Outcome {
+                        customer_status: CustomerStatus::Ready,
+                        merchant_status: MerchantStatus::Active,
+                        error: None,
+                    },
+                ),
+                (
+                    Operation::Establish,
+                    Outcome {
+                        customer_status: CustomerStatus::Ready,
+                        merchant_status: MerchantStatus::Active,
+                        error: Some(Party::ActiveOperation("establish")),
+                    },
+                ),
+            ],
+        },
+    ]
 }
 
 #[derive(Debug, Error)]
 enum TestError {
     #[error("Operation {0:?} not yet implemented")]
     NotImplemented(Operation),
-    #[error("Operation {0:?} failed when it was not supposed to:\n{1}")]
-    ActiveOperationFailed(Operation, anyhow::Error),
-    #[error("Operation {0:?} did not fail when it was supposed to")]
-    ActiveOperationSucceededUnexpectedly(Operation),
+
+    #[error(
+        "The error behavior did not satisfy expected behavior {op:?}. Got
+    CUSTOMER WATCHER OUTPUT:
+    {customer_errors}
+    MERCHANT SERVER OUTPUT:
+    {merchant_errors}
+    OPERATION OUTPUT:
+    {op_error:?}"
+    )]
+    InvalidErrorBehavior {
+        op: Operation,
+        customer_errors: String,
+        merchant_errors: String,
+        op_error: Result<(), anyhow::Error>,
+    },
 }
 
 impl Test {
@@ -124,19 +153,37 @@ impl Test {
             // Sleep until the servers have finished their thing, approximately
             tokio::time::sleep(op.wait_time()).await;
 
-            // Check whether the active operation failed correctly
-            eprintln!("op outcome: {:?}", outcome);
-            match (outcome, expected_outcome.error.as_ref()) {
-                // If the active operation failed, make sure it was supposed to:
-                (Err(_), Some(Party::ActiveOperation(_))) => {}
-                (Err(e), _) => Err(TestError::ActiveOperationFailed(*op, e))?,
+            // Get error logs for each party - we make the following assumptions:
+            // - logs are deleted after each test, so all errors correspond to this test
+            // - any Operation that throws an error is the final Operation in the test
+            // These mean that any error found in the logs is caused by the current operation
+            let customer_errors = common::get_logs(LogType::Error, Party::CustomerWatcher)?;
+            let merchant_errors = common::get_logs(LogType::Error, Party::MerchantServer)?;
 
-                // If the active operation succeeded, make sure it was supposed to:
-                (Ok(_), Some(Party::ActiveOperation(_))) => {
-                    Err(TestError::ActiveOperationSucceededUnexpectedly(*op))?
-                }
-                (Ok(_), _) => {}
-            }
+            // Check whether the process errors matched the expectation.
+            match (
+                &expected_outcome.error,
+                &outcome,
+                customer_errors.is_empty(),
+                merchant_errors.is_empty(),
+            ) {
+                // No party threw an error
+                (None, Ok(_), true, true) => Ok(()),
+                // Only the active operation threw an error
+                (Some(Party::ActiveOperation(_)), Err(_), true, true) => Ok(()),
+                // Only the customer watcher threw an error
+                (Some(Party::CustomerWatcher), Ok(_), false, true) => Ok(()),
+                //Only the merchant server threw an error
+                (Some(Party::CustomerWatcher), Ok(_), true, false) => Ok(()),
+
+                // In any other case, something went wrong. Provide lots of details to diagnose
+                _ => Err(TestError::InvalidErrorBehavior {
+                    op: *op,
+                    customer_errors,
+                    merchant_errors,
+                    op_error: outcome,
+                }),
+            }?;
 
             // Check customer status
             let customer_detail_json = customer_cli!(Show, vec!["show", &self.name, "--json"])
@@ -160,22 +207,7 @@ impl Test {
                 serde_json::from_str(&merchant_details_json)?;
 
             assert_eq!(merchant_channel.status(), expected_outcome.merchant_status);
-
-            // TODO: Compare error log to expected outcome: check for merchant server error, customer watcher error
-            // TODO: How can we distinguish between errors from each operation and each test?
-            // - the customer watcher prints errors with the label, so we can filter by label
-            // - the merchant watcher prints error with the channel id
-            // - the merchant server just prints the error with no context
-            // we can't span these with the test name.
-            // should we delete error log after each test?
-            // should we declare invariant that tests should only produce error on the last Operation?
         }
-
-        // Clear error log
-        OpenOptions::new()
-            .write(true)
-            .truncate(true)
-            .open(&common::ERROR_FILENAME)?;
 
         Ok(())
     }
@@ -239,6 +271,6 @@ impl Operation {
 struct Outcome {
     customer_status: CustomerStatus,
     merchant_status: MerchantStatus,
-    /// Which process, if any, had an error?
+    /// Which process, if any, had an error? Assumes that exactly one party will error.
     error: Option<Party>,
 }

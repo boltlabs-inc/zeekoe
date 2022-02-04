@@ -80,12 +80,11 @@ pub(crate) use merchant_cli;
 pub async fn setup(rng: &StdRng) -> ServerFuture {
     let _ = fs::create_dir("integration_tests/gen");
 
-    // Create self-signed SSL certificate
+    // Create self-signed SSL certificate config file and certificate
     File::create("integration_tests/gen/ssl_config")
         .expect("Failed to open file with SSL config")
-        .write(b"[dn]\nCN=localhost\n[req]\ndistinguished_name = dn\n[EXT]\nsubjectAltName=DNS:localhost\nkeyUsage=digitalSignature\nextendedKeyUsage=serverAuth")
+        .write_all(b"[dn]\nCN=localhost\n[req]\ndistinguished_name = dn\n[EXT]\nsubjectAltName=DNS:localhost\nkeyUsage=digitalSignature\nextendedKeyUsage=serverAuth")
         .expect("Failed to write SSL config to file");
-
     Command::new("openssl")
         .arg("req")
         .arg("-x509")
@@ -100,9 +99,6 @@ pub async fn setup(rng: &StdRng) -> ServerFuture {
         .spawn()
         .expect("Failed to generate certs");
 
-    //let _ = fs::copy("dev/localhost.crt", "integration_tests/gen/localhost.crt");
-    //let _ = fs::copy("dev/localhost.key", "integration_tests/gen/localhost.key");
-
     // write config options for each party
     let customer_config = customer_test_config().await;
     let merchant_config = merchant_test_config().await;
@@ -114,17 +110,15 @@ pub async fn setup(rng: &StdRng) -> ServerFuture {
         ))
         .init();
 
-    // Form the merchant run request
+    // Form the merchant run request and execute
     let run = merchant_cli!(Run, vec!["run"]);
-
-    // Stand-in task for the merchant server
     let merchant_handle = tokio::spawn(
         run.run(merchant_config)
             .instrument(info_span!(Party::MerchantServer.to_str())),
     );
 
+    // Form the customer watch request and execute
     let watch = customer_cli!(Watch, vec!["watch"]);
-
     let customer_handle = tokio::spawn(
         watch
             .run(rng.clone(), customer_config)
