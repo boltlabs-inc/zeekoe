@@ -8,10 +8,12 @@ use zeekoe::{
 };
 
 use {
+    anyhow::Context,
     common::{customer_cli, merchant_cli, Party},
     rand::prelude::StdRng,
-    std::{panic, time::Duration},
+    std::{fs::OpenOptions, panic, time::Duration},
     structopt::StructOpt,
+    thiserror::Error,
 };
 
 #[tokio::main]
@@ -41,11 +43,11 @@ pub async fn main() {
         results.push(result);
     }
 
+    common::teardown(server_future).await;
+
     // Fail if any test failed. This is separate from evaluation to enforce that _every_ test must
     // run -- otherwise, any will short-circuit the execution
     assert!(results.iter().all(|result| result.is_ok()));
-
-    common::teardown(server_future).await;
 }
 
 /// Get a list of tests to execute.
@@ -78,13 +80,23 @@ fn tests() -> Vec<Test> {
     */
 }
 
+#[derive(Debug, Error)]
+enum TestError {
+    #[error("Operation {0:?} not yet implemented")]
+    NotImplemented(Operation),
+    #[error("Operation {0:?} failed when it was not supposed to:\n{1}")]
+    ActiveOperationFailed(Operation, anyhow::Error),
+    #[error("Operation {0:?} did not fail when it was supposed to")]
+    ActiveOperationSucceededUnexpectedly(Operation),
+}
+
 impl Test {
     async fn execute(
         &self,
         rng: &StdRng,
         customer_config: &customer::Config,
         merchant_config: &merchant::Config,
-    ) -> Result<(), String> {
+    ) -> Result<(), anyhow::Error> {
         for (op, expected_outcome) in &self.operations {
             // Clone inputs. A future refactor should look into having the `Command` trait take
             // these by reference instead.
@@ -105,21 +117,35 @@ impl Test {
                     est.run(rng.clone(), customer_config.clone())
                 }
                 Operation::NoOp => Box::pin(async { Ok(()) }),
-                _ => return Err("Operation not implemented yet".to_string()),
+                err_op => return Err(TestError::NotImplemented(*err_op).into()),
             }
             .await;
 
-            // Sleep until the servers have finished their thing
+            // Sleep until the servers have finished their thing, approximately
             tokio::time::sleep(op.wait_time()).await;
+
+            // Check whether the active operation failed correctly
+            eprintln!("op outcome: {:?}", outcome);
+            match (outcome, expected_outcome.error.as_ref()) {
+                // If the active operation failed, make sure it was supposed to:
+                (Err(_), Some(Party::ActiveOperation(_))) => {}
+                (Err(e), _) => Err(TestError::ActiveOperationFailed(*op, e))?,
+
+                // If the active operation succeeded, make sure it was supposed to:
+                (Ok(_), Some(Party::ActiveOperation(_))) => {
+                    Err(TestError::ActiveOperationSucceededUnexpectedly(*op))?
+                }
+                (Ok(_), _) => {}
+            }
 
             // Check customer status
             let customer_detail_json = customer_cli!(Show, vec!["show", &self.name, "--json"])
                 .run(rng.clone(), customer_config.clone())
                 .await
-                .map_err(|e| e.to_string())?;
+                .context("Failed to show customer channel")?;
 
             let customer_channel: customer::zkchannels::PublicChannelDetails =
-                serde_json::from_str(&customer_detail_json).map_err(|err| format!("{}", err))?;
+                serde_json::from_str(&customer_detail_json)?;
 
             assert_eq!(customer_channel.status(), expected_outcome.customer_status);
 
@@ -128,26 +154,34 @@ impl Test {
             let merchant_details_json = merchant_cli!(Show, vec!["show", channel_id, "--json"])
                 .run(merchant_config.clone())
                 .await
-                .map_err(|e| e.to_string())?;
+                .context("Failed to show merchant channel")?;
 
             let merchant_channel: merchant::zkchannels::PublicChannelDetails =
-                serde_json::from_str(&merchant_details_json).map_err(|err| format!("{}", err))?;
+                serde_json::from_str(&merchant_details_json)?;
 
             assert_eq!(merchant_channel.status(), expected_outcome.merchant_status);
 
             // TODO: Compare error log to expected outcome: check for merchant server error, customer watcher error
             // TODO: How can we distinguish between errors from each operation and each test?
-            // - the customer watcher prints errors with the label, so we can filter by label for this test
+            // - the customer watcher prints errors with the label, so we can filter by label
             // - the merchant watcher prints error with the channel id
             // - the merchant server just prints the error with no context
             // we can't span these with the test name.
             // should we delete error log after each test?
             // should we declare invariant that tests should only produce error on the last Operation?
-            eprintln!("op outcome: {:?}", outcome);
         }
+
+        // Clear error log
+        OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(&common::ERROR_FILENAME)?;
+
         Ok(())
     }
 }
+
+#[derive(Debug)]
 struct Test {
     pub name: String,
     pub operations: Vec<(Operation, Outcome)>,
@@ -155,6 +189,7 @@ struct Test {
 
 /// Set of operations that can be executed by the test harness
 #[allow(unused)]
+#[derive(Debug, Clone, Copy)]
 enum Operation {
     Establish,
     Pay,
@@ -200,7 +235,7 @@ impl Operation {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(Debug)]
 struct Outcome {
     customer_status: CustomerStatus,
     merchant_status: MerchantStatus,

@@ -2,6 +2,7 @@ use std::{
     collections::HashMap,
     fs::{self, File},
     io::{Read, Write},
+    process::Command,
     sync::Mutex,
 };
 
@@ -16,7 +17,7 @@ use {
 };
 
 use zeekoe::{
-    customer::zkchannels::Command, merchant::zkchannels::Command as _, timeout::WithTimeout,
+    customer::zkchannels::Command as _, merchant::zkchannels::Command as _, timeout::WithTimeout,
 };
 
 pub const CUSTOMER_CONFIG: &str = "integration_tests/gen/TestCustomer.toml";
@@ -79,10 +80,28 @@ pub(crate) use merchant_cli;
 pub async fn setup(rng: &StdRng) -> ServerFuture {
     let _ = fs::create_dir("integration_tests/gen");
 
-    // ...copy keys from dev/ directory to here
-    // TODO: call the script instead
-    let _ = fs::copy("dev/localhost.crt", "integration_tests/gen/localhost.crt");
-    let _ = fs::copy("dev/localhost.key", "integration_tests/gen/localhost.key");
+    // Create self-signed SSL certificate
+    File::create("integration_tests/gen/ssl_config")
+        .expect("Failed to open file with SSL config")
+        .write(b"[dn]\nCN=localhost\n[req]\ndistinguished_name = dn\n[EXT]\nsubjectAltName=DNS:localhost\nkeyUsage=digitalSignature\nextendedKeyUsage=serverAuth")
+        .expect("Failed to write SSL config to file");
+
+    Command::new("openssl")
+        .arg("req")
+        .arg("-x509")
+        .args(["-out", "integration_tests/gen/localhost.crt"])
+        .args(["-keyout", "integration_tests/gen/localhost.key"])
+        .args(["-newkey", "rsa:2048"])
+        .arg("-nodes")
+        .arg("-sha256")
+        .args(["-subj", "/CN=localhost"])
+        .args(["-extensions", "EXT"])
+        .args(["-config", "integration_tests/gen/ssl_config"])
+        .spawn()
+        .expect("Failed to generate certs");
+
+    //let _ = fs::copy("dev/localhost.crt", "integration_tests/gen/localhost.crt");
+    //let _ = fs::copy("dev/localhost.key", "integration_tests/gen/localhost.key");
 
     // write config options for each party
     let customer_config = customer_test_config().await;
