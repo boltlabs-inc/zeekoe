@@ -4,7 +4,6 @@ use {
     comfy_table::{Cell, Table},
     rand::rngs::StdRng,
     serde::{Deserialize, Serialize},
-    serde_json::json,
     serde_with::{serde_as, DisplayFromStr},
     zkabacus_crypto::{ChannelId, CustomerBalance, MerchantBalance},
 };
@@ -106,18 +105,12 @@ impl Command for List {
         let channels = database.get_channels().await?;
 
         if self.json {
-            let mut output = Vec::new();
-            for details in channels {
-                output.push(json!({
-                    "label": details.label,
-                    "state": details.state.state_name(),
-                    "balance": format!("{}", Amount::from(details.state.customer_balance())),
-                    "max_refund": format!("{}", Amount::from(details.state.merchant_balance())),
-                    "channel_id": format!("{}", details.state.channel_id()),
-                    "contract_id": details.contract_details.contract_id.map_or_else(|| "N/A".to_string(), |contract_id| format!("{}", contract_id)),
-                }));
-            }
-            Ok(json!(output).to_string())
+            Ok(serde_json::to_string(
+                &channels
+                    .into_iter()
+                    .map(PublicChannelDetails::from)
+                    .collect::<Vec<_>>(),
+            )?)
         } else {
             let mut table = Table::new();
             table.load_preset(comfy_table::presets::UTF8_FULL);

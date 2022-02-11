@@ -30,7 +30,8 @@ pub enum Merchant {
 #[derive(Debug, StructOpt)]
 #[non_exhaustive]
 pub struct List {
-    /// Get json output.
+    /// Get machine-readable json output. In particular, currencies are expressed in minor units,
+    /// not the standard human representation.
     #[structopt(long)]
     pub json: bool,
 }
@@ -42,7 +43,8 @@ pub struct Show {
     #[structopt(empty_values(false))]
     pub prefix: String,
 
-    /// Get json output.
+    /// Get machine-readable json output. In particular, currencies are expressed in minor units,
+    /// not the standard human representation.
     #[structopt(long)]
     pub json: bool,
 }

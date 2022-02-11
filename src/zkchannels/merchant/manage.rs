@@ -14,7 +14,6 @@ use {
     async_trait::async_trait,
     comfy_table::{Cell, Table},
     serde::{Deserialize, Serialize},
-    serde_json::json,
     serde_with::{serde_as, DisplayFromStr},
     zkabacus_crypto::ChannelId,
 };
@@ -67,15 +66,12 @@ impl Command for List {
         let channels = database.get_channels().await?;
 
         if self.json {
-            let mut output = Vec::new();
-            for channel in channels {
-                output.push(json!({
-                    "channel_id": format!("{}", channel.channel_id),
-                    "contract_id": format!("{}", channel.contract_id),
-                    "status": format!("{}", channel.status),
-                }));
-            }
-            Ok(json!(output).to_string())
+            Ok(serde_json::to_string(
+                &channels
+                    .into_iter()
+                    .map(PublicChannelDetails::from)
+                    .collect::<Vec<_>>(),
+            )?)
         } else {
             let mut table = Table::new();
             table.load_preset(comfy_table::presets::UTF8_FULL);
