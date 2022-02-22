@@ -5,13 +5,19 @@ use zeekoe::{
     customer::{self, database::StateName as CustomerStatus, zkchannels::Command},
     merchant::{self, zkchannels::Command as _},
     protocol::ChannelStatus as MerchantStatus,
+    TestLogs,
 };
 
 use {
     anyhow::Context,
-    common::{customer_cli, merchant_cli, LogType, Party},
+    common::{customer_cli, merchant_cli, Party},
     rand::prelude::StdRng,
-    std::{fs::OpenOptions, panic, time::Duration},
+    std::{
+        fs::{File, OpenOptions},
+        io::Read,
+        panic,
+        time::Duration,
+    },
     structopt::StructOpt,
     thiserror::Error,
 };
@@ -26,9 +32,6 @@ pub async fn main() {
     let merchant_config = merchant::Config::load(common::MERCHANT_CONFIG)
         .await
         .expect("Failed to load merchant config");
-
-    // Give the server some time to get set up
-    tokio::time::sleep(tokio::time::Duration::new(5, 0)).await;
 
     // Run every test, printing out details if it fails
     let tests = tests();
@@ -161,8 +164,8 @@ impl Test {
             // - logs are deleted after each test, so all errors correspond to this test
             // - any Operation that throws an error is the final Operation in the test
             // These mean that any error found in the logs is caused by the current operation
-            let customer_errors = common::get_logs(LogType::Error, Party::CustomerWatcher)?;
-            let merchant_errors = common::get_logs(LogType::Error, Party::MerchantServer)?;
+            let customer_errors = get_logs(LogType::Error, Party::CustomerWatcher)?;
+            let merchant_errors = get_logs(LogType::Error, Party::MerchantServer)?;
 
             // Check whether the process errors matched the expectation.
             match (
@@ -277,4 +280,63 @@ struct Outcome {
     merchant_status: MerchantStatus,
     /// Which process, if any, had an error? Assumes that exactly one party will error.
     error: Option<Party>,
+}
+
+#[derive(Debug, Error)]
+#[allow(unused)]
+pub enum LogError {
+    #[error("Failed to open log file: {0}")]
+    OpenFailed(std::io::Error),
+    #[error("Failed to read contents of file: {0}")]
+    ReadFailed(std::io::Error),
+}
+
+#[allow(unused)]
+#[derive(Debug, Clone, Copy)]
+pub enum LogType {
+    Info,
+    Error,
+    Warn,
+}
+
+#[allow(unused)]
+impl LogType {
+    pub fn to_str(&self) -> &str {
+        match self {
+            LogType::Info => "INFO",
+            LogType::Error => "ERROR",
+            LogType::Warn => "WARN",
+        }
+    }
+}
+
+/// Get any errors from the log file.
+///
+/// Current behavior: outputs the entire log
+/// Ideal behavior: pass a Party, maybe an indicator of which test / channel name we want. Return
+/// only the lines relevant to that setting.
+fn get_logs(log_type: LogType, party: Party) -> Result<String, LogError> {
+    let mut file = File::open(common::ERROR_FILENAME).map_err(LogError::OpenFailed)?;
+    let mut logs = String::new();
+    file.read_to_string(&mut logs)
+        .map_err(LogError::ReadFailed)?;
+
+    Ok(logs
+        .lines()
+        .filter(|s| s.contains("zeekoe::"))
+        .filter(|s| s.contains(log_type.to_str()))
+        .filter(|s| s.contains(party.to_str()))
+        .fold("".to_string(), |acc, s| format!("{}{}\n", acc, s)))
+}
+
+/// Wait for the log file to contain a specific entry.
+///
+/// This checks the log every 1 second; refactor if greater granularity is needed.
+async fn await_log(party: Party, log: TestLogs) -> Result<(), anyhow::Error> {
+    loop {
+        if get_logs(LogType::Info, party)?.contains(&log.to_string()) {
+            return Ok(());
+        }
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+    }
 }

@@ -13,6 +13,7 @@ use crate::{
         Config,
     },
     escrow::types::ContractStatus,
+    TestLogs,
 };
 
 use super::{close, database, load_tezos_client, Command, TezosClientError};
@@ -112,6 +113,7 @@ impl Command for Watch {
             }
         });
 
+        info!("{}", TestLogs::CustomerWatcherSpawned);
         tokio::select! {
             _ = signal::ctrl_c() => {
                 info!("Terminated by user");

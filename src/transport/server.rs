@@ -1,7 +1,7 @@
 //! The server side of Zeekoe's transport layer.
 
-use tracing::{error, info};
 use {
+    crate::TestLogs,
     dialectic::prelude::*,
     dialectic_reconnect::resume,
     dialectic_tokio_serde::codec::LengthDelimitedCodec,
@@ -13,6 +13,7 @@ use {
     thiserror::Error,
     tokio::{net::TcpListener, select, sync::mpsc},
     tokio_rustls::{rustls, TlsAcceptor},
+    tracing::{error, info},
 };
 
 use super::{channel::TransportError, handshake, io_stream::IoStream, pem};
@@ -194,7 +195,7 @@ where
 
         // Bind to the address and serve
         let address = address.into();
-        info!("serving on: {:?}", address);
+        info!("{}", TestLogs::MerchantServerSpawned(address.to_string()));
         let listener = TcpListener::bind(address).await?;
 
         // Loop over incoming TCP connections until `initialize` returns `None`

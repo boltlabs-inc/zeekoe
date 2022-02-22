@@ -7,13 +7,11 @@ use {
     futures::stream::{FuturesUnordered, StreamExt},
     rand::{rngs::StdRng, SeedableRng},
     sqlx::SqlitePool,
-    std::sync::Arc,
+    std::{sync::Arc, time::Duration},
     tokio::signal,
     tokio::sync::broadcast,
+    tracing::{error, info},
 };
-
-use std::time::Duration;
-use tracing::{error, info};
 
 use crate::{
     escrow::{

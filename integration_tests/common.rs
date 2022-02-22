@@ -1,7 +1,8 @@
 use std::{
     collections::HashMap,
+    fmt,
     fs::{self, File},
-    io::{Read, Write},
+    io::Write,
     process::Command,
     sync::Mutex,
 };
@@ -10,11 +11,14 @@ use {
     futures::future::{self, Join},
     rand::prelude::StdRng,
     structopt::StructOpt,
-    thiserror::Error,
-    tokio::task::JoinHandle,
-    tracing::{error, info_span},
+    strum::IntoEnumIterator,
+    strum_macros::EnumIter,
+    tokio::{task::JoinHandle, time::Duration},
+    tracing::info_span,
     tracing_futures::Instrument,
 };
+
+use crate::{await_log, TestLogs};
 
 use zeekoe::{
     customer::zkchannels::Command as _, merchant::zkchannels::Command as _, timeout::WithTimeout,
@@ -24,13 +28,39 @@ pub const CUSTOMER_CONFIG: &str = "integration_tests/gen/TestCustomer.toml";
 pub const MERCHANT_CONFIG: &str = "integration_tests/gen/TestMerchant.toml";
 pub const ERROR_FILENAME: &str = "integration_tests/gen/errors.log";
 
+/// The default merchant services we will set up for tests (all run on localhost)
+#[derive(Debug, Clone, Copy, EnumIter)]
+enum MerchantServices {
+    IpV4,
+    IpV6,
+}
+
+impl MerchantServices {
+    fn to_str(self) -> &'static str {
+        match self {
+            Self::IpV4 => "127.0.0.1",
+            Self::IpV6 => "::1",
+        }
+    }
+}
+
+impl fmt::Display for MerchantServices {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // Note: this hard-codes the default port.
+        let ipaddr = match self {
+            Self::IpV4 => self.to_str().to_string(),
+            Self::IpV6 => format!("[{}]", self.to_str()),
+        };
+        write!(f, "{}:2611", ipaddr)
+    }
+}
+
 /// Give a name to the slightly annoying type of the joined server futures
 type ServerFuture =
     Join<JoinHandle<Result<(), anyhow::Error>>, JoinHandle<Result<(), anyhow::Error>>>;
 
 /// Set of processes that run during a test.
-#[derive(Debug, PartialEq)]
-#[allow(unused)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Party {
     MerchantServer,
     CustomerWatcher,
@@ -38,12 +68,11 @@ pub enum Party {
     ActiveOperation(&'static str),
 }
 
-#[allow(unused)]
 impl Party {
-    const fn to_str(&self) -> &str {
+    pub const fn to_str(self) -> &'static str {
         match self {
-            Party::MerchantServer => "merchant server",
-            Party::CustomerWatcher => "customer watcher",
+            Party::MerchantServer => "party: merchant server",
+            Party::CustomerWatcher => "party: customer watcher",
             Party::ActiveOperation(description) => description,
         }
     }
@@ -103,7 +132,7 @@ pub async fn setup(rng: &StdRng) -> ServerFuture {
     let customer_config = customer_test_config().await;
     let merchant_config = merchant_test_config().await;
 
-    // set up tracing for all of our own log messages
+    // set up tracing for all log messages
     tracing_subscriber::fmt()
         .with_writer(Mutex::new(
             File::create(ERROR_FILENAME).expect("Failed to open log file"),
@@ -125,14 +154,46 @@ pub async fn setup(rng: &StdRng) -> ServerFuture {
             .instrument(info_span!(Party::CustomerWatcher.to_str())),
     );
 
+    // Check the logs of merchant + customer for indication of a successful set-up
+    // Note: hard-coded to match the 2-service merchant with default port.
+    let checks = vec![
+        await_log(
+            Party::MerchantServer,
+            TestLogs::MerchantServerSpawned(MerchantServices::IpV4.to_string()),
+        ),
+        await_log(
+            Party::MerchantServer,
+            TestLogs::MerchantServerSpawned(MerchantServices::IpV6.to_string()),
+        ),
+        await_log(Party::CustomerWatcher, TestLogs::CustomerWatcherSpawned),
+    ];
+
+    // Wait up to 30sec for the servers to set up or fail
+    match future::join_all(checks)
+        .with_timeout(Duration::from_secs(30))
+        .await
+    {
+        Err(_) => panic!("Server setup timed out"),
+        Ok(results) => {
+            match results
+                .into_iter()
+                .collect::<Result<Vec<()>, anyhow::Error>>()
+            {
+                Ok(_) => {}
+                Err(err) => panic!(
+                    "Failed to read logs while waiting for servers to set up: {:?}",
+                    err
+                ),
+            }
+        }
+    }
+
     future::join(customer_handle, merchant_handle)
 }
 
 pub async fn teardown(server_future: ServerFuture) {
     // Ignore the result because we expect it to be an `Expired` error
-    let _result = server_future
-        .with_timeout(tokio::time::Duration::new(1, 0))
-        .await;
+    let _result = server_future.with_timeout(Duration::from_secs(1)).await;
 
     // delete data from this run
     let _ = fs::remove_dir_all("integration_tests/gen/");
@@ -175,9 +236,9 @@ async fn merchant_test_config() -> zeekoe::merchant::Config {
     });
 
     // helper to write out the service for ipv4 and v6 localhost addresses
-    let generate_service = |addr: &str| {
+    let generate_service = |addr: MerchantServices| {
         HashMap::from([
-            ("address", addr),
+            ("address", addr.to_str()),
             ("private_key", "localhost.key"),
             ("certificate", "localhost.crt"),
         ])
@@ -187,12 +248,11 @@ async fn merchant_test_config() -> zeekoe::merchant::Config {
         })
     };
 
-    let contents = format!(
-        "{}{}\n{}",
-        tezos_contents,
-        generate_service("::1"),
-        generate_service("127.0.0.1")
-    );
+    let services = MerchantServices::iter()
+        .map(generate_service)
+        .fold(String::new(), |acc, next| format!("{}\n{}", acc, next));
+
+    let contents = format!("{}{}", tezos_contents, services,);
 
     write_config_file(MERCHANT_CONFIG, contents);
 
@@ -211,51 +271,4 @@ fn write_config_file(path: &str, contents: String) {
         .unwrap_or_else(|_| panic!("Could not open config file: {}", path))
         .write_all(contents.as_bytes())
         .unwrap_or_else(|_| panic!("Failed to write to config file: {}", path));
-}
-
-#[derive(Debug, Error)]
-#[allow(unused)]
-pub enum LogError {
-    #[error("Failed to open log file: {0}")]
-    OpenFailed(std::io::Error),
-    #[error("Failed to read contents of file: {0}")]
-    ReadFailed(std::io::Error),
-}
-
-#[allow(unused)]
-pub enum LogType {
-    Info,
-    Error,
-    Warn,
-}
-
-#[allow(unused)]
-impl LogType {
-    pub fn to_str(&self) -> &str {
-        match self {
-            LogType::Info => "INFO",
-            LogType::Error => "ERROR",
-            LogType::Warn => "WARN",
-        }
-    }
-}
-
-/// Get any errors from the log file.
-///
-/// Current behavior: outputs the entire log
-/// Ideal behavior: pass a Party, maybe an indicator of which test / channel name we want. Return
-/// only the lines relevant to that setting.
-#[allow(unused)]
-pub fn get_logs(log_type: LogType, party: Party) -> Result<String, LogError> {
-    let mut file = File::open(ERROR_FILENAME).map_err(LogError::OpenFailed)?;
-    let mut logs = String::new();
-    file.read_to_string(&mut logs)
-        .map_err(LogError::ReadFailed)?;
-
-    Ok(logs
-        .lines()
-        .filter(|s| s.contains("zeekoe::"))
-        .filter(|s| s.contains(log_type.to_str()))
-        .filter(|s| s.contains(party.to_str()))
-        .fold("".to_string(), |acc, s| format!("{}{}\n", acc, s)))
 }
