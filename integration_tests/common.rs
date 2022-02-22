@@ -32,14 +32,14 @@ pub const ERROR_FILENAME: &str = "integration_tests/gen/errors.log";
 #[derive(Debug, Clone, Copy, EnumIter)]
 enum MerchantServices {
     IpV4,
-    IpV6,
+    //IpV6,
 }
 
 impl MerchantServices {
     fn to_str(self) -> &'static str {
         match self {
             Self::IpV4 => "127.0.0.1",
-            Self::IpV6 => "::1",
+            //Self::IpV6 => "::1",
         }
     }
 }
@@ -49,7 +49,7 @@ impl fmt::Display for MerchantServices {
         // Note: this hard-codes the default port.
         let ipaddr = match self {
             Self::IpV4 => self.to_str().to_string(),
-            Self::IpV6 => format!("[{}]", self.to_str()),
+            //Self::IpV6 => format!("[{}]", self.to_str()),
         };
         write!(f, "{}:2611", ipaddr)
     }
@@ -106,7 +106,7 @@ macro_rules! merchant_cli {
 }
 pub(crate) use merchant_cli;
 
-pub async fn setup(rng: &StdRng) -> ServerFuture {
+pub async fn setup(rng: &StdRng, tezos_uri: String) -> ServerFuture {
     let _ = fs::create_dir("integration_tests/gen");
 
     // Create self-signed SSL certificate in the generated directory
@@ -116,8 +116,8 @@ pub async fn setup(rng: &StdRng) -> ServerFuture {
         .expect("Failed to generate new certificates");
 
     // write config options for each party
-    let customer_config = customer_test_config().await;
-    let merchant_config = merchant_test_config().await;
+    let customer_config = customer_test_config(&tezos_uri).await;
+    let merchant_config = merchant_test_config(&tezos_uri).await;
 
     // set up tracing for all log messages
     tracing_subscriber::fmt()
@@ -148,10 +148,12 @@ pub async fn setup(rng: &StdRng) -> ServerFuture {
             Party::MerchantServer,
             TestLogs::MerchantServerSpawned(MerchantServices::IpV4.to_string()),
         ),
+        /*
         await_log(
             Party::MerchantServer,
             TestLogs::MerchantServerSpawned(MerchantServices::IpV6.to_string()),
         ),
+        */
         await_log(Party::CustomerWatcher, TestLogs::CustomerWatcherSpawned),
     ];
 
@@ -187,14 +189,15 @@ pub async fn teardown(server_future: ServerFuture) {
 }
 
 /// Encode the customizable fields of the zeekoe customer Config struct for testing.
-async fn customer_test_config() -> zeekoe::customer::Config {
+async fn customer_test_config(tezos_uri: &str) -> zeekoe::customer::Config {
+    let quoted_tezos_uri = format!("\"{}\"", tezos_uri);
     let m = HashMap::from([
         ("database", "{ sqlite = \"customer.db\" }"),
         ("trust_certificate", "\"localhost.crt\""),
         ("tezos_account", "{ alias = \"alice\" }"),
-        ("tezos_uri", "\"http://localhost:20000\""),
+        ("tezos_uri", quoted_tezos_uri.as_str()),
         ("self_delay", "120"),
-        ("confirmation_depth", "1"),
+        ("confirmation_depth", "2"),
     ]);
 
     let contents = m.into_iter().fold("".to_string(), |acc, (key, value)| {
@@ -209,13 +212,14 @@ async fn customer_test_config() -> zeekoe::customer::Config {
 }
 
 /// Encode the customizable fields of the zeekoe merchant Config struct for testing.
-async fn merchant_test_config() -> zeekoe::merchant::Config {
+async fn merchant_test_config(tezos_uri: &str) -> zeekoe::merchant::Config {
+    let quoted_tezos_uri = format!("\"{}\"", tezos_uri);
     let m = HashMap::from([
         ("database", "{ sqlite = \"merchant.db\" }"),
         ("tezos_account", "{ alias = \"bob\" }"),
-        ("tezos_uri", "\"http://localhost:20000\""),
+        ("tezos_uri", quoted_tezos_uri.as_str()),
         ("self_delay", "120"),
-        ("confirmation_depth", "1"),
+        ("confirmation_depth", "2"),
     ]);
 
     let tezos_contents = m.into_iter().fold("".to_string(), |acc, (key, value)| {
@@ -273,8 +277,10 @@ struct BlockchainLevelDetail {
 }
 
 /// The minimum required depth to originate contracts on the Tezos blockchain.
-static MINIMUM_LEVEL: u64 = 120;
+static MINIMUM_LEVEL: u64 = 60;
 
+/// Waits for the blockchain level to reach the required minimum depth. Necessary when using the
+/// sandbox, which will start at 0 by default.
 pub async fn await_leveled_blockchain(
     config: &zeekoe::customer::Config,
 ) -> Result<(), anyhow::Error> {
