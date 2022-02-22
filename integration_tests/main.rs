@@ -35,10 +35,12 @@ pub async fn main() {
     println!("Executing {} tests", tests.len());
     let mut results = Vec::with_capacity(tests.len());
     for test in tests {
-        println!("\nNow running: {}", test.name);
+        eprintln!("\n\ntest integration_tests::{} ... ", test.name);
         let result = test.execute(&rng, &customer_config, &merchant_config).await;
         if let Err(error) = &result {
-            eprintln!("Test failed: {}\n{:?}", test.name, error)
+            eprintln!("failed\n{:?}", error)
+        } else {
+            eprintln!("ok")
         }
         results.push(result);
 
@@ -53,8 +55,10 @@ pub async fn main() {
     common::teardown(server_future).await;
 
     // Fail if any test failed. This is separate from evaluation to enforce that _every_ test must
-    // run -- otherwise, any will short-circuit the execution
-    assert!(results.iter().all(|result| result.is_ok()));
+    // run without short-circuiting the execution at first failure
+    if !results.iter().all(|result| result.is_ok()) {
+        std::process::exit(101);
+    }
 }
 
 /// Get a list of tests to execute.

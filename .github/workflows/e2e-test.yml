@@ -52,7 +52,7 @@ jobs:
       - name: Run sandbox
         run: docker run --rm --name my-sandbox --detach -p 20000:20000 tqtezos/flextesa:20210602 flobox start
 
-      - name: Configure tezos client and run integration tests
+      - name: Configure tezos client and run all test targets
         uses: addnab/docker-run-action@v3
         with:
           image: ${{ steps.tags.outputs.tagged_image }}

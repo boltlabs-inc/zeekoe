@@ -41,8 +41,8 @@ jobs:
       - name: Build
         run: cargo build --all-features --all-targets --verbose
 
-      - name: Run all unit + library tests (not doc or integration tests)
-        run: cargo test --all-features --all-targets --lib --verbose 
+      - name: Run all unit + library tests (not doc, integration, benchmark, or example tests)
+        run: cargo test --all-features --lib --bins
 
       - name: Run all doctests
         run: cargo test --all-features --doc --verbose
