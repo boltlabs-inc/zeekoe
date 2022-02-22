@@ -1,3 +1,5 @@
+//! Complete merchant logic for the zkchannels protocol
+
 use {
     anyhow::Context,
     async_trait::async_trait,
@@ -47,8 +49,9 @@ const MAX_INTERVAL_SECONDS: u64 = 60;
 
 /// A single merchant-side command, parameterized by the currently loaded configuration.
 ///
-/// All subcommands of [`cli::Merchant`] should implement this, except [`cli::Merchant::Configure`], which does not need
-/// to start with a valid loaded configuration.
+/// All subcommands of [`cli::Merchant`](crate::merchant::cli::Merchant) should implement this,
+/// except [`Configure`](crate::merchant::cli::Merchant::Configure), which does not need to start
+/// with a valid loaded configuration.
 #[async_trait]
 pub trait Command {
     type Output;

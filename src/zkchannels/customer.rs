@@ -1,3 +1,5 @@
+//! Complete customer logic for the zkchannels protocol
+
 #[cfg(not(feature = "allow_explicit_certificate_trust"))]
 use tracing::warn;
 
@@ -32,7 +34,8 @@ pub use manage::PublicChannelDetails;
 
 /// A single customer-side command, parameterized by the currently loaded configuration.
 ///
-/// All subcommands of [`cli::Customer`] should implement this, except [`Configure`], which does not need
+/// All subcommands of [`cli::Customer`](crate::customer::cli::Customer) should implement this,
+/// except [`Configure`](crate::customer::cli::Customer::Configure), which does not need
 /// to start with a valid loaded configuration.
 #[async_trait]
 pub trait Command {
