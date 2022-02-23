@@ -109,24 +109,11 @@ pub(crate) use merchant_cli;
 pub async fn setup(rng: &StdRng) -> ServerFuture {
     let _ = fs::create_dir("integration_tests/gen");
 
-    // Create self-signed SSL certificate config file and certificate
-    File::create("integration_tests/gen/ssl_config")
-        .expect("Failed to open file with SSL config")
-        .write_all(b"[dn]\nCN=localhost\n[req]\ndistinguished_name = dn\n[EXT]\nsubjectAltName=DNS:localhost\nkeyUsage=digitalSignature\nextendedKeyUsage=serverAuth")
-        .expect("Failed to write SSL config to file");
-    Command::new("openssl")
-        .arg("req")
-        .arg("-x509")
-        .args(["-out", "integration_tests/gen/localhost.crt"])
-        .args(["-keyout", "integration_tests/gen/localhost.key"])
-        .args(["-newkey", "rsa:2048"])
-        .arg("-nodes")
-        .arg("-sha256")
-        .args(["-subj", "/CN=localhost"])
-        .args(["-extensions", "EXT"])
-        .args(["-config", "integration_tests/gen/ssl_config"])
+    // Create self-signed SSL certificate in the generated directory
+    Command::new("./dev/generate-certificates")
+        .arg("integration_tests/gen")
         .spawn()
-        .expect("Failed to generate certs");
+        .expect("Failed to generate new certificates");
 
     // write config options for each party
     let customer_config = customer_test_config().await;

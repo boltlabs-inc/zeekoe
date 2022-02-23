@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+KEY_DIR=${1:-$SCRIPT_DIR}
 
-if test -f "$SCRIPT_DIR/localhost.crt" ; then
+if test -f "$KEY_DIR/localhost.crt" ; then
   echo "Found localhost.crt, doing nothing and exiting."
   exit 1
 fi
 
-if test -f "$SCRIPT_DIR/localhost.key" ; then
+if test -f "$KEY_DIR/localhost.key" ; then
   echo "Found localhost.key, doing nothing and exiting."
   exit 1
 fi
@@ -15,8 +16,8 @@ fi
 # https://letsencrypt.org/docs/certificates-for-localhost/#making-and-trusting-your-own-certificates
 openssl req \
   -x509 \
-  -out "$SCRIPT_DIR/localhost.crt" \
-  -keyout "$SCRIPT_DIR/localhost.key" \
+  -out "$KEY_DIR/localhost.crt" \
+  -keyout "$KEY_DIR/localhost.key" \
   -newkey rsa:2048 \
   -nodes \
   -sha256 \
