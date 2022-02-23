@@ -301,3 +301,41 @@ pub async fn await_leveled_blockchain(
     }
     Ok(())
 }
+
+/// Wrapper type to deserialize blockchain level.
+#[derive(Debug, serde::Deserialize)]
+struct BlockchainLevel {
+    level: BlockchainLevelDetail,
+}
+
+/// Inner type used to deserialize blockchain level.
+#[derive(Debug, serde::Deserialize)]
+struct BlockchainLevelDetail {
+    level: u64,
+}
+
+/// Waits for the blockchain level to reach the required minimum depth. Necessary when using the
+/// sandbox, which will start at 0 by default.
+pub async fn await_leveled_blockchain(
+    config: &zeekoe::customer::Config,
+) -> Result<(), anyhow::Error> {
+    loop {
+        let body = reqwest::get(format!(
+            "{}/chains/main/blocks/head/metadata",
+            config.tezos_uri
+        ))
+        .await?
+        .text()
+        .await?;
+
+        let level = serde_json::from_str::<BlockchainLevel>(&body)?.level.level;
+        println!("{:?}", level);
+
+        // 60 is the minimum required depth for the Tezos blockchain
+        if level >= 60 {
+            break;
+        }
+        tokio::time::sleep(tokio::time::Duration::from_secs((60 - level) * 2)).await;
+    }
+    Ok(())
+}

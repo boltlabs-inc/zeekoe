@@ -100,9 +100,7 @@ fn tests() -> Vec<Test> {
                     Outcome {
                         customer_status: CustomerStatus::Ready,
                         merchant_status: MerchantStatus::Active,
-                        //error: Some(Party::ActiveOperation("establish")),
-                        // Intentionally fail this test to see if test harness is working
-                        error: None
+                        error: Some(Party::ActiveOperation("establish")),
                     },
                 ),
             ],
