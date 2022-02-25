@@ -275,6 +275,8 @@ struct BlockchainLevelDetail {
 /// The minimum required depth to originate contracts on the Tezos blockchain.
 static MINIMUM_LEVEL: u64 = 120;
 
+/// Waits for the blockchain level to reach the required minimum depth. Necessary when using the
+/// sandbox, which will start at 0 by default.
 pub async fn await_leveled_blockchain(
     config: &zeekoe::customer::Config,
 ) -> Result<(), anyhow::Error> {
