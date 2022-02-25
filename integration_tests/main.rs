@@ -33,6 +33,10 @@ pub async fn main() {
         .await
         .expect("Failed to load merchant config");
 
+    common::await_leveled_blockchain(&customer_config)
+        .await
+        .expect("Failed to check blockchain level");
+
     // Run every test, printing out details if it fails
     let tests = tests();
     println!("Executing {} tests", tests.len());

@@ -259,3 +259,45 @@ fn write_config_file(path: &str, contents: String) {
         .write_all(contents.as_bytes())
         .unwrap_or_else(|_| panic!("Failed to write to config file: {}", path));
 }
+
+/// Wrapper type to deserialize blockchain level.
+#[derive(Debug, serde::Deserialize)]
+struct BlockchainLevel {
+    level: BlockchainLevelDetail,
+}
+
+/// Inner type used to deserialize blockchain level.
+#[derive(Debug, serde::Deserialize)]
+struct BlockchainLevelDetail {
+    level: u64,
+}
+
+/// The minimum required depth to originate contracts on the Tezos blockchain.
+static MINIMUM_LEVEL: u64 = 120;
+
+pub async fn await_leveled_blockchain(
+    config: &zeekoe::customer::Config,
+) -> Result<(), anyhow::Error> {
+    loop {
+        let body = reqwest::get(format!(
+            "{}/chains/main/blocks/head/metadata",
+            config.tezos_uri
+        ))
+        .await?
+        .text()
+        .await?;
+
+        let level = serde_json::from_str::<BlockchainLevel>(&body)?.level.level;
+        eprintln!("current: {:?} minimum: {}", level, MINIMUM_LEVEL);
+
+        if level >= MINIMUM_LEVEL {
+            break;
+        }
+        eprintln!(" wait time: {}", (MINIMUM_LEVEL - level) * 2);
+        tokio::time::sleep(tokio::time::Duration::from_secs(
+            (MINIMUM_LEVEL - level) * 2,
+        ))
+        .await;
+    }
+    Ok(())
+}
