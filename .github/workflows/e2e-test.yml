@@ -49,7 +49,7 @@ jobs:
           cache-to: type=local,dest=/tmp/.buildx-cache-new
           tags: ${{ steps.tags.outputs.tagged_image }}
 
-      - name: Run sandbox
+      - name: Run sandbox on localhost
         run: docker run --rm --name my-sandbox --detach -p 20000:20000 tqtezos/flextesa:20210602 flobox start
 
       - name: Configure tezos client and run all test targets
