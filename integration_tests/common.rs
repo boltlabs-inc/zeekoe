@@ -192,7 +192,7 @@ async fn customer_test_config() -> zeekoe::customer::Config {
         ("database", "{ sqlite = \"customer.db\" }"),
         ("trust_certificate", "\"localhost.crt\""),
         ("tezos_account", "{ alias = \"alice\" }"),
-        ("tezos_uri", "\"http://localhost:20000\""),
+        ("tezos_uri", "\"http://my-sandbox:20000\""),
         ("self_delay", "120"),
         ("confirmation_depth", "1"),
     ]);
@@ -213,7 +213,7 @@ async fn merchant_test_config() -> zeekoe::merchant::Config {
     let m = HashMap::from([
         ("database", "{ sqlite = \"merchant.db\" }"),
         ("tezos_account", "{ alias = \"bob\" }"),
-        ("tezos_uri", "\"http://localhost:20000\""),
+        ("tezos_uri", "\"http://my-sandbox:20000\""),
         ("self_delay", "120"),
         ("confirmation_depth", "1"),
     ]);
@@ -273,7 +273,7 @@ struct BlockchainLevelDetail {
 }
 
 /// The minimum required depth to originate contracts on the Tezos blockchain.
-static MINIMUM_LEVEL: u64 = 120;
+static MINIMUM_LEVEL: u64 = 60;
 
 /// Waits for the blockchain level to reach the required minimum depth. Necessary when using the
 /// sandbox, which will start at 0 by default.
