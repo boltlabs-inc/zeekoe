@@ -44,14 +44,13 @@ jobs:
           file: ./Dockerfile
           builder: ${{ steps.buildx.outputs.name }}
           load: true
-          network: host
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new
           tags: ${{ steps.tags.outputs.tagged_image }}
 
       - name: Run sandbox 
         run: |
-           docker run --rm --name sandbox --hostname sandbox --detach -p 20000:20000 tqtezos/flextesa:20210602 flobox start
+           docker run --rm --name sandbox --detach -p 20000:20000 tqtezos/flextesa:20210602 flobox start
            docker ps -a
            ifconfig
 
@@ -59,11 +58,11 @@ jobs:
         uses: addnab/docker-run-action@v3
         with:
           image: ${{ steps.tags.outputs.tagged_image }}
-          docker_network: host
+          #docker_network: host
           run: |
             tezos-client config reset
-            tezos-client --endpoint http://sandbox:20000 bootstrapped
-            tezos-client --endpoint http://sandbox:20000 config update
+            tezos-client --endpoint http://172.17.0.1:20000 bootstrapped
+            tezos-client --endpoint http://172.17.0.1:20000 config update
             tezos-client import secret key alice unencrypted:edsk3QoqBuvdamxouPhin7swCvkQNgq4jP5KZPbwWNnwdZpSpJiEbq
             tezos-client import secret key bob unencrypted:edsk3RFfvaFaxbHx8BMtEW1rKQcPtDML3LXjNqMNLCzC3wLC1bWbAt
             cargo test --all-features --tests integration_tests --verbose -- --nocapture
