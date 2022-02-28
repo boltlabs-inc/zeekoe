@@ -19,20 +19,20 @@ RUN apt-get update && apt-get install -y \
   python3-pip \
   software-properties-common
 
-RUN apt-get update
+#RUN apt-get update
 
-RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
-ENV PATH="/root/.cargo/bin:${PATH}"
+#RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
+#ENV PATH="/root/.cargo/bin:${PATH}"
 
-RUN pip3 install pytezos
+#RUN pip3 install pytezos
 
-RUN git clone https://github.com/boltlabs-inc/zeekoe.git 
-WORKDIR /root/zeekoe
+#RUN git clone https://github.com/boltlabs-inc/zeekoe.git 
+#WORKDIR /root/zeekoe
 
 # Remove before merging to main - this is for testing the testing PR...
-RUN git checkout testing 
-RUN git submodule update --init --recursive
-RUN ./dev/generate-certificates; CARGO_NET_GIT_FETCH_WITH_CLI=true cargo build --features "allow_explicit_certificate_trust allow_custom_self_delay"
+#RUN git checkout testing 
+#RUN git submodule update --init --recursive
+#RUN ./dev/generate-certificates; CARGO_NET_GIT_FETCH_WITH_CLI=true cargo build --features "allow_explicit_certificate_trust allow_custom_self_delay"
 
 RUN wget https://github.com/serokell/tezos-packaging/releases/latest/download/tezos-client
 RUN chmod +x tezos-client

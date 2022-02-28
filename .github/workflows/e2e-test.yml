@@ -50,7 +50,9 @@ jobs:
           tags: ${{ steps.tags.outputs.tagged_image }}
 
       - name: Run sandbox on localhost
-        run: docker run --rm --name my-sandbox --detach -p 20000:20000 tqtezos/flextesa:20210602 flobox start
+        run: |
+           docker run --rm --name my-sandbox --detach -p 20000:20000 tqtezos/flextesa:20210602 flobox start
+           docker ps -a
 
       - name: Configure tezos client and run all test targets
         uses: addnab/docker-run-action@v3
