@@ -49,7 +49,7 @@ jobs:
           cache-to: type=local,dest=/tmp/.buildx-cache-new
           tags: ${{ steps.tags.outputs.tagged_image }}
 
-      - name: Run sandbox on localhost
+      - name: Run sandbox 
         run: |
            docker run --rm --name my-sandbox --detach -p 20000:20000 tqtezos/flextesa:20210602 flobox start
            docker ps -a
@@ -62,8 +62,8 @@ jobs:
           docker_network: host
           run: |
             tezos-client config reset
-            tezos-client --endpoint http://0.0.0.0:20000 bootstrapped
-            tezos-client --endpoint http://0.0.0.0:20000 config update
+            tezos-client --endpoint http://172.17.0.1:20000 bootstrapped
+            tezos-client --endpoint http://172.17.0.1:20000 config update
             tezos-client import secret key alice unencrypted:edsk3QoqBuvdamxouPhin7swCvkQNgq4jP5KZPbwWNnwdZpSpJiEbq
             tezos-client import secret key bob unencrypted:edsk3RFfvaFaxbHx8BMtEW1rKQcPtDML3LXjNqMNLCzC3wLC1bWbAt
             cargo test --all-features --tests integration_tests --verbose -- --nocapture
