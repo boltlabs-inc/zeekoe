@@ -53,6 +53,7 @@ jobs:
         run: |
            docker run --rm --name my-sandbox --detach -p 20000:20000 tqtezos/flextesa:20210602 flobox start
            docker ps -a
+           ifconfig
 
       - name: Configure tezos client and run all test targets
         uses: addnab/docker-run-action@v3
