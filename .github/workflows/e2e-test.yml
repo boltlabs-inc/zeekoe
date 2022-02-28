@@ -61,8 +61,8 @@ jobs:
           docker_network: host
           run: |
             tezos-client config reset
-            tezos-client --endpoint http://my-sandbox:20000 bootstrapped
-            tezos-client --endpoint http://my-sandbox:20000 config update
+            tezos-client --endpoint http://0.0.0.0:20000 bootstrapped
+            tezos-client --endpoint http://0.0.0.0:20000 config update
             tezos-client import secret key alice unencrypted:edsk3QoqBuvdamxouPhin7swCvkQNgq4jP5KZPbwWNnwdZpSpJiEbq
             tezos-client import secret key bob unencrypted:edsk3RFfvaFaxbHx8BMtEW1rKQcPtDML3LXjNqMNLCzC3wLC1bWbAt
             cargo test --all-features --tests integration_tests --verbose -- --nocapture
