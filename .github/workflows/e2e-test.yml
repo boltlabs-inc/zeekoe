@@ -51,6 +51,9 @@ jobs:
       - name: Run sandbox 
         run: |
            docker run --rm --name sandbox --detach -p 20000:20000 tqtezos/flextesa:20210602 flobox start
+           docker images
+           docker ps -a
+           echo ${{ steps.tags.outputs.tagged_image }}
 
       - name: Run tests (configure tezos client, run integration tests)
         uses: docker/build-push-action@v2
