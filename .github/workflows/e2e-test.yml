@@ -54,13 +54,15 @@ jobs:
            docker images
            docker ps -a
            echo ${{ steps.tags.outputs.tagged_image }}
+           docker inspect --format='{{.Os}}/{{.Architecture}}' ${{ steps.tags.outputs.tagged_image }}
 
       - name: Run tests (configure tezos client, run integration tests)
         uses: docker/build-push-action@v2
         with:
           file: ./integration_tests/Dockerfile
           builder: ${{ steps.buildx.outputs.name }}
-          #network: e2e-net
+          load: true
+          cache-from: type=local,src=/tmp/.buildx-cache-new
           build-args: |
             zeekoe_base=${{ steps.tags.outputs.tagged_image }}
             tezos_uri=sandbox
