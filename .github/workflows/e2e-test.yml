@@ -50,15 +50,14 @@ jobs:
 
       - name: Run sandbox 
         run: |
-           docker network create e2e-net
-           docker run --rm --name sandbox --network e2e-net --detach -p 20000:20000 tqtezos/flextesa:20210602 flobox start
+           docker run --rm --name sandbox --detach -p 20000:20000 tqtezos/flextesa:20210602 flobox start
 
       - name: Run tests (configure tezos client, run integration tests)
         uses: docker/build-push-action@v2
         with:
           file: ./integration_tests/Dockerfile
           builder: ${{ steps.buildx.outputs.name }}
-          network: e2e-net
+          #network: e2e-net
           build-args: |
             zeekoe_base=${{ steps.tags.outputs.tagged_image }}
             tezos_uri=sandbox
