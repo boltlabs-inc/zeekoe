@@ -53,22 +53,15 @@ jobs:
            docker network create e2e-net
            docker run --rm --name sandbox --network e2e-net --detach -p 20000:20000 tqtezos/flextesa:20210602 flobox start
 
-      - name: Configure tezos client and run all test targets
-        uses: addnab/docker-run-action@v3
+      - name: Run tests (configure tezos client, run integration tests)
+        uses: docker/build-push-action@v2
         with:
-          image: ${{ steps.tags.outputs.tagged_image }}
-          docker_network: e2e-net 
-          run: |
-            echo "RESET"
-            tezos-client config reset
-            echo "BOOTSTRAP"
-            tezos-client --endpoint http://sandbox:20000 bootstrapped
-            echo "UPDATE CONFIG"
-            tezos-client --endpoint http://sandbox:20000 config update
-            echo "ADD KEYS"
-            tezos-client import secret key alice unencrypted:edsk3QoqBuvdamxouPhin7swCvkQNgq4jP5KZPbwWNnwdZpSpJiEbq
-            tezos-client import secret key bob unencrypted:edsk3RFfvaFaxbHx8BMtEW1rKQcPtDML3LXjNqMNLCzC3wLC1bWbAt
-            cargo test --all-features --tests integration_tests --verbose -- --nocapture
+          file: ./integration_tests/Dockerfile
+          builder: ${{ steps.buildx.outputs.name }}
+          network: e2e-net
+          build-args: |
+            zeekoe_base=${{ steps.tags.outputs.tagged_image }}
+            tezos_uri=sandbox
 
       - name: Move cache
         run: |
