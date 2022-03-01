@@ -42,7 +42,8 @@ jobs:
         with:
           file: ./Dockerfile
           builder: ${{ steps.buildx.outputs.name }}
-          load: true
+          outputs: |
+            type=image
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new
           tags: ${{ steps.tags.outputs.tagged_image }}
