@@ -43,7 +43,7 @@ jobs:
           file: ./Dockerfile
           builder: ${{ steps.buildx.outputs.name }}
           outputs: |
-            type=image
+            type=image,name=${{ steps.buildx.outputs.name }}
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new
           tags: ${{ steps.tags.outputs.tagged_image }}
@@ -54,7 +54,7 @@ jobs:
            docker images
            docker ps -a
            echo ${{ steps.tags.outputs.tagged_image }}
-           docker inspect --format='{{.Os}}/{{.Architecture}}' ${{ steps.tags.outputs.tagged_image }}
+           docker buildx inspect
 
       - name: Run tests (configure tezos client, run integration tests)
         uses: docker/build-push-action@v2
