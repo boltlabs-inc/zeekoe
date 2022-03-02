@@ -10,6 +10,11 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      registry:
+        image: registry:2
+        ports:
+          - 5000:5000
 
     steps:
       - uses: actions/cache@v2
@@ -36,12 +41,12 @@ jobs:
       - name: Print debug details
         run: echo ${{ github.repository_owner }} ${{ github.actor }}
 
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v1
-        with:
-          registry: ghcr.io
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+#      - name: Login to GitHub Container Registry
+#        uses: docker/login-action@v1
+#        with:
+#          registry: ghcr.io
+#          username: ${{ github.repository_owner }}
+#          password: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: docker/setup-buildx-action@v1
         id: buildx
@@ -57,15 +62,17 @@ jobs:
           cache-to: type=local,dest=/tmp/.buildx-cache-new
           tags: |
             ${{ steps.tags.outputs.tagged_image }}
-            ghcr.io/boltlabs-inc/${{ steps.tags.outputs.tagged_image }}
+#            ghcr.io/boltlabs-inc/${{ steps.tags.outputs.tagged_image }}
+            localhost:5000/name/${{ steps.tags.outputs.tagged_image }}
 
-      - name: Run sandbox 
+      - name: Run sandbox + debug
         run: |
            docker run --rm --name sandbox --detach -p 20000:20000 tqtezos/flextesa:20210602 flobox start
            docker images
            docker ps -a
            echo ${{ steps.tags.outputs.tagged_image }}
            docker buildx inspect
+           docker buildx imagetools inspect localhost:5000/name/${{ steps.tags.outputs.tagged_image }}
 
       - name: Run tests (configure tezos client, run integration tests)
         uses: docker/build-push-action@v2
@@ -76,7 +83,7 @@ jobs:
           pull: true
           load: true
           build-args: |
-            zeekoe_base=ghcr.io/boltlabs-inc/${{ steps.tags.outputs.tagged_image }}
+            zeekoe_base=localhost:5000/name/${{ steps.tags.outputs.tagged_image }}
             tezos_uri=sandbox
 
       - name: Move cache
