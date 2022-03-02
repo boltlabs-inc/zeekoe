@@ -50,7 +50,7 @@ jobs:
           push: true
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new
-          tags: ${{ github.repository_owner }}/${{ steps.tags.outputs.tagged_image }}
+          tags: ghcr.io/${{ github.repository_owner }}/${{ steps.tags.outputs.tagged_image }}
 
       - name: Run sandbox + debug
         run: |
@@ -70,7 +70,7 @@ jobs:
           pull: true
           load: true
           build-args: |
-            zeekoe_base=${{ github.repository_owner }}/${{ steps.tags.outputs.tagged_image }}
+            zeekoe_base=ghcr.io/${{ github.repository_owner }}/${{ steps.tags.outputs.tagged_image }}
             tezos_uri=sandbox
 
       - name: Move cache
