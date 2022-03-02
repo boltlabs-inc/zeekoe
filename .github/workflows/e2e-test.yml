@@ -38,16 +38,13 @@ jobs:
           echo ::set-output name=tagged_image::${IMAGE}:${TAG}
           echo ::set-output name=tag::${TAG}
 
-      - name: Print debug details
-        run: echo ${{ github.repository_owner }} ${{ github.actor }}
-
 #      - name: Login to GitHub Container Registry
 #        uses: docker/login-action@v1
 #        with:
 #          registry: ghcr.io
 #          username: ${{ github.repository_owner }}
 #          password: ${{ secrets.GITHUB_TOKEN }}
-
+#
       - uses: docker/setup-buildx-action@v1
         id: buildx
 
@@ -62,8 +59,8 @@ jobs:
           cache-to: type=local,dest=/tmp/.buildx-cache-new
           tags: |
             ${{ steps.tags.outputs.tagged_image }}
-#            ghcr.io/boltlabs-inc/${{ steps.tags.outputs.tagged_image }}
             localhost:5000/name/${{ steps.tags.outputs.tagged_image }}
+#            ghcr.io/boltlabs-inc/${{ steps.tags.outputs.tagged_image }}
 
       - name: Run sandbox + debug
         run: |
