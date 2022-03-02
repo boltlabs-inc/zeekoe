@@ -54,7 +54,7 @@ jobs:
 
       - name: Run sandbox + debug
         run: |
-           docker run --rm --name sandbox --detach -p 20000:20000 tqtezos/flextesa:20210602 flobox start
+           docker run --rm --name sandbox --network host --detach -p 20000:20000 tqtezos/flextesa:20210602 flobox start
            docker images
            docker ps -a
            docker buildx inspect
@@ -65,11 +65,12 @@ jobs:
           file: ./integration_tests/Dockerfile
           context: .
           builder: ${{ steps.buildx.outputs.name }}
+          network: host
           pull: true
           load: true
           build-args: |
             zeekoe_base=ghcr.io/${{ github.repository_owner }}/${{ steps.tags.outputs.tagged_image }}
-            tezos_uri=sandbox
+            tezos_uri=localhost
 
       - name: Move cache
         run: |
