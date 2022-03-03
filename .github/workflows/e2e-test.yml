@@ -70,12 +70,11 @@ jobs:
           file: ./integration_tests/Dockerfile
           context: .
           builder: ${{ steps.buildx.outputs.name }}
-          network: custom 
           pull: true
           load: true
           build-args: |
             zeekoe_base=ghcr.io/${{ github.repository_owner }}/${{ steps.tags.outputs.tagged_image }}
-            tezos_uri=localhost
+            tezos_uri=sandbox
 
       - name: Move cache
         run: |
