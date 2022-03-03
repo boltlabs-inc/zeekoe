@@ -32,9 +32,14 @@ jobs:
           IMAGE="zeekoe_base"
           echo ::set-output name=tagged_image::${IMAGE}:${TAG}
           echo ::set-output name=tag::${TAG}
+      
+      - name: Create custom Docker network
+        run: docker network create e2e-net
 
       - uses: docker/setup-buildx-action@v1
         id: buildx
+        with:
+          network: e2e-net
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v1
@@ -54,7 +59,7 @@ jobs:
 
       - name: Run sandbox + debug
         run: |
-           docker run --rm --name sandbox --network host --detach -p 20000:20000 tqtezos/flextesa:20210602 flobox start
+           docker run --rm --name sandbox --network e2e-net --detach -p 20000:20000 tqtezos/flextesa:20210602 flobox start
            docker images
            docker ps -a
            docker buildx inspect
@@ -65,7 +70,7 @@ jobs:
           file: ./integration_tests/Dockerfile
           context: .
           builder: ${{ steps.buildx.outputs.name }}
-          network: host
+          network: custom 
           pull: true
           load: true
           build-args: |
