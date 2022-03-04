@@ -57,11 +57,13 @@ jobs:
           cache-to: type=local,dest=/tmp/.buildx-cache-new
           tags: ghcr.io/${{ github.repository_owner }}/${{ steps.tags.outputs.tagged_image }}
 
-      - name: Run sandbox + debug
+      - name: Run sandbox 
         run: |
            docker run --rm --name sandbox --network e2e-net --detach -p 20000:20000 tqtezos/flextesa:20210602 flobox start
-           docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' sandbox
-           docker exec sandbox cat /etc/hosts
+           echo "SANDBOX_IP=docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' sandbox" >> $GITHUB_ENV
+          
+      - name: Check
+        run: echo "Sandbox IP:" ${{ env.SANDBOX_IP}}
 
       - name: Run tests (configure tezos client, run integration tests)
         uses: docker/build-push-action@v2
@@ -73,7 +75,7 @@ jobs:
           load: true
           build-args: |
             zeekoe_base=ghcr.io/${{ github.repository_owner }}/${{ steps.tags.outputs.tagged_image }}
-            tezos_uri=sandbox
+            tezos_uri=${{ env.SANDBOX_IP }}
 
       - name: Move cache
         run: |
