@@ -72,9 +72,9 @@ jobs:
           builder: ${{ steps.buildx.outputs.name }}
           load: true
           build-args: |
-#            zeekoe_base=ghcr.io/${{ github.repository_owner }}/${{ steps.tags.outputs.tagged_image }}
             zeekoe_base=${{ steps.tags.outputs.tagged_image }}
             tezos_uri=sandbox
+#            zeekoe_base=ghcr.io/${{ github.repository_owner }}/${{ steps.tags.outputs.tagged_image }}
 
       - name: Move cache
         run: |
