@@ -60,9 +60,8 @@ jobs:
       - name: Run sandbox + debug
         run: |
            docker run --rm --name sandbox --network e2e-net --detach -p 20000:20000 tqtezos/flextesa:20210602 flobox start
-           docker images
-           docker ps -a
-           docker buildx inspect
+           docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' sandbox
+           docker exec sandbox cat /etc/hosts
 
       - name: Run tests (configure tezos client, run integration tests)
         uses: docker/build-push-action@v2
