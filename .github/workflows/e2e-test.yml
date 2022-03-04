@@ -60,10 +60,10 @@ jobs:
       - name: Run sandbox 
         run: |
            docker run --rm --name sandbox --network e2e-net --detach -p 20000:20000 tqtezos/flextesa:20210602 flobox start
-           echo "SANDBOX_IP=docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' sandbox" >> $GITHUB_ENV
+           echo "SANDBOX_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' sandbox)" >> $GITHUB_ENV
           
       - name: Check
-        run: echo "Sandbox IP:" ${{ env.SANDBOX_IP}}
+        run: echo "Sandbox IP:" ${{ env.SANDBOX_IP }}
 
       - name: Run tests (configure tezos client, run integration tests)
         uses: docker/build-push-action@v2
