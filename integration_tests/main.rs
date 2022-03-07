@@ -22,10 +22,20 @@ use {
     thiserror::Error,
 };
 
+/// The zeekoe test command line interface options
+#[derive(Debug, StructOpt)]
+pub struct Cli {
+    /// Path to a configuration file.
+    #[structopt(long, default_value = "localhost")]
+    pub tezos_uri: String,
+}
+
 #[tokio::main]
 pub async fn main() {
+    let tezos_uri = Cli::from_args().tezos_uri;
+
     let rng = StdRng::from_entropy();
-    let server_future = common::setup(&rng).await;
+    let server_future = common::setup(&rng, tezos_uri).await;
     let customer_config = customer::Config::load(common::CUSTOMER_CONFIG)
         .await
         .expect("Failed to load customer config");

@@ -106,7 +106,7 @@ macro_rules! merchant_cli {
 }
 pub(crate) use merchant_cli;
 
-pub async fn setup(rng: &StdRng) -> ServerFuture {
+pub async fn setup(rng: &StdRng, tezos_uri: String) -> ServerFuture {
     let _ = fs::create_dir("integration_tests/gen");
 
     // Create self-signed SSL certificate in the generated directory
@@ -116,8 +116,8 @@ pub async fn setup(rng: &StdRng) -> ServerFuture {
         .expect("Failed to generate new certificates");
 
     // write config options for each party
-    let customer_config = customer_test_config().await;
-    let merchant_config = merchant_test_config().await;
+    let customer_config = customer_test_config(&tezos_uri).await;
+    let merchant_config = merchant_test_config(&tezos_uri).await;
 
     // set up tracing for all log messages
     tracing_subscriber::fmt()
@@ -187,12 +187,13 @@ pub async fn teardown(server_future: ServerFuture) {
 }
 
 /// Encode the customizable fields of the zeekoe customer Config struct for testing.
-async fn customer_test_config() -> zeekoe::customer::Config {
+async fn customer_test_config(tezos_uri: &String) -> zeekoe::customer::Config {
+    let full_tezos_uri = format!("\"http://{}:20000\"", tezos_uri);
     let m = HashMap::from([
         ("database", "{ sqlite = \"customer.db\" }"),
         ("trust_certificate", "\"localhost.crt\""),
         ("tezos_account", "{ alias = \"alice\" }"),
-        ("tezos_uri", "\"http://my-sandbox:20000\""),
+        ("tezos_uri", full_tezos_uri.as_str()),
         ("self_delay", "120"),
         ("confirmation_depth", "1"),
     ]);
@@ -209,11 +210,12 @@ async fn customer_test_config() -> zeekoe::customer::Config {
 }
 
 /// Encode the customizable fields of the zeekoe merchant Config struct for testing.
-async fn merchant_test_config() -> zeekoe::merchant::Config {
+async fn merchant_test_config(tezos_uri: &String) -> zeekoe::merchant::Config {
+    let full_tezos_uri = format!("\"http://{}:20000\"", tezos_uri);
     let m = HashMap::from([
         ("database", "{ sqlite = \"merchant.db\" }"),
         ("tezos_account", "{ alias = \"bob\" }"),
-        ("tezos_uri", "\"http://my-sandbox:20000\""),
+        ("tezos_uri", full_tezos_uri.as_str()),
         ("self_delay", "120"),
         ("confirmation_depth", "1"),
     ]);
