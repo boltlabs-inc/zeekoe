@@ -32,6 +32,7 @@ pub async fn main() {
         Some(s) if s.contains("integration_tests") => default,
         Some(tezos_uri) => tezos_uri,
     };
+    eprintln!("parsed tezos uri: {}", tezos_uri);
 
     let rng = StdRng::from_entropy();
     let server_future = common::setup(&rng, tezos_uri).await;

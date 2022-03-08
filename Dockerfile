@@ -30,7 +30,7 @@ RUN git clone https://github.com/boltlabs-inc/zeekoe.git
 WORKDIR /root/zeekoe
 
 # Remove before merging to main - this is for testing the testing PR...
-RUN git checkout testing 
+RUN git checkout e2e_yml_experiments
 RUN git submodule update --init --recursive
 RUN ./dev/generate-certificates; CARGO_NET_GIT_FETCH_WITH_CLI=true cargo build --features "allow_explicit_certificate_trust allow_custom_self_delay"
 
