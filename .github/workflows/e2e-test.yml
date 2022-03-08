@@ -67,7 +67,7 @@ jobs:
           load: true
           build-args: |
             zeekoe_base=ghcr.io/${{ github.repository_owner }}/${{ steps.tags.outputs.tagged_image }}
-            tezos_uri=${{ env.SANDBOX_IP }}
+            tezos_uri=http://${{ env.SANDBOX_IP }}:20000
 
       - name: Move cache
         run: |

@@ -22,17 +22,16 @@ use {
     thiserror::Error,
 };
 
-/// The zeekoe test command line interface options
-#[derive(Debug, StructOpt)]
-pub struct Cli {
-    /// Path to a configuration file.
-    #[structopt(long, default_value = "localhost")]
-    pub tezos_uri: String,
-}
-
 #[tokio::main]
 pub async fn main() {
-    let tezos_uri = Cli::from_args().tezos_uri;
+    // Read tezos URI from arguments, or use standard sandbox URI
+    let default = "http://localhost:20000".to_string();
+    let tezos_uri = match std::env::args().last() {
+        None => default,
+        // This means no argument was passed and args just has the executable name
+        Some(s) if s.contains("integration_tests") => default,
+        Some(tezos_uri) => tezos_uri,
+    };
 
     let rng = StdRng::from_entropy();
     let server_future = common::setup(&rng, tezos_uri).await;

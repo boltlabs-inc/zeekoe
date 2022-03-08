@@ -187,13 +187,13 @@ pub async fn teardown(server_future: ServerFuture) {
 }
 
 /// Encode the customizable fields of the zeekoe customer Config struct for testing.
-async fn customer_test_config(tezos_uri: &String) -> zeekoe::customer::Config {
-    let full_tezos_uri = format!("\"http://{}:20000\"", tezos_uri);
+async fn customer_test_config(tezos_uri: &str) -> zeekoe::customer::Config {
+    let quoted_tezos_uri = format!("\"{}\"", tezos_uri);
     let m = HashMap::from([
         ("database", "{ sqlite = \"customer.db\" }"),
         ("trust_certificate", "\"localhost.crt\""),
         ("tezos_account", "{ alias = \"alice\" }"),
-        ("tezos_uri", full_tezos_uri.as_str()),
+        ("tezos_uri", quoted_tezos_uri.as_str()),
         ("self_delay", "120"),
         ("confirmation_depth", "1"),
     ]);
@@ -210,12 +210,12 @@ async fn customer_test_config(tezos_uri: &String) -> zeekoe::customer::Config {
 }
 
 /// Encode the customizable fields of the zeekoe merchant Config struct for testing.
-async fn merchant_test_config(tezos_uri: &String) -> zeekoe::merchant::Config {
-    let full_tezos_uri = format!("\"http://{}:20000\"", tezos_uri);
+async fn merchant_test_config(tezos_uri: &str) -> zeekoe::merchant::Config {
+    let quoted_tezos_uri = format!("\"{}\"", tezos_uri);
     let m = HashMap::from([
         ("database", "{ sqlite = \"merchant.db\" }"),
         ("tezos_account", "{ alias = \"bob\" }"),
-        ("tezos_uri", full_tezos_uri.as_str()),
+        ("tezos_uri", quoted_tezos_uri.as_str()),
         ("self_delay", "120"),
         ("confirmation_depth", "1"),
     ]);
