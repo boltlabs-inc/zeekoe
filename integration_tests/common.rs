@@ -32,14 +32,14 @@ pub const ERROR_FILENAME: &str = "integration_tests/gen/errors.log";
 #[derive(Debug, Clone, Copy, EnumIter)]
 enum MerchantServices {
     IpV4,
-    IpV6,
+    //IpV6,
 }
 
 impl MerchantServices {
     fn to_str(self) -> &'static str {
         match self {
             Self::IpV4 => "127.0.0.1",
-            Self::IpV6 => "::1",
+            //Self::IpV6 => "::1",
         }
     }
 }
@@ -49,7 +49,7 @@ impl fmt::Display for MerchantServices {
         // Note: this hard-codes the default port.
         let ipaddr = match self {
             Self::IpV4 => self.to_str().to_string(),
-            Self::IpV6 => format!("[{}]", self.to_str()),
+            //Self::IpV6 => format!("[{}]", self.to_str()),
         };
         write!(f, "{}:2611", ipaddr)
     }
@@ -148,10 +148,12 @@ pub async fn setup(rng: &StdRng, tezos_uri: String) -> ServerFuture {
             Party::MerchantServer,
             TestLogs::MerchantServerSpawned(MerchantServices::IpV4.to_string()),
         ),
+        /*
         await_log(
             Party::MerchantServer,
             TestLogs::MerchantServerSpawned(MerchantServices::IpV6.to_string()),
         ),
+        */
         await_log(Party::CustomerWatcher, TestLogs::CustomerWatcherSpawned),
     ];
 
