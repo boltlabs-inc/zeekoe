@@ -197,7 +197,7 @@ async fn customer_test_config(tezos_uri: &str) -> zeekoe::customer::Config {
         ("tezos_account", "{ alias = \"alice\" }"),
         ("tezos_uri", quoted_tezos_uri.as_str()),
         ("self_delay", "120"),
-        ("confirmation_depth", "1"),
+        ("confirmation_depth", "2"),
     ]);
 
     let contents = m.into_iter().fold("".to_string(), |acc, (key, value)| {
@@ -219,7 +219,7 @@ async fn merchant_test_config(tezos_uri: &str) -> zeekoe::merchant::Config {
         ("tezos_account", "{ alias = \"bob\" }"),
         ("tezos_uri", quoted_tezos_uri.as_str()),
         ("self_delay", "120"),
-        ("confirmation_depth", "1"),
+        ("confirmation_depth", "2"),
     ]);
 
     let tezos_contents = m.into_iter().fold("".to_string(), |acc, (key, value)| {
