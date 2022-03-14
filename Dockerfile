@@ -24,7 +24,7 @@ RUN apt-get update
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
-RUN pip3 install pytezos
+RUN pip3 install pytezos==3.2.11
 
 RUN git clone https://github.com/boltlabs-inc/zeekoe.git 
 WORKDIR /root/zeekoe
