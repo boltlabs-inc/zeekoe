@@ -26,10 +26,11 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 
 RUN pip3 install pytezos==3.2.11
 
+# Define the branch here to prevent caching old versions of the repository
+ARG BRANCH=main
 RUN git clone https://github.com/boltlabs-inc/zeekoe.git 
 WORKDIR /root/zeekoe
 
-ARG BRANCH=main
 RUN git checkout $BRANCH
 RUN git submodule update --init --recursive
 RUN ./dev/generate-certificates; CARGO_NET_GIT_FETCH_WITH_CLI=true cargo build --features "allow_explicit_certificate_trust allow_custom_self_delay"
