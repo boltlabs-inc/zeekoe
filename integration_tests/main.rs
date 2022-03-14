@@ -32,7 +32,7 @@ pub async fn main() {
         Some(s) if s.contains("integration_tests") => default,
         Some(tezos_uri) => tezos_uri,
     };
-    eprintln!("parsed tezos uri: {}", tezos_uri);
+    eprintln!("Using tezos URI: {}", tezos_uri);
 
     let rng = StdRng::from_entropy();
     let server_future = common::setup(&rng, tezos_uri).await;
@@ -324,11 +324,7 @@ impl LogType {
     }
 }
 
-/// Get any errors from the log file.
-///
-/// Current behavior: outputs the entire log
-/// Ideal behavior: pass a Party, maybe an indicator of which test / channel name we want. Return
-/// only the lines relevant to that setting.
+/// Get any errors from the log file, filtered by party and log type.
 fn get_logs(log_type: LogType, party: Party) -> Result<String, LogError> {
     let mut file = File::open(common::ERROR_FILENAME).map_err(LogError::OpenFailed)?;
     let mut logs = String::new();

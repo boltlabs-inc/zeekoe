@@ -32,6 +32,7 @@ pub const ERROR_FILENAME: &str = "integration_tests/gen/errors.log";
 #[derive(Debug, Clone, Copy, EnumIter)]
 enum MerchantServices {
     IpV4,
+    // The server supports IPv6 but it doesn't run on the Github Actions test harness.
     //IpV6,
 }
 
@@ -184,7 +185,7 @@ pub async fn teardown(server_future: ServerFuture) {
     // Ignore the result because we expect it to be an `Expired` error
     let _result = server_future.with_timeout(Duration::from_secs(1)).await;
 
-    // delete data from this run
+    // Delete data from this run
     let _ = fs::remove_dir_all("integration_tests/gen/");
 }
 
@@ -197,7 +198,7 @@ async fn customer_test_config(tezos_uri: &str) -> zeekoe::customer::Config {
         ("tezos_account", "{ alias = \"alice\" }"),
         ("tezos_uri", quoted_tezos_uri.as_str()),
         ("self_delay", "120"),
-        ("confirmation_depth", "2"),
+        ("confirmation_depth", "1"),
     ]);
 
     let contents = m.into_iter().fold("".to_string(), |acc, (key, value)| {
@@ -219,14 +220,14 @@ async fn merchant_test_config(tezos_uri: &str) -> zeekoe::merchant::Config {
         ("tezos_account", "{ alias = \"bob\" }"),
         ("tezos_uri", quoted_tezos_uri.as_str()),
         ("self_delay", "120"),
-        ("confirmation_depth", "2"),
+        ("confirmation_depth", "1"),
     ]);
 
     let tezos_contents = m.into_iter().fold("".to_string(), |acc, (key, value)| {
         format!("{}{} = {}\n", acc, key.to_string(), value.to_string())
     });
 
-    // helper to write out the service for ipv4 and v6 localhost addresses
+    // Helper to write out the service for the merchant service addresses
     let generate_service = |addr: MerchantServices| {
         HashMap::from([
             ("address", addr.to_str()),
@@ -284,6 +285,7 @@ static MINIMUM_LEVEL: u64 = 60;
 pub async fn await_leveled_blockchain(
     config: &zeekoe::customer::Config,
 ) -> Result<(), anyhow::Error> {
+    eprintln!("Waiting for blockchain to reach depth {}...", MINIMUM_LEVEL);
     loop {
         let body = reqwest::get(format!(
             "{}/chains/main/blocks/head/metadata",
@@ -294,16 +296,14 @@ pub async fn await_leveled_blockchain(
         .await?;
 
         let level = serde_json::from_str::<BlockchainLevel>(&body)?.level.level;
-        eprintln!("current: {:?} minimum: {}", level, MINIMUM_LEVEL);
 
         if level >= MINIMUM_LEVEL {
             break;
         }
-        eprintln!(" wait time: {}", (MINIMUM_LEVEL - level) * 2);
-        tokio::time::sleep(tokio::time::Duration::from_secs(
-            (MINIMUM_LEVEL - level) * 2,
-        ))
-        .await;
+
+        let wait_time = (MINIMUM_LEVEL - level) * 4;
+        eprintln!("Current level: {:?}. Waiting {} seconds", level, wait_time);
+        tokio::time::sleep(tokio::time::Duration::from_secs(wait_time)).await;
     }
     Ok(())
 }
