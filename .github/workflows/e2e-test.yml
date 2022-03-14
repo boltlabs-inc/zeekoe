@@ -42,6 +42,11 @@ jobs:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Run sandbox 
+        run: |
+           docker run --rm --name sandbox --detach -p 20000:20000 tqtezos/flextesa:20210602 flobox start
+           echo "SANDBOX_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' sandbox)" >> $GITHUB_ENV
 
       - name: Build
         uses: docker/build-push-action@v2
@@ -51,11 +56,6 @@ jobs:
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new
           tags: ghcr.io/${{ github.repository_owner }}/${{ steps.tags.outputs.tagged_image }}
-
-      - name: Run sandbox 
-        run: |
-           docker run --rm --name sandbox --detach -p 20000:20000 tqtezos/flextesa:20210602 flobox start
-           echo "SANDBOX_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' sandbox)" >> $GITHUB_ENV
 
       - name: Run tests (configure tezos client, run integration tests)
         uses: docker/build-push-action@v2
