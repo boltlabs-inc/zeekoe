@@ -33,7 +33,11 @@ jobs:
           echo ::set-output name=tagged_image::${IMAGE}:${TAG}
           echo ::set-output name=tag::${TAG}
           echo "ref name" ${{ github.ref_name }}
+          echo "ref name env" $GITHUB_REF_NAME
+          echo "ref" ${{ github.ref }}
+          echo "head ref" ${{ github.head_ref }}
           echo "base ref" ${{ github.base_ref }}
+          echo "sha" ${{ github.sha }}
 
       - uses: docker/setup-buildx-action@v1
         id: buildx
