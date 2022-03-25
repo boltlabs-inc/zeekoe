@@ -10,7 +10,7 @@ mod cli;
 mod config;
 mod database;
 mod defaults;
-mod transport;
+pub mod transport;
 mod zkchannels;
 
 use std::fmt;
