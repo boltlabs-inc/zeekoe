@@ -7,7 +7,7 @@ use {
     futures::stream::{FuturesUnordered, StreamExt},
     rand::{rngs::StdRng, SeedableRng},
     sqlx::SqlitePool,
-    std::{sync::Arc, time::Duration},
+    std::{net::SocketAddr, sync::Arc, time::Duration},
     tokio::signal,
     tokio::sync::broadcast,
     tracing::{error, info},
@@ -25,6 +25,7 @@ use crate::{
         Chan, Config, Server,
     },
     protocol::{ChannelStatus, ZkChannels},
+    TestLogs,
 };
 
 mod approve;
@@ -165,6 +166,8 @@ impl Command for Run {
                             wait_terminate,
                         )
                         .await?;
+                    let address: SocketAddr = address.into();
+                    info!("{}", TestLogs::MerchantServerSpawned(address.to_string()));
                     Ok::<_, anyhow::Error>(())
                 }
             })
@@ -298,10 +301,10 @@ async fn dispatch_channel(
             database,
             &channel.channel_id,
         )
-        .await
-        .context(
-            "Failed to finalize mutual close - perhaps the contract was closed by a different flow",
-        )?;
+            .await
+            .context(
+                "Failed to finalize mutual close - perhaps the contract was closed by a different flow",
+            )?;
     }
 
     Ok(())
@@ -323,7 +326,7 @@ pub async fn database(config: &Config) -> Result<Arc<dyn QueryMerchant>, anyhow:
         DatabaseLocation::Postgres(_) => {
             return Err(anyhow::anyhow!(
                 "Postgres database support is not yet implemented"
-            ))
+            ));
         }
     };
     Ok(database)
