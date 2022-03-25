@@ -166,8 +166,6 @@ impl Command for Run {
                             wait_terminate,
                         )
                         .await?;
-                    let address: SocketAddr = address.into();
-                    info!("{}", TestLogs::MerchantServerSpawned(address.to_string()));
                     Ok::<_, anyhow::Error>(())
                 }
             })
