@@ -16,13 +16,13 @@ use crate::{
     abort,
     customer::{
         cli::Close,
-        client::ZkChannelAddress,
         database::{zkchannels_state, QueryCustomer, QueryCustomerExt, State},
         Chan, ChannelName, Config,
     },
     offer_abort, proceed,
     protocol::{close, Party::Customer},
     timeout::WithTimeout,
+    transport::ZkChannelAddress,
 };
 use zkabacus_crypto::{
     customer::ClosingMessage, ChannelId, CloseState, CloseStateSignature, CustomerBalance,

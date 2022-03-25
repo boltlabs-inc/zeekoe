@@ -15,7 +15,7 @@ use zkabacus_crypto::{
 use tezedge::crypto::ToBase58Check;
 
 use crate::{
-    customer::{client::ZkChannelAddress, ChannelName},
+    customer::ChannelName,
     escrow::types::{ContractDetails, ContractId, TezosPublicKey},
 };
 
@@ -23,6 +23,7 @@ mod state;
 use self::state::zkchannels_state::ZkChannelState;
 
 pub use super::connect_sqlite;
+use crate::transport::ZkChannelAddress;
 pub use state::{zkchannels_state, State, StateName, UnexpectedState};
 
 type Result<T> = std::result::Result<T, Error>;

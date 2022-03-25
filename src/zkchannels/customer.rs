@@ -2,6 +2,7 @@
 
 #[cfg(not(feature = "allow_explicit_certificate_trust"))]
 use tracing::warn;
+use webpki::DnsNameRef;
 
 use {
     anyhow::Context,
@@ -10,12 +11,11 @@ use {
     sqlx::SqlitePool,
     std::{sync::Arc, time::Duration},
     thiserror::Error,
-    webpki::DNSNameRef,
 };
 
 use crate::{
     customer::{
-        client::{Backoff, SessionKey, ZkChannelAddress},
+        client::{Backoff, SessionKey},
         config::DatabaseLocation,
         database::{self, connect_sqlite, QueryCustomer},
         defaults, Chan, ChannelName, Client, Config,
@@ -30,6 +30,7 @@ mod manage;
 mod pay;
 mod watch;
 
+use crate::transport::ZkChannelAddress;
 pub use manage::PublicChannelDetails;
 
 /// A single customer-side command, parameterized by the currently loaded configuration.
@@ -93,7 +94,7 @@ pub async fn connect_daemon(
     let mut backoff = Backoff::with_delay(Duration::ZERO);
     backoff.max_retries(0);
 
-    let address = DNSNameRef::try_from_ascii_str("localhost").unwrap();
+    let address = DnsNameRef::try_from_ascii_str("localhost").unwrap();
     let client: Client<protocol::daemon::Daemon> = Client::new(backoff);
     Ok(client.connect(&address.into(), config.daemon_port).await?)
 }

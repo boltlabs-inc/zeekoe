@@ -18,7 +18,6 @@ use crate::{
     abort,
     customer::{
         cli::Establish,
-        client::ZkChannelAddress,
         database::{zkchannels_state, QueryCustomer, QueryCustomerExt, State},
         Chan, ChannelName, Config,
     },
@@ -29,6 +28,7 @@ use crate::{
     offer_abort, proceed,
     protocol::{establish, Party::Customer},
     timeout::WithTimeout,
+    transport::ZkChannelAddress,
 };
 
 use tezedge::crypto::Prefix;

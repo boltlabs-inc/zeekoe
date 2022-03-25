@@ -8,7 +8,8 @@ use {
     structopt::StructOpt,
 };
 
-use crate::{amount::Amount, customer::ChannelName, transport::client::ZkChannelAddress};
+use crate::transport::ZkChannelAddress;
+use crate::{amount::Amount, customer::ChannelName};
 
 /// The customer zkChannels command-line interface.
 #[derive(Debug, StructOpt)]
