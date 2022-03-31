@@ -7,7 +7,7 @@ use {
     futures::stream::{FuturesUnordered, StreamExt},
     rand::{rngs::StdRng, SeedableRng},
     sqlx::SqlitePool,
-    std::{net::SocketAddr, sync::Arc, time::Duration},
+    std::{sync::Arc, time::Duration},
     tokio::signal,
     tokio::sync::broadcast,
     tracing::{error, info},
@@ -164,6 +164,7 @@ impl Command for Run {
                             initialize,
                             interact,
                             wait_terminate,
+                            |address| info!("{}", TestLogs::MerchantServerSpawned(address)),
                         )
                         .await?;
                     Ok::<_, anyhow::Error>(())

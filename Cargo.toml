@@ -82,7 +82,7 @@ canonicalize_json_micheline = { path = "src/canonicalize_json_micheline" }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-futures = "0.2"
-transport = { git = "https://github.com/boltlabs-inc/transport.git", branch = "main", features = ["allow_explicit_certificate_trust"] }
+transport = { git = "https://github.com/boltlabs-inc/transport.git", branch = "fix-integration-test", features = ["allow_explicit_certificate_trust"] }
 
 [dev-dependencies]
 rand = "0.8.3"

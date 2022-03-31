@@ -11,8 +11,8 @@ pub use crate::config::{customer as config, customer::Config};
 pub use crate::database::customer as database;
 pub use crate::defaults::customer as defaults;
 pub use crate::zkchannels::customer as zkchannels;
-pub use transport::client::{self as client, Chan, Client};
-pub use transport::server::{self as server, Server};
+pub use transport::client::{self, Chan, Client};
+pub use transport::server::{self, Server};
 
 #[derive(Debug, Clone, sqlx::Type, Serialize, Deserialize)]
 #[sqlx(transparent)]
