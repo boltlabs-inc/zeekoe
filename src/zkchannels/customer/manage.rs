@@ -1,12 +1,10 @@
-use {
-    anyhow::Context,
-    async_trait::async_trait,
-    comfy_table::{Cell, Table},
-    rand::rngs::StdRng,
-    serde::{Deserialize, Serialize},
-    serde_with::{serde_as, DisplayFromStr},
-    zkabacus_crypto::{ChannelId, CustomerBalance, MerchantBalance},
-};
+use anyhow::Context;
+use async_trait::async_trait;
+use comfy_table::{Cell, Table};
+use rand::rngs::StdRng;
+use serde::{Deserialize, Serialize};
+use serde_with::{serde_as, DisplayFromStr};
+use zkabacus_crypto::{ChannelId, CustomerBalance, MerchantBalance};
 
 use crate::{
     amount::Amount,

@@ -1,11 +1,9 @@
-use {
-    async_trait::async_trait,
-    futures::stream::StreamExt,
-    serde::{Deserialize, Serialize},
-    sqlx::SqlitePool,
-    std::any::Any,
-    thiserror::Error,
-};
+use async_trait::async_trait;
+use futures::stream::StreamExt;
+use serde::{Deserialize, Serialize};
+use sqlx::SqlitePool;
+use std::any::Any;
+use thiserror::Error;
 
 use zkabacus_crypto::{
     customer::{ClosingMessage, Inactive},
@@ -838,10 +836,8 @@ impl<Q: QueryCustomer + ?Sized> QueryCustomerExt for Q {
 mod tests {
     use super::*;
     use crate::database::SqlitePoolOptions;
-    use {
-        rand::{rngs::StdRng, SeedableRng},
-        std::str::FromStr,
-    };
+    use rand::{rngs::StdRng, SeedableRng};
+    use std::str::FromStr;
 
     use tezedge::OriginatedAddress;
     use zkabacus_crypto::{customer::*, merchant, *};

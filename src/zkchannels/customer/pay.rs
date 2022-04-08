@@ -1,10 +1,8 @@
+use anyhow::Context;
+use async_trait::async_trait;
+use rand::rngs::StdRng;
+use std::convert::{Infallible, TryInto};
 use tracing::info;
-use {
-    anyhow::Context,
-    async_trait::async_trait,
-    rand::rngs::StdRng,
-    std::convert::{Infallible, TryInto},
-};
 
 use zkabacus_crypto::{
     customer::{LockMessage, StartMessage},

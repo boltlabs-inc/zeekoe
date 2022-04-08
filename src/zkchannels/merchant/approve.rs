@@ -1,4 +1,5 @@
-use {anyhow::Context, url::Url};
+use anyhow::Context;
+use url::Url;
 
 use zkabacus_crypto::{CustomerBalance, MerchantBalance, PaymentAmount};
 

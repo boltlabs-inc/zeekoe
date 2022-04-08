@@ -1,15 +1,12 @@
-use {
-    read_restrict::ReadExt,
-    std::{
-        io::{self, Read},
-        path::PathBuf,
-        str::FromStr,
-    },
-    structopt::StructOpt,
+use read_restrict::ReadExt;
+use std::{
+    io::{self, Read},
+    path::PathBuf,
+    str::FromStr,
 };
+use structopt::StructOpt;
 
-use crate::transport::ZkChannelAddress;
-use crate::{amount::Amount, customer::ChannelName};
+use crate::{amount::Amount, customer::ChannelName, transport::ZkChannelAddress};
 
 /// The customer zkChannels command-line interface.
 #[derive(Debug, StructOpt)]

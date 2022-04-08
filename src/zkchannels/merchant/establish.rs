@@ -1,4 +1,5 @@
-use {anyhow::Context, rand::rngs::StdRng};
+use anyhow::Context;
+use rand::rngs::StdRng;
 
 use zkabacus_crypto::{
     merchant::Config as ZkAbacusConfig, ChannelId, Context as ProofContext, CustomerBalance,

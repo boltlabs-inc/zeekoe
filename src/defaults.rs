@@ -1,11 +1,9 @@
-use {
-    dialectic_reconnect::Backoff,
-    directories::ProjectDirs,
-    std::{
-        net::{IpAddr, Ipv4Addr},
-        path::PathBuf,
-        time::Duration,
-    },
+use dialectic_reconnect::Backoff;
+use directories::ProjectDirs;
+use std::{
+    net::{IpAddr, Ipv4Addr},
+    path::PathBuf,
+    time::Duration,
 };
 
 fn project_dirs() -> Result<ProjectDirs, anyhow::Error> {

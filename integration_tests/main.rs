@@ -8,19 +8,17 @@ use zeekoe::{
     TestLogs,
 };
 
-use {
-    anyhow::Context,
-    common::{customer_cli, merchant_cli, Party},
-    rand::prelude::StdRng,
-    std::{
-        fs::{File, OpenOptions},
-        io::Read,
-        panic,
-        time::Duration,
-    },
-    structopt::StructOpt,
-    thiserror::Error,
+use anyhow::Context;
+use common::{customer_cli, merchant_cli, Party};
+use rand::prelude::StdRng;
+use std::{
+    fs::{File, OpenOptions},
+    io::Read,
+    panic,
+    time::Duration,
 };
+use structopt::StructOpt;
+use thiserror::Error;
 
 #[tokio::main]
 pub async fn main() {

@@ -1,4 +1,7 @@
-use {anyhow::Context, futures::FutureExt, std::convert::identity, structopt::StructOpt};
+use anyhow::Context;
+use futures::FutureExt;
+use std::convert::identity;
+use structopt::StructOpt;
 
 use zeekoe::merchant::{cli, defaults::config_path, zkchannels::Command, Cli, Config};
 

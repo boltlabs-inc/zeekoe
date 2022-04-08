@@ -1,9 +1,11 @@
-use {
-    http::Uri,
-    serde::{Deserialize, Serialize},
-    std::{net::IpAddr, path::Path, path::PathBuf, time::Duration},
-    url::Url,
+use http::Uri;
+use serde::{Deserialize, Serialize};
+use std::{
+    net::IpAddr,
+    path::{Path, PathBuf},
+    time::Duration,
 };
+use url::Url;
 
 pub use super::{deserialize_confirmation_depth, deserialize_self_delay, DatabaseLocation};
 

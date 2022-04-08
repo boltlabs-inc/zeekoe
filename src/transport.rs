@@ -1,10 +1,6 @@
-use crate::customer;
-use crate::transport::client::Address;
-use http::uri::InvalidUri;
-use http::Uri;
-use std::fmt;
-use std::fmt::Display;
-use std::str::FromStr;
+use crate::{customer, transport::client::Address};
+use http::{uri::InvalidUri, Uri};
+use std::{fmt, fmt::Display, str::FromStr};
 use thiserror::Error;
 use webpki::{DnsName, DnsNameRef, InvalidDnsNameError};
 

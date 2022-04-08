@@ -1,18 +1,20 @@
-use {
-    serde::{Deserialize, Serialize},
-    std::{
-        fmt::{Display, Formatter},
-        str::FromStr,
-    },
+use serde::{Deserialize, Serialize};
+use std::{
+    fmt::{Display, Formatter},
+    str::FromStr,
 };
 
-pub use crate::cli::{customer as cli, customer::Cli};
-pub use crate::config::{customer as config, customer::Config};
-pub use crate::database::customer as database;
-pub use crate::defaults::customer as defaults;
-pub use crate::zkchannels::customer as zkchannels;
-pub use transport::client::{self, Chan, Client};
-pub use transport::server::{self, Server};
+pub use crate::{
+    cli::{customer as cli, customer::Cli},
+    config::{customer as config, customer::Config},
+    database::customer as database,
+    defaults::customer as defaults,
+    zkchannels::customer as zkchannels,
+};
+pub use transport::{
+    client::{self, Chan, Client},
+    server::{self, Server},
+};
 
 #[derive(Debug, Clone, sqlx::Type, Serialize, Deserialize)]
 #[sqlx(transparent)]
