@@ -2,23 +2,29 @@ pub(crate) mod common;
 
 use rand::SeedableRng;
 use zeekoe::{
+    amount::Amount,
     customer::{self, database::StateName as CustomerStatus, zkchannels::Command},
     merchant::{self, zkchannels::Command as _},
     protocol::ChannelStatus as MerchantStatus,
     TestLogs,
 };
+use zkabacus_crypto::{CustomerBalance, MerchantBalance};
 
-use anyhow::Context;
-use common::{customer_cli, merchant_cli, Party};
-use rand::prelude::StdRng;
-use std::{
-    fs::{File, OpenOptions},
-    io::Read,
-    panic,
-    time::Duration,
+use {
+    anyhow::Context,
+    common::{customer_cli, merchant_cli, Party},
+    rand::prelude::StdRng,
+    std::{
+        convert::TryInto,
+        fs::{File, OpenOptions},
+        io::Read,
+        panic,
+        str::FromStr,
+        time::Duration,
+    },
+    structopt::StructOpt,
+    thiserror::Error,
 };
-use structopt::StructOpt;
-use thiserror::Error;
 
 #[tokio::main]
 pub async fn main() {
@@ -80,14 +86,17 @@ pub async fn main() {
 /// Assumption: none of these will cause a fatal error to the long-running processes (merchant
 /// server or customer watcher).
 fn tests() -> Vec<Test> {
+    let default_balance = 5;
     vec![
         Test {
             name: "Channel establishes correctly".to_string(),
             operations: vec![(
-                Operation::Establish,
+                Operation::Establish(default_balance),
                 Outcome {
                     customer_status: CustomerStatus::Ready,
                     merchant_status: MerchantStatus::Active,
+                    customer_balance: into_customer_balance(default_balance),
+                    merchant_balance: MerchantBalance::zero(),
                     error: None,
                 },
             )],
@@ -96,18 +105,22 @@ fn tests() -> Vec<Test> {
             name: "Channels cannot share names".to_string(),
             operations: vec![
                 (
-                    Operation::Establish,
+                    Operation::Establish(default_balance),
                     Outcome {
                         customer_status: CustomerStatus::Ready,
                         merchant_status: MerchantStatus::Active,
+                        customer_balance: into_customer_balance(default_balance),
+                        merchant_balance: MerchantBalance::zero(),
                         error: None,
                     },
                 ),
                 (
-                    Operation::Establish,
+                    Operation::Establish(default_balance),
                     Outcome {
                         customer_status: CustomerStatus::Ready,
                         merchant_status: MerchantStatus::Active,
+                        customer_balance: into_customer_balance(default_balance),
+                        merchant_balance: MerchantBalance::zero(),
                         error: Some(Party::ActiveOperation("establish")),
                     },
                 ),
@@ -136,6 +149,33 @@ enum TestError {
         merchant_errors: String,
         op_error: Result<(), anyhow::Error>,
     },
+
+    #[error("After {op:?}, expected customer status {expected:?}, got {actual:?}")]
+    InvalidCustomerStatus {
+        op: Operation,
+        expected: CustomerStatus,
+        actual: CustomerStatus,
+    },
+
+    #[error("After {op:?}, expected merchant status {expected:?}, got {actual:?}")]
+    InvalidMerchantStatus {
+        op: Operation,
+        expected: MerchantStatus,
+        actual: MerchantStatus,
+    },
+
+    #[error(
+        "After {op:?}, expected customer, merchant balances 
+    ({expected_customer:?}, {expected_merchant:?}), got
+    ({actual_customer:?}, {actual_merchant:?})"
+    )]
+    InvalidChannelBalances {
+        op: Operation,
+        expected_customer: CustomerBalance,
+        expected_merchant: MerchantBalance,
+        actual_customer: CustomerBalance,
+        actual_merchant: MerchantBalance,
+    },
 }
 
 impl Test {
@@ -150,7 +190,8 @@ impl Test {
             // these by reference instead.
 
             let outcome = match op {
-                Operation::Establish => {
+                Operation::Establish(amount) => {
+                    let formatted_amount = format!("{} XTZ", amount);
                     let est = customer_cli!(
                         Establish,
                         vec![
@@ -159,10 +200,18 @@ impl Test {
                             "--label",
                             &self.name,
                             "--deposit",
-                            "5 XTZ"
+                            &formatted_amount,
                         ]
                     );
                     est.run(rng.clone(), customer_config.clone())
+                }
+                Operation::Pay(amount) => {
+                    let formatted_amount = format!("{} XTZ", amount);
+                    let pay = customer_cli!(
+                        Pay,
+                        vec!["pay", "--label", &self.name, "--amount", &formatted_amount,]
+                    );
+                    pay.run(rng.clone(), customer_config.clone())
                 }
                 Operation::NoOp => Box::pin(async { Ok(()) }),
                 err_op => return Err(TestError::NotImplemented(*err_op).into()),
@@ -204,7 +253,7 @@ impl Test {
                 }),
             }?;
 
-            // Check customer status
+            // Parse current channel details for customer
             let customer_detail_json = customer_cli!(Show, vec!["show", &self.name, "--json"])
                 .run(rng.clone(), customer_config.clone())
                 .await
@@ -213,9 +262,7 @@ impl Test {
             let customer_channel: customer::zkchannels::PublicChannelDetails =
                 serde_json::from_str(&customer_detail_json)?;
 
-            assert_eq!(customer_channel.status(), expected_outcome.customer_status);
-
-            // Check merchant status
+            // Parse current channel details for merchant
             let channel_id = &customer_channel.channel_id().to_string();
             let merchant_details_json = merchant_cli!(Show, vec!["show", channel_id, "--json"])
                 .run(merchant_config.clone())
@@ -225,7 +272,37 @@ impl Test {
             let merchant_channel: merchant::zkchannels::PublicChannelDetails =
                 serde_json::from_str(&merchant_details_json)?;
 
-            assert_eq!(merchant_channel.status(), expected_outcome.merchant_status);
+            // Check each party's status
+            if customer_channel.status() != expected_outcome.customer_status {
+                return Err(TestError::InvalidCustomerStatus {
+                    op: *op,
+                    expected: expected_outcome.customer_status,
+                    actual: customer_channel.status(),
+                }
+                .into());
+            }
+            if merchant_channel.status() != expected_outcome.merchant_status {
+                return Err(TestError::InvalidMerchantStatus {
+                    op: *op,
+                    expected: expected_outcome.merchant_status,
+                    actual: merchant_channel.status(),
+                }
+                .into());
+            }
+
+            // Check channel balances
+            if customer_channel.customer_balance() != expected_outcome.customer_balance
+                || customer_channel.merchant_balance() != expected_outcome.merchant_balance
+            {
+                return Err(TestError::InvalidChannelBalances {
+                    op: *op,
+                    expected_customer: expected_outcome.customer_balance,
+                    expected_merchant: expected_outcome.merchant_balance,
+                    actual_customer: customer_channel.customer_balance(),
+                    actual_merchant: customer_channel.merchant_balance(),
+                }
+                .into());
+            }
         }
 
         Ok(())
@@ -242,8 +319,8 @@ struct Test {
 #[allow(unused)]
 #[derive(Debug, Clone, Copy)]
 enum Operation {
-    Establish,
-    Pay,
+    Establish(u64),
+    Pay(u64),
     PayAll,
     MutualClose,
     CustomerClose,
@@ -261,8 +338,8 @@ impl Operation {
         // (b) a watcher posts a transaction on chain (10 seconds)
         // (c) a watcher waits for self-delay to elapse (60 seconds + noticing)
         let seconds = match self {
-            Self::Establish
-            | Self::Pay
+            Self::Establish(_)
+            | Self::Pay(_)
             | Self::PayAll
             | Self::Store
             | Self::Restore
@@ -290,8 +367,27 @@ impl Operation {
 struct Outcome {
     customer_status: CustomerStatus,
     merchant_status: MerchantStatus,
+    customer_balance: CustomerBalance,
+    merchant_balance: MerchantBalance,
     /// Which process, if any, had an error? Assumes that exactly one party will error.
     error: Option<Party>,
+}
+
+/// Helper function to convert human XTZ amount into a `CustomerBalance`.
+fn into_customer_balance(amount: u64) -> CustomerBalance {
+    Amount::from_str(&format!("{} XTZ", amount))
+        .unwrap()
+        .try_into()
+        .unwrap()
+}
+
+/// Helper function to convert human XTZ amount into a `MerchantBalance`.
+#[allow(unused)]
+fn into_merchant_balance(amount: u64) -> MerchantBalance {
+    Amount::from_str(&format!("{} XTZ", amount))
+        .unwrap()
+        .try_into()
+        .unwrap()
 }
 
 #[derive(Debug, Error)]
