@@ -20,6 +20,7 @@ use crate::{
     offer_abort, proceed,
     protocol::{pay, Party::Customer},
     timeout::WithTimeout,
+    zkchannels::zkchannels_rng,
 };
 
 use super::{connect, database, Command};
@@ -28,11 +29,8 @@ use super::{connect, database, Command};
 impl Command for Pay {
     type Output = ();
 
-    async fn run(
-        self,
-        mut rng: StdRng,
-        config: self::Config,
-    ) -> Result<Self::Output, anyhow::Error> {
+    async fn run(self, config: self::Config) -> Result<Self::Output, anyhow::Error> {
+        let mut rng = zkchannels_rng();
         let payment_amount = self.pay.try_into()?;
 
         let database = database(&config)
@@ -285,8 +283,8 @@ async fn zkabacus_unlock(
 impl Command for Refund {
     type Output = ();
 
-    async fn run(self, rng: StdRng, config: Config) -> Result<Self::Output, anyhow::Error> {
+    async fn run(self, config: Config) -> Result<Self::Output, anyhow::Error> {
         // A refund is merely a negative payment
-        self.into_negative_pay().run(rng, config).await
+        self.into_negative_pay().run(config).await
     }
 }

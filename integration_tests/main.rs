@@ -1,6 +1,5 @@
 pub(crate) mod common;
 
-use rand::SeedableRng;
 use zeekoe::{
     amount::Amount,
     customer::{self, database::StateName as CustomerStatus, zkchannels::Command},
@@ -13,7 +12,6 @@ use zkabacus_crypto::{CustomerBalance, MerchantBalance};
 use {
     anyhow::Context,
     common::{customer_cli, merchant_cli, Party},
-    rand::prelude::StdRng,
     std::{
         convert::TryInto,
         fs::{File, OpenOptions},
@@ -38,8 +36,7 @@ pub async fn main() {
     };
     eprintln!("Using tezos URI: {}", tezos_uri);
 
-    let rng = StdRng::from_entropy();
-    let server_future = common::setup(&rng, tezos_uri).await;
+    let server_future = common::setup(tezos_uri).await;
     let customer_config = customer::Config::load(common::CUSTOMER_CONFIG)
         .await
         .expect("Failed to load customer config");
@@ -57,7 +54,7 @@ pub async fn main() {
     let mut results = Vec::with_capacity(tests.len());
     for test in tests {
         eprintln!("\n\ntest integration_tests::{} ... ", test.name);
-        let result = test.execute(&rng, &customer_config, &merchant_config).await;
+        let result = test.execute(&customer_config, &merchant_config).await;
         if let Err(error) = &result {
             eprintln!("failed\n{:?}", error)
         } else {
@@ -87,6 +84,7 @@ pub async fn main() {
 /// server or customer watcher).
 fn tests() -> Vec<Test> {
     let default_balance = 5;
+    let default_payment = 1;
     vec![
         Test {
             name: "Channel establishes correctly".to_string(),
@@ -122,6 +120,56 @@ fn tests() -> Vec<Test> {
                         customer_balance: into_customer_balance(default_balance),
                         merchant_balance: MerchantBalance::zero(),
                         error: Some(Party::ActiveOperation("establish")),
+                    },
+                ),
+            ],
+        },
+        Test {
+            name: "Payment equal to the balance is successful".to_string(),
+            operations: vec![
+                (
+                    Operation::Establish(default_balance),
+                    Outcome {
+                        customer_status: CustomerStatus::Ready,
+                        merchant_status: MerchantStatus::Active,
+                        customer_balance: into_customer_balance(default_balance),
+                        merchant_balance: MerchantBalance::zero(),
+                        error: None,
+                    },
+                ),
+                (
+                    Operation::Pay(default_balance),
+                    Outcome {
+                        customer_status: CustomerStatus::Ready,
+                        merchant_status: MerchantStatus::Active,
+                        customer_balance: CustomerBalance::zero(),
+                        merchant_balance: into_merchant_balance(default_balance),
+                        error: None,
+                    },
+                ),
+            ],
+        },
+        Test {
+            name: "Payment less than the balance is successful".to_string(),
+            operations: vec![
+                (
+                    Operation::Establish(default_balance),
+                    Outcome {
+                        customer_status: CustomerStatus::Ready,
+                        merchant_status: MerchantStatus::Active,
+                        customer_balance: into_customer_balance(default_balance),
+                        merchant_balance: MerchantBalance::zero(),
+                        error: None,
+                    },
+                ),
+                (
+                    Operation::Pay(default_payment),
+                    Outcome {
+                        customer_status: CustomerStatus::Ready,
+                        merchant_status: MerchantStatus::Active,
+                        customer_balance: into_customer_balance(default_balance - default_payment),
+                        merchant_balance: into_merchant_balance(default_payment),
+                        error: None,
                     },
                 ),
             ],
@@ -181,7 +229,6 @@ enum TestError {
 impl Test {
     async fn execute(
         &self,
-        rng: &StdRng,
         customer_config: &customer::Config,
         merchant_config: &merchant::Config,
     ) -> Result<(), anyhow::Error> {
@@ -203,15 +250,12 @@ impl Test {
                             &formatted_amount,
                         ]
                     );
-                    est.run(rng.clone(), customer_config.clone())
+                    est.run(customer_config.clone())
                 }
                 Operation::Pay(amount) => {
                     let formatted_amount = format!("{} XTZ", amount);
-                    let pay = customer_cli!(
-                        Pay,
-                        vec!["pay", "--label", &self.name, "--amount", &formatted_amount,]
-                    );
-                    pay.run(rng.clone(), customer_config.clone())
+                    let pay = customer_cli!(Pay, vec!["pay", &self.name, &formatted_amount,]);
+                    pay.run(customer_config.clone())
                 }
                 Operation::NoOp => Box::pin(async { Ok(()) }),
                 err_op => return Err(TestError::NotImplemented(*err_op).into()),
@@ -255,7 +299,7 @@ impl Test {
 
             // Parse current channel details for customer
             let customer_detail_json = customer_cli!(Show, vec!["show", &self.name, "--json"])
-                .run(rng.clone(), customer_config.clone())
+                .run(customer_config.clone())
                 .await
                 .context("Failed to show customer channel")?;
 

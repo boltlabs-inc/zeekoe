@@ -4,12 +4,13 @@
 use tracing::warn;
 use webpki::DnsNameRef;
 
-use anyhow::Context;
-use async_trait::async_trait;
-use rand::rngs::StdRng;
-use sqlx::SqlitePool;
-use std::{sync::Arc, time::Duration};
-use thiserror::Error;
+use {
+    anyhow::Context,
+    async_trait::async_trait,
+    sqlx::SqlitePool,
+    std::{sync::Arc, time::Duration},
+    thiserror::Error,
+};
 
 use crate::{
     customer::{
@@ -42,7 +43,7 @@ pub trait Command {
 
     /// Run the command to completion using the given random number generator for all randomness and
     /// the given customer configuration.
-    async fn run(self, rng: StdRng, config: Config) -> Result<Self::Output, anyhow::Error>;
+    async fn run(self, config: Config) -> Result<Self::Output, anyhow::Error>;
 }
 
 /// Connect to a given [`ZkChannelAddress`], configured using the parameters in the [`Config`].

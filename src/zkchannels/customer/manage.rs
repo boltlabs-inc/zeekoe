@@ -1,10 +1,11 @@
-use anyhow::Context;
-use async_trait::async_trait;
-use comfy_table::{Cell, Table};
-use rand::rngs::StdRng;
-use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, DisplayFromStr};
-use zkabacus_crypto::{ChannelId, CustomerBalance, MerchantBalance};
+use {
+    anyhow::Context,
+    async_trait::async_trait,
+    comfy_table::{Cell, Table},
+    serde::{Deserialize, Serialize},
+    serde_with::{serde_as, DisplayFromStr},
+    zkabacus_crypto::{ChannelId, CustomerBalance, MerchantBalance},
+};
 
 use crate::{
     amount::Amount,
@@ -76,7 +77,7 @@ impl PublicChannelDetails {
 #[async_trait]
 impl Command for Show {
     type Output = String;
-    async fn run(self, _rng: StdRng, config: self::Config) -> Result<Self::Output, anyhow::Error> {
+    async fn run(self, config: self::Config) -> Result<Self::Output, anyhow::Error> {
         let database = database(&config)
             .await
             .context("Failed to connect to local database")?;
@@ -96,7 +97,7 @@ impl Command for Show {
 impl Command for List {
     type Output = String;
 
-    async fn run(self, _rng: StdRng, config: self::Config) -> Result<Self::Output, anyhow::Error> {
+    async fn run(self, config: self::Config) -> Result<Self::Output, anyhow::Error> {
         let database = database(&config)
             .await
             .context("Failed to connect to local database")?;
@@ -144,7 +145,7 @@ impl Command for List {
 impl Command for Rename {
     type Output = ();
 
-    async fn run(self, _rng: StdRng, config: self::Config) -> Result<Self::Output, anyhow::Error> {
+    async fn run(self, config: self::Config) -> Result<Self::Output, anyhow::Error> {
         database(&config)
             .await
             .context("Failed to connect to local database")?

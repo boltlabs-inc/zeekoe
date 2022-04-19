@@ -1,8 +1,10 @@
-use anyhow::Context;
-use async_trait::async_trait;
-use rand::rngs::StdRng;
-use serde::Serialize;
-use std::{convert::TryInto, fs::File, path::PathBuf};
+use {
+    anyhow::Context,
+    async_trait::async_trait,
+    rand::rngs::StdRng,
+    serde::Serialize,
+    std::{convert::TryInto, fs::File, path::PathBuf},
+};
 
 use std::convert::Infallible;
 
@@ -27,6 +29,7 @@ use crate::{
     protocol::{establish, Party::Customer},
     timeout::WithTimeout,
     transport::ZkChannelAddress,
+    zkchannels::zkchannels_rng,
 };
 
 use tezedge::crypto::Prefix;
@@ -47,11 +50,7 @@ struct Establishment {
 impl Command for Establish {
     type Output = ();
 
-    async fn run(
-        self,
-        mut rng: StdRng,
-        config: self::Config,
-    ) -> Result<Self::Output, anyhow::Error> {
+    async fn run(self, config: self::Config) -> Result<Self::Output, anyhow::Error> {
         let Self {
             label,
             merchant: address,
@@ -61,6 +60,7 @@ impl Command for Establish {
             off_chain,
             ..
         } = self;
+        let mut rng = zkchannels_rng();
 
         // Connect to the customer database
         let database = database(&config)
