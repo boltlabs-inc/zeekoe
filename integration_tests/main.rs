@@ -1,5 +1,6 @@
 pub(crate) mod common;
 
+use dialectic::unary::S;
 use zeekoe::{
     amount::Amount,
     customer::{self, database::StateName as CustomerStatus, zkchannels::Command},
@@ -91,11 +92,13 @@ fn tests() -> Vec<Test> {
             operations: vec![(
                 Operation::Establish(default_balance),
                 Outcome {
-                    customer_status: CustomerStatus::Ready,
-                    merchant_status: MerchantStatus::Active,
-                    customer_balance: into_customer_balance(default_balance),
-                    merchant_balance: MerchantBalance::zero(),
                     error: None,
+                    channel_outcome: Some(ChannelOutcome {
+                        customer_status: CustomerStatus::Ready,
+                        merchant_status: MerchantStatus::Active,
+                        customer_balance: into_customer_balance(default_balance),
+                        merchant_balance: MerchantBalance::zero(),
+                    }),
                 },
             )],
         },
@@ -105,21 +108,25 @@ fn tests() -> Vec<Test> {
                 (
                     Operation::Establish(default_balance),
                     Outcome {
-                        customer_status: CustomerStatus::Ready,
-                        merchant_status: MerchantStatus::Active,
-                        customer_balance: into_customer_balance(default_balance),
-                        merchant_balance: MerchantBalance::zero(),
                         error: None,
+                        channel_outcome: Some(ChannelOutcome {
+                            customer_status: CustomerStatus::Ready,
+                            merchant_status: MerchantStatus::Active,
+                            customer_balance: into_customer_balance(default_balance),
+                            merchant_balance: MerchantBalance::zero(),
+                        }),
                     },
                 ),
                 (
                     Operation::Establish(default_balance),
                     Outcome {
-                        customer_status: CustomerStatus::Ready,
-                        merchant_status: MerchantStatus::Active,
-                        customer_balance: into_customer_balance(default_balance),
-                        merchant_balance: MerchantBalance::zero(),
                         error: Some(Party::ActiveOperation("establish")),
+                        channel_outcome: Some(ChannelOutcome {
+                            customer_status: CustomerStatus::Ready,
+                            merchant_status: MerchantStatus::Active,
+                            customer_balance: into_customer_balance(default_balance),
+                            merchant_balance: MerchantBalance::zero(),
+                        }),
                     },
                 ),
             ],
@@ -130,21 +137,25 @@ fn tests() -> Vec<Test> {
                 (
                     Operation::Establish(default_balance),
                     Outcome {
-                        customer_status: CustomerStatus::Ready,
-                        merchant_status: MerchantStatus::Active,
-                        customer_balance: into_customer_balance(default_balance),
-                        merchant_balance: MerchantBalance::zero(),
                         error: None,
+                        channel_outcome: Some(ChannelOutcome {
+                            customer_status: CustomerStatus::Ready,
+                            merchant_status: MerchantStatus::Active,
+                            customer_balance: into_customer_balance(default_balance),
+                            merchant_balance: MerchantBalance::zero(),
+                        }),
                     },
                 ),
                 (
                     Operation::Pay(default_balance),
                     Outcome {
-                        customer_status: CustomerStatus::Ready,
-                        merchant_status: MerchantStatus::Active,
-                        customer_balance: CustomerBalance::zero(),
-                        merchant_balance: into_merchant_balance(default_balance),
                         error: None,
+                        channel_outcome: Some(ChannelOutcome {
+                            customer_status: CustomerStatus::Ready,
+                            merchant_status: MerchantStatus::Active,
+                            customer_balance: CustomerBalance::zero(),
+                            merchant_balance: into_merchant_balance(default_balance),
+                        }),
                     },
                 ),
             ],
@@ -155,24 +166,69 @@ fn tests() -> Vec<Test> {
                 (
                     Operation::Establish(default_balance),
                     Outcome {
-                        customer_status: CustomerStatus::Ready,
-                        merchant_status: MerchantStatus::Active,
-                        customer_balance: into_customer_balance(default_balance),
-                        merchant_balance: MerchantBalance::zero(),
                         error: None,
+                        channel_outcome: Some(ChannelOutcome {
+                            customer_status: CustomerStatus::Ready,
+                            merchant_status: MerchantStatus::Active,
+                            customer_balance: into_customer_balance(default_balance),
+                            merchant_balance: MerchantBalance::zero(),
+                        }),
                     },
                 ),
                 (
                     Operation::Pay(default_payment),
                     Outcome {
-                        customer_status: CustomerStatus::Ready,
-                        merchant_status: MerchantStatus::Active,
-                        customer_balance: into_customer_balance(default_balance - default_payment),
-                        merchant_balance: into_merchant_balance(default_payment),
                         error: None,
+                        channel_outcome: Some(ChannelOutcome {
+                            customer_status: CustomerStatus::Ready,
+                            merchant_status: MerchantStatus::Active,
+                            customer_balance: into_customer_balance(
+                                default_balance - default_payment,
+                            ),
+                            merchant_balance: into_merchant_balance(default_payment),
+                        }),
                     },
                 ),
             ],
+        },
+        Test {
+            name: "Payment more than the balance fails".to_string(),
+            operations: vec![
+                (
+                    Operation::Establish(default_balance),
+                    Outcome {
+                        error: None,
+                        channel_outcome: Some(ChannelOutcome {
+                            customer_status: CustomerStatus::Ready,
+                            merchant_status: MerchantStatus::Active,
+                            customer_balance: into_customer_balance(default_balance),
+                            merchant_balance: MerchantBalance::zero(),
+                        }),
+                    },
+                ),
+                (
+                    Operation::Pay(default_balance + 1),
+                    Outcome {
+                        error: Some(Party::ActiveOperation("pay")),
+                        channel_outcome: Some(ChannelOutcome {
+                            customer_status: CustomerStatus::PendingPayment,
+                            merchant_status: MerchantStatus::Active,
+                            customer_balance: into_customer_balance(default_balance),
+                            merchant_balance: MerchantBalance::zero(),
+                        }),
+                    },
+                ),
+            ],
+        },
+        Test {
+            name: "Payment on non-established channel fails".to_string(),
+            operations: vec![(
+                Operation::Pay(default_payment),
+                Outcome {
+                    error: Some(Party::ActiveOperation("pay")),
+                    channel_outcome: None,
+                },
+            )],
         },
     ]
 }
@@ -297,55 +353,65 @@ impl Test {
                 }),
             }?;
 
-            // Parse current channel details for customer
-            let customer_detail_json = customer_cli!(Show, vec!["show", &self.name, "--json"])
-                .run(customer_config.clone())
-                .await
-                .context("Failed to show customer channel")?;
+            match expected_outcome.channel_outcome {
+                None => return Ok(()),
+                Some(ChannelOutcome {
+                    customer_status: expected_customer_status,
+                    merchant_status: expected_merchant_status,
+                    customer_balance: expected_customer_balance,
+                    merchant_balance: expected_merchant_balance,
+                }) => {
+                    // Parse current channel details for customer
+                    let customer_detail_json = customer_cli!(Show, vec!["show", &self.name, "--json"])
+                        .run(customer_config.clone())
+                        .await
+                        .context("Failed to show customer channel")?;
 
-            let customer_channel: customer::zkchannels::PublicChannelDetails =
-                serde_json::from_str(&customer_detail_json)?;
+                    let customer_channel: customer::zkchannels::PublicChannelDetails =
+                        serde_json::from_str(&customer_detail_json)?;
 
-            // Parse current channel details for merchant
-            let channel_id = &customer_channel.channel_id().to_string();
-            let merchant_details_json = merchant_cli!(Show, vec!["show", channel_id, "--json"])
-                .run(merchant_config.clone())
-                .await
-                .context("Failed to show merchant channel")?;
+                    // Parse current channel details for merchant
+                    let channel_id = &customer_channel.channel_id().to_string();
+                    let merchant_details_json = merchant_cli!(Show, vec!["show", channel_id, "--json"])
+                        .run(merchant_config.clone())
+                        .await
+                        .context("Failed to show merchant channel")?;
 
-            let merchant_channel: merchant::zkchannels::PublicChannelDetails =
-                serde_json::from_str(&merchant_details_json)?;
+                    let merchant_channel: merchant::zkchannels::PublicChannelDetails =
+                        serde_json::from_str(&merchant_details_json)?;
 
-            // Check each party's status
-            if customer_channel.status() != expected_outcome.customer_status {
-                return Err(TestError::InvalidCustomerStatus {
-                    op: *op,
-                    expected: expected_outcome.customer_status,
-                    actual: customer_channel.status(),
+                    // Check each party's status
+                    if customer_channel.status() != expected_customer_status {
+                        return Err(TestError::InvalidCustomerStatus {
+                            op: *op,
+                            expected: expected_customer_status,
+                            actual: customer_channel.status(),
+                        }
+                        .into());
+                    }
+                    if merchant_channel.status() != expected_merchant_status {
+                        return Err(TestError::InvalidMerchantStatus {
+                            op: *op,
+                            expected: expected_merchant_status,
+                            actual: merchant_channel.status(),
+                        }
+                        .into());
+                    }
+
+                    // Check channel balances
+                    if customer_channel.customer_balance() != expected_customer_balance
+                        || customer_channel.merchant_balance() != expected_merchant_balance
+                    {
+                        return Err(TestError::InvalidChannelBalances {
+                            op: *op,
+                            expected_customer: expected_customer_balance,
+                            expected_merchant: expected_merchant_balance,
+                            actual_customer: customer_channel.customer_balance(),
+                            actual_merchant: customer_channel.merchant_balance(),
+                        }
+                        .into());
+                    }
                 }
-                .into());
-            }
-            if merchant_channel.status() != expected_outcome.merchant_status {
-                return Err(TestError::InvalidMerchantStatus {
-                    op: *op,
-                    expected: expected_outcome.merchant_status,
-                    actual: merchant_channel.status(),
-                }
-                .into());
-            }
-
-            // Check channel balances
-            if customer_channel.customer_balance() != expected_outcome.customer_balance
-                || customer_channel.merchant_balance() != expected_outcome.merchant_balance
-            {
-                return Err(TestError::InvalidChannelBalances {
-                    op: *op,
-                    expected_customer: expected_outcome.customer_balance,
-                    expected_merchant: expected_outcome.merchant_balance,
-                    actual_customer: customer_channel.customer_balance(),
-                    actual_merchant: customer_channel.merchant_balance(),
-                }
-                .into());
             }
         }
 
@@ -409,12 +475,17 @@ impl Operation {
 
 #[derive(Debug)]
 struct Outcome {
+    /// Which process, if any, had an error? Assumes that exactly one party will error.
+    error: Option<Party>,
+    channel_outcome: Option<ChannelOutcome>,
+}
+
+#[derive(Debug)]
+struct ChannelOutcome {
     customer_status: CustomerStatus,
     merchant_status: MerchantStatus,
     customer_balance: CustomerBalance,
     merchant_balance: MerchantBalance,
-    /// Which process, if any, had an error? Assumes that exactly one party will error.
-    error: Option<Party>,
 }
 
 /// Helper function to convert human XTZ amount into a `CustomerBalance`.
