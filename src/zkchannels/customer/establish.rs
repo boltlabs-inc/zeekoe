@@ -1,10 +1,8 @@
-use {
-    anyhow::Context,
-    async_trait::async_trait,
-    rand::rngs::StdRng,
-    serde::Serialize,
-    std::{convert::TryInto, fs::File, path::PathBuf},
-};
+use anyhow::Context;
+use async_trait::async_trait;
+use rand::rngs::StdRng;
+use serde::Serialize;
+use std::{convert::TryInto, fs::File, path::PathBuf};
 
 use std::convert::Infallible;
 

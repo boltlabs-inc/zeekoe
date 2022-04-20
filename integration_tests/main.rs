@@ -1,6 +1,5 @@
 pub(crate) mod common;
 
-use dialectic::unary::S;
 use zeekoe::{
     amount::Amount,
     customer::{self, database::StateName as CustomerStatus, zkchannels::Command},
@@ -10,20 +9,18 @@ use zeekoe::{
 };
 use zkabacus_crypto::{CustomerBalance, MerchantBalance};
 
-use {
-    anyhow::Context,
-    common::{customer_cli, merchant_cli, Party},
-    std::{
-        convert::TryInto,
-        fs::{File, OpenOptions},
-        io::Read,
-        panic,
-        str::FromStr,
-        time::Duration,
-    },
-    structopt::StructOpt,
-    thiserror::Error,
+use anyhow::Context;
+use common::{customer_cli, merchant_cli, Party};
+use std::{
+    convert::TryInto,
+    fs::{File, OpenOptions},
+    io::Read,
+    panic,
+    str::FromStr,
+    time::Duration,
 };
+use structopt::StructOpt;
+use thiserror::Error;
 
 #[tokio::main]
 pub async fn main() {
@@ -362,20 +359,22 @@ impl Test {
                     merchant_balance: expected_merchant_balance,
                 }) => {
                     // Parse current channel details for customer
-                    let customer_detail_json = customer_cli!(Show, vec!["show", &self.name, "--json"])
-                        .run(customer_config.clone())
-                        .await
-                        .context("Failed to show customer channel")?;
+                    let customer_detail_json =
+                        customer_cli!(Show, vec!["show", &self.name, "--json"])
+                            .run(customer_config.clone())
+                            .await
+                            .context("Failed to show customer channel")?;
 
                     let customer_channel: customer::zkchannels::PublicChannelDetails =
                         serde_json::from_str(&customer_detail_json)?;
 
                     // Parse current channel details for merchant
                     let channel_id = &customer_channel.channel_id().to_string();
-                    let merchant_details_json = merchant_cli!(Show, vec!["show", channel_id, "--json"])
-                        .run(merchant_config.clone())
-                        .await
-                        .context("Failed to show merchant channel")?;
+                    let merchant_details_json =
+                        merchant_cli!(Show, vec!["show", channel_id, "--json"])
+                            .run(merchant_config.clone())
+                            .await
+                            .context("Failed to show merchant channel")?;
 
                     let merchant_channel: merchant::zkchannels::PublicChannelDetails =
                         serde_json::from_str(&merchant_details_json)?;

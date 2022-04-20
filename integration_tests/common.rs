@@ -7,15 +7,13 @@ use std::{
     sync::Mutex,
 };
 
-use {
-    futures::future::{self, Join},
-    structopt::StructOpt,
-    strum::IntoEnumIterator,
-    strum_macros::EnumIter,
-    tokio::{task::JoinHandle, time::Duration},
-    tracing::info_span,
-    tracing_futures::Instrument,
-};
+use futures::future::{self, Join};
+use structopt::StructOpt;
+use strum::IntoEnumIterator;
+use strum_macros::EnumIter;
+use tokio::{task::JoinHandle, time::Duration};
+use tracing::info_span;
+use tracing_futures::Instrument;
 
 use crate::{await_log, TestLogs};
 

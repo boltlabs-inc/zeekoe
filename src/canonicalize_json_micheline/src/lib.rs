@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashMap;
-use std::string::FromUtf8Error;
+use std::{collections::HashMap, string::FromUtf8Error};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct PrimitiveApplication {

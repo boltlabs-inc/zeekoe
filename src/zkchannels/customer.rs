@@ -4,13 +4,11 @@
 use tracing::warn;
 use webpki::DnsNameRef;
 
-use {
-    anyhow::Context,
-    async_trait::async_trait,
-    sqlx::SqlitePool,
-    std::{sync::Arc, time::Duration},
-    thiserror::Error,
-};
+use anyhow::Context;
+use async_trait::async_trait;
+use sqlx::SqlitePool;
+use std::{sync::Arc, time::Duration};
+use thiserror::Error;
 
 use crate::{
     customer::{
