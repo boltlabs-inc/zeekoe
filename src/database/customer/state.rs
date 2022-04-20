@@ -1,8 +1,6 @@
-use {
-    serde::{Deserialize, Serialize},
-    std::fmt::{Display, Formatter},
-    thiserror::Error,
-};
+use serde::{Deserialize, Serialize};
+use std::fmt::{Display, Formatter};
+use thiserror::Error;
 
 use zkabacus_crypto::{
     customer as zkabacus, impl_sqlx_for_bincode_ty, ChannelId, CustomerBalance, MerchantBalance,

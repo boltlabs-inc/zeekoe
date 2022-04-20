@@ -1,10 +1,8 @@
-use {
-    dialectic_reconnect::Backoff,
-    serde::{Deserialize, Serialize},
-    std::{
-        path::{Path, PathBuf},
-        time::Duration,
-    },
+use dialectic_reconnect::Backoff;
+use serde::{Deserialize, Serialize};
+use std::{
+    path::{Path, PathBuf},
+    time::Duration,
 };
 
 use http::Uri;

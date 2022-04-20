@@ -2,7 +2,8 @@ pub mod customer;
 pub mod merchant;
 pub use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions, SqliteRow};
 
-use {anyhow::Context, std::path::Path, std::sync::Arc};
+use anyhow::Context;
+use std::{path::Path, sync::Arc};
 
 pub async fn connect_sqlite<T: AsRef<Path>>(path: T) -> Result<Arc<SqlitePool>, anyhow::Error> {
     let options = SqliteConnectOptions::new()

@@ -12,6 +12,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: recursive
+
       - uses: actions/cache@v2
         with:
           path: /tmp/.buildx-cache
@@ -20,10 +24,6 @@ jobs:
             ${{ runner.os }}-buildx-docker-${{ github.sha }}
             ${{ runner.os }}-buildx-docker-
             ${{ runner.os }}-
-
-      - uses: actions/checkout@v2
-        with:
-          submodules: recursive
 
       - name: Prepare Tags
         id: tags

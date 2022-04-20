@@ -9,14 +9,12 @@ use crate::{
     },
     protocol::ChannelStatus,
 };
-use {
-    anyhow::Context,
-    async_trait::async_trait,
-    comfy_table::{Cell, Table},
-    serde::{Deserialize, Serialize},
-    serde_with::{serde_as, DisplayFromStr},
-    zkabacus_crypto::ChannelId,
-};
+use anyhow::Context;
+use async_trait::async_trait;
+use comfy_table::{Cell, Table};
+use serde::{Deserialize, Serialize};
+use serde_with::{serde_as, DisplayFromStr};
+use zkabacus_crypto::ChannelId;
 
 /// The contents of a row of the database for a particular channel that are suitable to share with
 /// the user (especially for testing).

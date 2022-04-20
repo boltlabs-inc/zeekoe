@@ -1,20 +1,18 @@
-use {
-    crate::escrow::types::*,
-    canonicalize_json_micheline::{canonicalize_json_micheline, CanonicalizeError},
-    futures::Future,
-    inline_python::{pyo3, pyo3::conversion::FromPyObject, python},
-    serde::{Deserialize, Serialize},
-    std::{
-        convert::{TryFrom, TryInto},
-        str::FromStr,
-        time::{Duration, SystemTime},
-    },
-    tezedge::{OriginatedAddress, ToBase58Check},
-    tokio::task::JoinError,
-    zkabacus_crypto::{
-        customer::ClosingMessage, revlock::RevocationSecret, ChannelId, CloseState,
-        CustomerBalance, MerchantBalance, PublicKey, RevocationLock,
-    },
+use crate::escrow::types::*;
+use canonicalize_json_micheline::{canonicalize_json_micheline, CanonicalizeError};
+use futures::Future;
+use inline_python::{pyo3, pyo3::conversion::FromPyObject, python};
+use serde::{Deserialize, Serialize};
+use std::{
+    convert::{TryFrom, TryInto},
+    str::FromStr,
+    time::{Duration, SystemTime},
+};
+use tezedge::{OriginatedAddress, ToBase58Check};
+use tokio::task::JoinError;
+use zkabacus_crypto::{
+    customer::ClosingMessage, revlock::RevocationSecret, ChannelId, CloseState, CustomerBalance,
+    MerchantBalance, PublicKey, RevocationLock,
 };
 
 /// The Micheline JSON for the ZkChannels contract.

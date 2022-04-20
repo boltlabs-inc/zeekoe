@@ -1,4 +1,5 @@
-use {std::path::PathBuf, structopt::StructOpt};
+use std::path::PathBuf;
+use structopt::StructOpt;
 
 use zkabacus_crypto::ChannelId;
 

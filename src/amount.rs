@@ -1,14 +1,12 @@
-use {
-    rust_decimal::Decimal,
-    rusty_money::{define_currency_set, FormattableCurrency, Money, MoneyError},
-    std::{
-        convert::TryInto,
-        fmt::{self, Display},
-        num::TryFromIntError,
-        str::FromStr,
-    },
-    thiserror::Error,
+use rust_decimal::Decimal;
+use rusty_money::{define_currency_set, FormattableCurrency, Money, MoneyError};
+use std::{
+    convert::TryInto,
+    fmt::{self, Display},
+    num::TryFromIntError,
+    str::FromStr,
 };
+use thiserror::Error;
 
 pub use supported::*;
 use zkabacus_crypto::{

@@ -1,8 +1,6 @@
-use {
-    http::Uri,
-    serde::{de, Deserialize, Deserializer, Serialize},
-    std::path::{Path, PathBuf},
-};
+use http::Uri;
+use serde::{de, Deserialize, Deserializer, Serialize};
+use std::path::{Path, PathBuf};
 
 pub mod customer;
 pub mod merchant;

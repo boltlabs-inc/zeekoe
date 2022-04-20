@@ -5,12 +5,12 @@ pub mod escrow;
 pub mod merchant;
 pub mod protocol;
 pub mod timeout;
+pub mod transport;
 
 mod cli;
 mod config;
 mod database;
 mod defaults;
-mod transport;
 mod zkchannels;
 
 use std::fmt;

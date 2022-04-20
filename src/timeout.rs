@@ -1,4 +1,7 @@
-use {async_trait::async_trait, futures::Future, std::time::Duration, tokio::time::Timeout};
+use async_trait::async_trait;
+use futures::Future;
+use std::time::Duration;
+use tokio::time::Timeout;
 
 #[async_trait]
 pub trait WithTimeout {

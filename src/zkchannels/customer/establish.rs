@@ -1,10 +1,8 @@
-use {
-    anyhow::Context,
-    async_trait::async_trait,
-    rand::rngs::StdRng,
-    serde::Serialize,
-    std::{convert::TryInto, fs::File, path::PathBuf},
-};
+use anyhow::Context;
+use async_trait::async_trait;
+use rand::rngs::StdRng;
+use serde::Serialize;
+use std::{convert::TryInto, fs::File, path::PathBuf};
 
 use std::convert::Infallible;
 
@@ -18,7 +16,6 @@ use crate::{
     abort,
     customer::{
         cli::Establish,
-        client::ZkChannelAddress,
         database::{zkchannels_state, QueryCustomer, QueryCustomerExt, State},
         Chan, ChannelName, Config,
     },
@@ -29,6 +26,7 @@ use crate::{
     offer_abort, proceed,
     protocol::{establish, Party::Customer},
     timeout::WithTimeout,
+    transport::ZkChannelAddress,
 };
 
 use tezedge::crypto::Prefix;

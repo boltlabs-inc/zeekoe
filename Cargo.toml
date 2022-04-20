@@ -32,8 +32,8 @@ zkabacus-crypto = { git = "https://github.com/boltlabs-inc/libzkchannels-crypto.
 tokio = { version = "1", features = ["full"] }
 tokio-rustls = "0.22"
 anyhow = "1"
-webpki = "0.21"
-webpki-roots = "0.21"
+webpki = "0.22"
+webpki-roots = "0.22"
 async-trait = "0.1"
 sha2 = "0.9"
 sha3 = "0.9.1"
@@ -82,6 +82,7 @@ canonicalize_json_micheline = { path = "src/canonicalize_json_micheline" }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-futures = "0.2"
+transport = { git = "https://github.com/boltlabs-inc/transport.git", branch = "main", features = ["allow_explicit_certificate_trust"] }
 
 [dev-dependencies]
 rand = "0.8.3"

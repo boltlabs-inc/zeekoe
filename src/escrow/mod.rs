@@ -5,19 +5,17 @@ pub mod types {
 
     use std::{borrow::Cow, convert::TryFrom, path::PathBuf};
 
+    use serde::{Deserialize, Serialize};
+    use sha3::{Digest, Sha3_256};
+    use std::{
+        fmt::{self, Display, Formatter},
+        path::Path,
+    };
     use tezedge::{
         crypto::base58check::ToBase58Check, OriginatedAddress, PrivateKey as TezosPrivateKey,
     };
+    use thiserror::Error;
     use zkabacus_crypto::PublicKey as ZkAbacusPublicKey;
-    use {
-        serde::{Deserialize, Serialize},
-        sha3::{Digest, Sha3_256},
-        std::{
-            fmt::{self, Display, Formatter},
-            path::Path,
-        },
-        thiserror::Error,
-    };
 
     /// ID for a zkChannels contract originated on Tezos.
     /// Equivalent to the Tezos OriginatedAddress type.

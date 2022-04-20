@@ -1,10 +1,8 @@
-use {
-    anyhow::Context,
-    futures::FutureExt,
-    rand::{rngs::StdRng, SeedableRng},
-    std::convert::identity,
-    structopt::StructOpt,
-};
+use anyhow::Context;
+use futures::FutureExt;
+use rand::{rngs::StdRng, SeedableRng};
+use std::convert::identity;
+use structopt::StructOpt;
 
 use zeekoe::customer::{
     cli::{self, Customer::*},

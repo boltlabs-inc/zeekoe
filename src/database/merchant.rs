@@ -1,8 +1,10 @@
-use {async_trait::async_trait, futures::StreamExt, rand::rngs::StdRng, thiserror::Error};
+use async_trait::async_trait;
+use futures::StreamExt;
+use rand::rngs::StdRng;
+use thiserror::Error;
 
 pub use super::connect_sqlite;
-use crate::database::SqlitePool;
-use crate::{escrow::types::ContractId, protocol::ChannelStatus};
+use crate::{database::SqlitePool, escrow::types::ContractId, protocol::ChannelStatus};
 use serde::{Deserialize, Serialize};
 use zkabacus_crypto::{
     revlock::{RevocationLock, RevocationPair, RevocationSecret},
@@ -820,10 +822,14 @@ impl<Q: QueryMerchant + ?Sized> QueryMerchantExt for Q {
 mod tests {
     use super::*;
     use crate::database::SqlitePoolOptions;
-    use {rand::SeedableRng, strum::IntoEnumIterator, tezedge::OriginatedAddress};
+    use rand::SeedableRng;
+    use strum::IntoEnumIterator;
+    use tezedge::OriginatedAddress;
 
-    use zkabacus_crypto::internal::{test_new_nonce, test_new_revocation_pair};
-    use zkabacus_crypto::{CustomerRandomness, MerchantRandomness};
+    use zkabacus_crypto::{
+        internal::{test_new_nonce, test_new_revocation_pair},
+        CustomerRandomness, MerchantRandomness,
+    };
 
     // The default dummy originated contract address, per https://tezos.stackexchange.com/a/2270
     const DEFAULT_ADDR: &str = "KT1Mjjcb6tmSsLm7Cb3DSQszePjfchPM4Uxm";

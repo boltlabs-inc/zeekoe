@@ -1,11 +1,9 @@
+use dialectic::prelude::*;
+use serde::{Deserialize, Serialize};
+use std::fmt::{self, Display, Formatter};
+use thiserror::Error;
 use zkabacus_crypto::{
     revlock::*, ClosingSignature, CustomerRandomness, MerchantRandomness, Nonce, PayProof, PayToken,
-};
-use {
-    dialectic::prelude::*,
-    serde::{Deserialize, Serialize},
-    std::fmt::{self, Display, Formatter},
-    thiserror::Error,
 };
 
 #[cfg(test)]
@@ -289,10 +287,8 @@ pub mod establish {
     };
 }
 pub mod close {
-    use {
-        dialectic::types::Done,
-        zkabacus_crypto::{CloseState, CloseStateSignature},
-    };
+    use dialectic::types::Done;
+    use zkabacus_crypto::{CloseState, CloseStateSignature};
 
     use crate::{database::customer::StateName, escrow::tezos::MutualCloseAuthorizationSignature};
 

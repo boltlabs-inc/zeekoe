@@ -1,15 +1,19 @@
 use std::time::Duration;
 use tracing::{error, info};
 
-use {
-    anyhow::Context, async_trait::async_trait, rand::rngs::StdRng, std::sync::Arc, tokio::signal,
-};
+use anyhow::Context;
+use async_trait::async_trait;
+use rand::rngs::StdRng;
+use std::sync::Arc;
+use tokio::signal;
 
 use crate::{
-    customer::database::zkchannels_state::{self, ZkChannelState},
     customer::{
         cli::Watch,
-        database::{ChannelDetails, QueryCustomer},
+        database::{
+            zkchannels_state::{self, ZkChannelState},
+            ChannelDetails, QueryCustomer,
+        },
         Config,
     },
     escrow::types::ContractStatus,

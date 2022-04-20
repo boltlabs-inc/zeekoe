@@ -1,5 +1,6 @@
 //* Close functionalities for a merchant.
-use {anyhow::Context, async_trait::async_trait};
+use anyhow::Context;
+use async_trait::async_trait;
 
 use super::{database, load_tezos_client, Command};
 

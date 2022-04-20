@@ -1,17 +1,14 @@
 //! Complete merchant logic for the zkchannels protocol
 
-use {
-    anyhow::Context,
-    async_trait::async_trait,
-    dialectic::offer,
-    futures::stream::{FuturesUnordered, StreamExt},
-    rand::{rngs::StdRng, SeedableRng},
-    sqlx::SqlitePool,
-    std::{sync::Arc, time::Duration},
-    tokio::signal,
-    tokio::sync::broadcast,
-    tracing::{error, info},
-};
+use anyhow::Context;
+use async_trait::async_trait;
+use dialectic::offer;
+use futures::stream::{FuturesUnordered, StreamExt};
+use rand::{rngs::StdRng, SeedableRng};
+use sqlx::SqlitePool;
+use std::{sync::Arc, time::Duration};
+use tokio::{signal, sync::broadcast};
+use tracing::{error, info};
 
 use crate::{
     escrow::{
@@ -25,6 +22,7 @@ use crate::{
         Chan, Config, Server,
     },
     protocol::{ChannelStatus, ZkChannels},
+    TestLogs,
 };
 
 mod approve;
@@ -163,6 +161,7 @@ impl Command for Run {
                             initialize,
                             interact,
                             wait_terminate,
+                            |address| info!("{}", TestLogs::MerchantServerSpawned(address)),
                         )
                         .await?;
                     Ok::<_, anyhow::Error>(())
@@ -298,10 +297,10 @@ async fn dispatch_channel(
             database,
             &channel.channel_id,
         )
-        .await
-        .context(
-            "Failed to finalize mutual close - perhaps the contract was closed by a different flow",
-        )?;
+            .await
+            .context(
+                "Failed to finalize mutual close - perhaps the contract was closed by a different flow",
+            )?;
     }
 
     Ok(())
@@ -323,7 +322,7 @@ pub async fn database(config: &Config) -> Result<Arc<dyn QueryMerchant>, anyhow:
         DatabaseLocation::Postgres(_) => {
             return Err(anyhow::anyhow!(
                 "Postgres database support is not yet implemented"
-            ))
+            ));
         }
     };
     Ok(database)

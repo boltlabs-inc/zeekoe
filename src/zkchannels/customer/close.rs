@@ -5,24 +5,22 @@
 //* This architecture is flexible; we could alternately allow the customer CLI to wait (hang) until
 //* it receives confirmation (e.g. call `process_mutual_close_confirmation` directly from
 //* `mutual_close()`).
-use {
-    async_trait::async_trait,
-    rand::rngs::StdRng,
-    serde::Serialize,
-    std::{convert::Infallible, fs::File, path::PathBuf},
-};
+use async_trait::async_trait;
+use rand::rngs::StdRng;
+use serde::Serialize;
+use std::{convert::Infallible, fs::File, path::PathBuf};
 
 use crate::{
     abort,
     customer::{
         cli::Close,
-        client::ZkChannelAddress,
         database::{zkchannels_state, QueryCustomer, QueryCustomerExt, State},
         Chan, ChannelName, Config,
     },
     offer_abort, proceed,
     protocol::{close, Party::Customer},
     timeout::WithTimeout,
+    transport::ZkChannelAddress,
 };
 use zkabacus_crypto::{
     customer::ClosingMessage, ChannelId, CloseState, CloseStateSignature, CustomerBalance,

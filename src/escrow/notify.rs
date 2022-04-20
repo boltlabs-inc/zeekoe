@@ -1,22 +1,18 @@
-use {
-    serde::{Deserialize, Serialize},
-    std::{
-        pin::Pin,
-        task::{Context, Poll},
-    },
+use serde::{Deserialize, Serialize};
+use std::{
+    pin::Pin,
+    task::{Context, Poll},
 };
 
 use tezedge::OperationHash;
 
 use super::types::ContractId;
-use {
-    futures::stream::Stream,
-    std::{
-        cmp::Reverse,
-        future::Future,
-        hash::Hash,
-        ops::{Add, Sub},
-    },
+use futures::stream::Stream;
+use std::{
+    cmp::Reverse,
+    future::Future,
+    hash::Hash,
+    ops::{Add, Sub},
 };
 
 pub struct Notifications {}
