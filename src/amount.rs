@@ -220,7 +220,7 @@ mod test {
         let merchant_balance: Result<MerchantBalance, _> = too_many_decimals_amount.try_into();
         assert!(merchant_balance.is_err());
 
-        // Pasring fails on too-large numbers
+        // Parsing fails on too-large numbers
         let bad_amount = Amount::from_str("9223372036854775810 XTZ");
         assert!(
             bad_amount.is_err()
@@ -228,6 +228,32 @@ mod test {
         );
 
         let bad_amount = Amount::from_str("9223372036854775810 XTZ");
+        assert!(
+            bad_amount.is_err()
+                || TryInto::<MerchantBalance>::try_into(bad_amount.unwrap()).is_err()
+        );
+
+        // Parsing fails on negative numbers
+        let bad_amount = Amount::from_str("-5 XTZ");
+        assert!(
+            bad_amount.is_err()
+                || TryInto::<CustomerBalance>::try_into(bad_amount.unwrap()).is_err()
+        );
+
+        let bad_amount = Amount::from_str("-5 XTZ");
+        assert!(
+            bad_amount.is_err()
+                || TryInto::<MerchantBalance>::try_into(bad_amount.unwrap()).is_err()
+        );
+
+        // Parsing fails on zero
+        let bad_amount = Amount::from_str("0 XTZ");
+        assert!(
+            bad_amount.is_err()
+                || TryInto::<CustomerBalance>::try_into(bad_amount.unwrap()).is_err()
+        );
+
+        let bad_amount = Amount::from_str("0 XTZ");
         assert!(
             bad_amount.is_err()
                 || TryInto::<MerchantBalance>::try_into(bad_amount.unwrap()).is_err()
