@@ -1,6 +1,5 @@
 use anyhow::Context;
 use futures::FutureExt;
-use rand::{rngs::StdRng, SeedableRng};
 use std::convert::identity;
 use structopt::StructOpt;
 
@@ -22,28 +21,25 @@ pub async fn main_with_cli(cli: Cli) -> Result<(), anyhow::Error> {
         })
     });
 
-    // TODO: let this be made deterministic during testing
-    let rng = StdRng::from_entropy();
-
     match cli.customer {
         Configure(cli::Configure { .. }) => {
             drop(config);
             tokio::task::spawn_blocking(|| Ok(edit::edit_file(config_path)?)).await?
         }
         List(list) => {
-            println!("{}", list.run(rng, config.await?).await?);
+            println!("{}", list.run(config.await?).await?);
             Ok(())
         }
         Show(show) => {
-            println!("{}", show.run(rng, config.await?).await?);
+            println!("{}", show.run(config.await?).await?);
             Ok(())
         }
-        Rename(rename) => rename.run(rng, config.await?).await,
-        Establish(establish) => establish.run(rng, config.await?).await,
-        Pay(pay) => pay.run(rng, config.await?).await,
-        Refund(refund) => refund.run(rng, config.await?).await,
-        Close(close) => close.run(rng, config.await?).await,
-        Watch(watch) => watch.run(rng, config.await?).await,
+        Rename(rename) => rename.run(config.await?).await,
+        Establish(establish) => establish.run(config.await?).await,
+        Pay(pay) => pay.run(config.await?).await,
+        Refund(refund) => refund.run(config.await?).await,
+        Close(close) => close.run(config.await?).await,
+        Watch(watch) => watch.run(config.await?).await,
     }
 }
 

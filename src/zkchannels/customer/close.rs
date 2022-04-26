@@ -21,6 +21,7 @@ use crate::{
     protocol::{close, Party::Customer},
     timeout::WithTimeout,
     transport::ZkChannelAddress,
+    zkchannels::zkchannels_rng,
 };
 use zkabacus_crypto::{
     customer::ClosingMessage, ChannelId, CloseState, CloseStateSignature, CustomerBalance,
@@ -34,11 +35,8 @@ use anyhow::Context;
 impl Command for Close {
     type Output = ();
 
-    async fn run(
-        self,
-        mut rng: StdRng,
-        config: self::Config,
-    ) -> Result<Self::Output, anyhow::Error> {
+    async fn run(self, config: self::Config) -> Result<Self::Output, anyhow::Error> {
+        let mut rng = zkchannels_rng();
         let database = database(&config)
             .await
             .context("Failed to connect to local database")?;
@@ -55,7 +53,7 @@ impl Command for Close {
             .await
             .context("Unilateral close failed")?;
         } else {
-            mutual_close(&self, rng, config)
+            mutual_close(&self, &mut rng, config)
                 .await
                 .context("Mutual close failed")?;
         }
@@ -397,7 +395,7 @@ pub async fn finalize_expiry(
 
 async fn mutual_close(
     close: &Close,
-    rng: StdRng,
+    rng: &mut StdRng,
     config: self::Config,
 ) -> Result<(), anyhow::Error> {
     let database = database(&config)
@@ -515,7 +513,7 @@ async fn finalize_mutual_close(
 }
 
 async fn zkabacus_close(
-    mut rng: StdRng,
+    mut rng: &mut StdRng,
     database: &dyn QueryCustomer,
     channel_name: &ChannelName,
     config: &self::Config,

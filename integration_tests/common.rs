@@ -8,7 +8,6 @@ use std::{
 };
 
 use futures::future::{self, Join};
-use rand::prelude::StdRng;
 use structopt::StructOpt;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
@@ -105,7 +104,7 @@ macro_rules! merchant_cli {
 }
 pub(crate) use merchant_cli;
 
-pub async fn setup(rng: &StdRng, tezos_uri: String) -> ServerFuture {
+pub async fn setup(tezos_uri: String) -> ServerFuture {
     let _ = fs::create_dir("integration_tests/gen");
 
     // Create self-signed SSL certificate in the generated directory
@@ -136,7 +135,7 @@ pub async fn setup(rng: &StdRng, tezos_uri: String) -> ServerFuture {
     let watch = customer_cli!(Watch, vec!["watch"]);
     let customer_handle = tokio::spawn(
         watch
-            .run(rng.clone(), customer_config)
+            .run(customer_config)
             .instrument(info_span!(Party::CustomerWatcher.to_str())),
     );
 

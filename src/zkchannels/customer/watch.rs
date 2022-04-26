@@ -17,6 +17,7 @@ use crate::{
         Config,
     },
     escrow::types::ContractStatus,
+    zkchannels::zkchannels_rng,
     TestLogs,
 };
 
@@ -28,7 +29,7 @@ const MAX_INTERVAL_SECONDS: u64 = 60;
 impl Command for Watch {
     type Output = ();
 
-    async fn run(self, rng: StdRng, config: Config) -> Result<Self::Output, anyhow::Error> {
+    async fn run(self, config: Config) -> Result<Self::Output, anyhow::Error> {
         let database = database(&config)
             .await
             .context("Customer chain-watching daemon failed to connect to local database")?;
@@ -96,7 +97,7 @@ impl Command for Watch {
                 for channel in channels {
                     let database = database.clone();
                     let config = config.clone();
-                    let mut rng = rng.clone();
+                    let mut rng = zkchannels_rng();
                     let off_chain = self.off_chain;
                     tokio::spawn(async move {
                         match dispatch_channel(
