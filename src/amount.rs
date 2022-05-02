@@ -208,6 +208,14 @@ mod test {
         assert_eq!(1, microtez.try_into_minor_units().unwrap());
     }
 
+    fn try_parse_invalid_balance<T>(amount: &str)
+    where
+        Amount: TryInto<T>,
+    {
+        let bad_amount = Amount::from_str(amount);
+        assert!(bad_amount.is_err() || TryInto::<T>::try_into(bad_amount.unwrap()).is_err());
+    }
+
     #[test]
     fn test_balance_parsing() {
         // Parsing fails with too many decimal places
@@ -221,42 +229,15 @@ mod test {
         assert!(merchant_balance.is_err());
 
         // Parsing fails on too-large numbers
-        let bad_amount = Amount::from_str("9223372036854775810 XTZ");
-        assert!(
-            bad_amount.is_err()
-                || TryInto::<CustomerBalance>::try_into(bad_amount.unwrap()).is_err()
-        );
-
-        let bad_amount = Amount::from_str("9223372036854775810 XTZ");
-        assert!(
-            bad_amount.is_err()
-                || TryInto::<MerchantBalance>::try_into(bad_amount.unwrap()).is_err()
-        );
+        try_parse_invalid_balance::<CustomerBalance>("9223372036854775810 XTZ");
+        try_parse_invalid_balance::<MerchantBalance>("9223372036854775810 XTZ");
 
         // Parsing fails on negative numbers
-        let bad_amount = Amount::from_str("-5 XTZ");
-        assert!(
-            bad_amount.is_err()
-                || TryInto::<CustomerBalance>::try_into(bad_amount.unwrap()).is_err()
-        );
-
-        let bad_amount = Amount::from_str("-5 XTZ");
-        assert!(
-            bad_amount.is_err()
-                || TryInto::<MerchantBalance>::try_into(bad_amount.unwrap()).is_err()
-        );
+        try_parse_invalid_balance::<CustomerBalance>("-5 XTZ");
+        try_parse_invalid_balance::<MerchantBalance>("-5 XTZ");
 
         // Parsing fails on zero
-        let bad_amount = Amount::from_str("0 XTZ");
-        assert!(
-            bad_amount.is_err()
-                || TryInto::<CustomerBalance>::try_into(bad_amount.unwrap()).is_err()
-        );
-
-        let bad_amount = Amount::from_str("0 XTZ");
-        assert!(
-            bad_amount.is_err()
-                || TryInto::<MerchantBalance>::try_into(bad_amount.unwrap()).is_err()
-        );
+        try_parse_invalid_balance::<CustomerBalance>("0 XTZ");
+        try_parse_invalid_balance::<MerchantBalance>("0 XTZ");
     }
 }
