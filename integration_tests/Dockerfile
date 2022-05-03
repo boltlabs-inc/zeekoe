@@ -8,4 +8,5 @@ RUN tezos-client --endpoint ${tezos_uri} config update
 RUN tezos-client import secret key alice unencrypted:edsk3QoqBuvdamxouPhin7swCvkQNgq4jP5KZPbwWNnwdZpSpJiEbq
 RUN tezos-client import secret key bob unencrypted:edsk3RFfvaFaxbHx8BMtEW1rKQcPtDML3LXjNqMNLCzC3wLC1bWbAt
 
-RUN git pull && cargo test --all-features --tests integration_tests --verbose -- ${tezos_uri}
+ARG branch
+RUN git reset --hard origin/${branch} && cargo test --all-features --tests integration_tests --verbose -- ${tezos_uri}
