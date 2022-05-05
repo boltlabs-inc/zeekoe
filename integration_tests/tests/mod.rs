@@ -1,3 +1,4 @@
+mod close;
 mod establish;
 mod pay;
 
@@ -16,6 +17,12 @@ use structopt::StructOpt;
 use thiserror::Error;
 use zeekoe::customer::database::ClosingBalances;
 
+/// Default balance for establishing channels
+const DEFAULT_BALANCE: u64 = 5;
+/// Default payment; should be less than balance
+const DEFAULT_PAYMENT: u64 = 1;
+
+/// Struct to represent one test: includes a name and a list of operations and outcomes
 #[derive(Debug, Clone)]
 pub struct Test {
     pub name: String,
@@ -85,6 +92,7 @@ struct ChannelOutcome {
     merchant_status: MerchantStatus,
     customer_balance: CustomerBalance,
     merchant_balance: MerchantBalance,
+    /// Closing balances of channels, for use in close-related tests
     closing_balances: Option<ClosingBalances>,
 }
 
@@ -351,7 +359,7 @@ pub enum LogType {
 
 #[allow(unused)]
 impl LogType {
-    pub fn to_str(&self) -> &str {
+    pub fn to_str(self) -> &'static str {
         match self {
             LogType::Info => "INFO",
             LogType::Error => "ERROR",
@@ -396,5 +404,5 @@ fn to_merchant_balance(amount: u64) -> MerchantBalance {
 /// Assumption: none of these will cause a fatal error to the long-running processes (merchant
 /// server or customer watcher).
 pub fn all_tests() -> Vec<Test> {
-    [establish::tests(), pay::tests()].concat()
+    [establish::tests(), pay::tests(), close::tests()].concat()
 }
