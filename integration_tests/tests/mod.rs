@@ -160,7 +160,7 @@ impl Test {
         for (op, expected_outcome) in &self.operations {
             // Clone inputs. A future refactor should look into having the `Command` trait take
             // these by reference instead.
-
+            eprintln!("NEW OP: {:?}", op);
             let outcome = match op {
                 Operation::Establish(amount) => {
                     let formatted_amount = format!("{} XTZ", amount);
@@ -233,7 +233,7 @@ impl Test {
                 merchant_balance: expected_merchant_balance,
                 closing_balances: expected_closing_balances,
             } = match &expected_outcome.channel_outcome {
-                None => return Ok(()),
+                None => continue,
                 Some(channel_outcome) => channel_outcome,
             };
 
@@ -293,7 +293,7 @@ impl Test {
                 merchant_balance: expected_merchant_closing,
                 customer_balance: expected_customer_closing,
             } = match &expected_closing_balances {
-                None => return Ok(()),
+                None => continue,
                 Some(closing_balances) => closing_balances,
             };
 
