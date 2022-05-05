@@ -14,6 +14,7 @@ use anyhow::Context;
 use std::{convert::TryInto, fs::File, io::Read, panic, str::FromStr, time::Duration};
 use structopt::StructOpt;
 use thiserror::Error;
+use zeekoe::customer::database::ClosingBalances;
 
 #[derive(Debug, Clone)]
 pub struct Test {
@@ -84,6 +85,7 @@ struct ChannelOutcome {
     merchant_status: MerchantStatus,
     customer_balance: CustomerBalance,
     merchant_balance: MerchantBalance,
+    closing_balances: Option<ClosingBalances>,
 }
 
 #[derive(Debug, Error)]
@@ -133,6 +135,20 @@ enum TestError {
         actual_customer: CustomerBalance,
         actual_merchant: MerchantBalance,
     },
+
+    #[error(
+        "After {op:?}, party: {party:?} expected customer, merchant closing balances
+    ({expected_customer:?}, {expected_merchant:?}), got
+    ({actual_customer:?}, {actual_merchant:?})"
+    )]
+    InvalidClosingBalances {
+        op: Operation,
+        party: String,
+        expected_customer: Option<CustomerBalance>,
+        expected_merchant: Option<MerchantBalance>,
+        actual_customer: Option<CustomerBalance>,
+        actual_merchant: Option<MerchantBalance>,
+    },
 }
 
 impl Test {
@@ -165,6 +181,10 @@ impl Test {
                     let formatted_amount = format!("{} XTZ", amount);
                     let pay = customer_cli!(Pay, vec!["pay", &self.name, &formatted_amount,]);
                     pay.run(customer_config.clone())
+                }
+                Operation::MutualClose => {
+                    let close = customer_cli!(Close, vec!["close", &self.name]);
+                    close.run(customer_config.clone())
                 }
                 Operation::NoOp => Box::pin(async { Ok(()) }),
                 err_op => return Err(TestError::NotImplemented(*err_op).into()),
@@ -211,10 +231,12 @@ impl Test {
                 merchant_status: expected_merchant_status,
                 customer_balance: expected_customer_balance,
                 merchant_balance: expected_merchant_balance,
+                closing_balances: expected_closing_balances,
             } = match &expected_outcome.channel_outcome {
                 None => return Ok(()),
                 Some(channel_outcome) => channel_outcome,
             };
+
             // Parse current channel details for customer
             let customer_detail_json = customer_cli!(Show, vec!["show", &self.name, "--json"])
                 .run(customer_config.clone())
@@ -262,6 +284,45 @@ impl Test {
                     expected_merchant: expected_merchant_balance,
                     actual_customer: customer_channel.customer_balance(),
                     actual_merchant: customer_channel.merchant_balance(),
+                }
+                .into());
+            }
+
+            // evaluate whether there should be a closing balance present in outcome
+            let &ClosingBalances {
+                merchant_balance: expected_merchant_closing,
+                customer_balance: expected_customer_closing,
+            } = match &expected_closing_balances {
+                None => return Ok(()),
+                Some(closing_balances) => closing_balances,
+            };
+
+            // check Customer's version of closing balances
+            if customer_channel.closing_balances().customer_balance != expected_customer_closing
+                || customer_channel.closing_balances().merchant_balance != expected_merchant_closing
+            {
+                return Err(TestError::InvalidClosingBalances {
+                    op: *op,
+                    party: "Customer".to_string(),
+                    expected_customer: expected_customer_closing,
+                    expected_merchant: expected_merchant_closing,
+                    actual_customer: customer_channel.closing_balances().customer_balance,
+                    actual_merchant: merchant_channel.closing_balances().merchant_balance,
+                }
+                .into());
+            }
+
+            // check Merchant's version of closing balances
+            if merchant_channel.closing_balances().customer_balance != expected_customer_closing
+                || merchant_channel.closing_balances().merchant_balance != expected_merchant_closing
+            {
+                return Err(TestError::InvalidClosingBalances {
+                    op: *op,
+                    party: "Merchant".to_string(),
+                    expected_customer: expected_customer_closing,
+                    expected_merchant: expected_merchant_closing,
+                    actual_customer: customer_channel.closing_balances().customer_balance,
+                    actual_merchant: merchant_channel.closing_balances().merchant_balance,
                 }
                 .into());
             }

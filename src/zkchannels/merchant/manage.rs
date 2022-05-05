@@ -1,6 +1,7 @@
 use super::{database, Command};
 use crate::{
     amount::Amount,
+    database::merchant::ClosingBalances,
     escrow::types::ContractId,
     merchant::{
         cli::{List, Show},
@@ -27,6 +28,7 @@ pub struct PublicChannelDetails {
     channel_id: ChannelId,
     status: ChannelStatus,
     contract_id: ContractId,
+    closing_balances: ClosingBalances,
 }
 
 impl From<ChannelDetails> for PublicChannelDetails {
@@ -35,6 +37,7 @@ impl From<ChannelDetails> for PublicChannelDetails {
             status: details.status,
             channel_id: details.channel_id,
             contract_id: details.contract_id,
+            closing_balances: details.closing_balances,
         }
     }
 }
@@ -50,6 +53,10 @@ impl PublicChannelDetails {
 
     pub fn contract_id(&self) -> &ContractId {
         &self.contract_id
+    }
+
+    pub fn closing_balances(&self) -> &ClosingBalances {
+        &self.closing_balances
     }
 }
 
