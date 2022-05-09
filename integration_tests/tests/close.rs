@@ -6,8 +6,7 @@ use crate::{
     },
 };
 use zeekoe::{
-    customer::database::{StateName as CustomerStatus},
-    database::ClosingBalances,
+    customer::database::StateName as CustomerStatus, database::ClosingBalances,
     protocol::ChannelStatus as MerchantStatus,
 };
 use zkabacus_crypto::{CustomerBalance, MerchantBalance};

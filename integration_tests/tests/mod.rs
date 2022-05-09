@@ -140,16 +140,13 @@ enum TestError {
 
     #[error(
         "After {op:?}, party: {party:?} expected customer, merchant closing balances
-    ({expected_customer:?}, {expected_merchant:?}), got
-    ({actual_customer:?}, {actual_merchant:?})"
+    {expected:?}, got {actual:?}"
     )]
     InvalidClosingBalances {
         op: Operation,
         party: String,
-        expected_customer: Option<CustomerBalance>,
-        expected_merchant: Option<MerchantBalance>,
-        actual_customer: Option<CustomerBalance>,
-        actual_merchant: Option<MerchantBalance>,
+        expected: ClosingBalances,
+        actual: ClosingBalances,
     },
 }
 
@@ -287,40 +284,29 @@ impl Test {
             }
 
             // evaluate whether there should be a closing balance present in outcome
-            let &ClosingBalances {
-                merchant_balance: expected_merchant_closing,
-                customer_balance: expected_customer_closing,
-            } = match &expected_closing_balances {
+            let expected_closing_balances: &ClosingBalances = match &expected_closing_balances {
                 None => continue,
                 Some(closing_balances) => closing_balances,
             };
 
             // check Customer's version of closing balances
-            if customer_channel.closing_balances().customer_balance != expected_customer_closing
-                || customer_channel.closing_balances().merchant_balance != expected_merchant_closing
-            {
+            if customer_channel.closing_balances() != expected_closing_balances {
                 return Err(TestError::InvalidClosingBalances {
                     op: *op,
                     party: "Customer".to_string(),
-                    expected_customer: expected_customer_closing,
-                    expected_merchant: expected_merchant_closing,
-                    actual_customer: customer_channel.closing_balances().customer_balance,
-                    actual_merchant: merchant_channel.closing_balances().merchant_balance,
+                    expected: expected_closing_balances.clone(),
+                    actual: customer_channel.closing_balances().clone(),
                 }
                 .into());
             }
 
             // check Merchant's version of closing balances
-            if merchant_channel.closing_balances().customer_balance != expected_customer_closing
-                || merchant_channel.closing_balances().merchant_balance != expected_merchant_closing
-            {
+            if merchant_channel.closing_balances() != expected_closing_balances {
                 return Err(TestError::InvalidClosingBalances {
                     op: *op,
                     party: "Merchant".to_string(),
-                    expected_customer: expected_customer_closing,
-                    expected_merchant: expected_merchant_closing,
-                    actual_customer: customer_channel.closing_balances().customer_balance,
-                    actual_merchant: merchant_channel.closing_balances().merchant_balance,
+                    expected: expected_closing_balances.clone(),
+                    actual: merchant_channel.closing_balances().clone(),
                 }
                 .into());
             }
