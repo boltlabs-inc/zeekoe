@@ -41,7 +41,6 @@ pub enum Operation {
     MerchantExpiry,
     Store,
     Restore,
-    NoOp,
 }
 
 impl Operation {
@@ -56,8 +55,7 @@ impl Operation {
             | Self::Pay(_)
             | Self::PayAll
             | Self::Store
-            | Self::Restore
-            | Self::NoOp => 0,
+            | Self::Restore => 0,
 
             // The merchant watcher must notice the contract status change
             Self::MutualClose => 60,
@@ -166,9 +164,6 @@ impl Test {
         merchant_config: &merchant::Config,
     ) -> Result<(), anyhow::Error> {
         for (op, expected_outcome) in &self.operations {
-            // Clone inputs. A future refactor should look into having the `Command` trait take
-            // these by reference instead.
-            eprintln!("NEW OP: {:?}", op);
             let outcome = match op {
                 Operation::Establish(amount) => {
                     let formatted_amount = format!("{} XTZ", amount);
@@ -193,8 +188,7 @@ impl Test {
                 Operation::MutualClose => {
                     let close = customer_cli!(Close, vec!["close", &self.name]);
                     close.run(customer_config.clone())
-                }
-                Operation::NoOp => Box::pin(async { Ok(()) }),
+                },
                 err_op => return Err(TestError::NotImplemented(*err_op).into()),
             }
             .await;
@@ -383,7 +377,7 @@ pub fn get_logs(log_type: LogType, party: Party) -> Result<String, LogError> {
         .fold("".to_string(), |acc, s| format!("{}{}\n", acc, s)))
 }
 
-/// Helper function to convert human XTZ amount into a `CustomerBalance`.
+/// Convert human XTZ amount into a `CustomerBalance`.
 fn to_customer_balance(amount: u64) -> CustomerBalance {
     Amount::from_str(&format!("{} XTZ", amount))
         .unwrap()
@@ -391,8 +385,7 @@ fn to_customer_balance(amount: u64) -> CustomerBalance {
         .unwrap()
 }
 
-/// Helper function to convert human XTZ amount into a `MerchantBalance`.
-#[allow(unused)]
+/// Convert human XTZ amount into a `MerchantBalance`.
 fn to_merchant_balance(amount: u64) -> MerchantBalance {
     Amount::from_str(&format!("{} XTZ", amount))
         .unwrap()
