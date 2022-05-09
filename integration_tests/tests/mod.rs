@@ -5,6 +5,7 @@ mod pay;
 use zeekoe::{
     amount::Amount,
     customer::{self, database::StateName as CustomerStatus, zkchannels::Command},
+    database::ClosingBalances,
     merchant::{self, zkchannels::Command as _},
     protocol::ChannelStatus as MerchantStatus,
 };
@@ -15,7 +16,6 @@ use anyhow::Context;
 use std::{convert::TryInto, fs::File, io::Read, panic, str::FromStr, time::Duration};
 use structopt::StructOpt;
 use thiserror::Error;
-use zeekoe::customer::database::ClosingBalances;
 
 /// Default balance for establishing channels
 const DEFAULT_BALANCE: u64 = 5;
@@ -51,11 +51,7 @@ impl Operation {
         // (b) a watcher posts a transaction on chain (10 seconds)
         // (c) a watcher waits for self-delay to elapse (60 seconds + noticing)
         let seconds = match self {
-            Self::Establish(_)
-            | Self::Pay(_)
-            | Self::PayAll
-            | Self::Store
-            | Self::Restore => 0,
+            Self::Establish(_) | Self::Pay(_) | Self::PayAll | Self::Store | Self::Restore => 0,
 
             // The merchant watcher must notice the contract status change
             Self::MutualClose => 60,
@@ -188,7 +184,7 @@ impl Test {
                 Operation::MutualClose => {
                     let close = customer_cli!(Close, vec!["close", &self.name]);
                     close.run(customer_config.clone())
-                },
+                }
                 err_op => return Err(TestError::NotImplemented(*err_op).into()),
             }
             .await;
@@ -228,7 +224,7 @@ impl Test {
                 }),
             }?;
 
-            let &ChannelOutcome {
+            let ChannelOutcome {
                 customer_status: expected_customer_status,
                 merchant_status: expected_merchant_status,
                 customer_balance: expected_customer_balance,
@@ -259,31 +255,31 @@ impl Test {
                 serde_json::from_str(&merchant_details_json)?;
 
             // Check each party's status
-            if customer_channel.status() != expected_customer_status {
+            if customer_channel.status() != *expected_customer_status {
                 return Err(TestError::InvalidCustomerStatus {
                     op: *op,
-                    expected: expected_customer_status,
+                    expected: *expected_customer_status,
                     actual: customer_channel.status(),
                 }
                 .into());
             }
-            if merchant_channel.status() != expected_merchant_status {
+            if merchant_channel.status() != *expected_merchant_status {
                 return Err(TestError::InvalidMerchantStatus {
                     op: *op,
-                    expected: expected_merchant_status,
+                    expected: *expected_merchant_status,
                     actual: merchant_channel.status(),
                 }
                 .into());
             }
 
             // Check channel balances
-            if customer_channel.customer_balance() != expected_customer_balance
-                || customer_channel.merchant_balance() != expected_merchant_balance
+            if customer_channel.customer_balance() != *expected_customer_balance
+                || customer_channel.merchant_balance() != *expected_merchant_balance
             {
                 return Err(TestError::InvalidChannelBalances {
                     op: *op,
-                    expected_customer: expected_customer_balance,
-                    expected_merchant: expected_merchant_balance,
+                    expected_customer: *expected_customer_balance,
+                    expected_merchant: *expected_merchant_balance,
                     actual_customer: customer_channel.customer_balance(),
                     actual_merchant: customer_channel.merchant_balance(),
                 }

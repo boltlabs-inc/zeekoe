@@ -1,7 +1,7 @@
 use super::{database, Command};
 use crate::{
     amount::Amount,
-    database::merchant::ClosingBalances,
+    database::ClosingBalances,
     escrow::types::ContractId,
     merchant::{
         cli::{List, Show},

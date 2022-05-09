@@ -1,6 +1,7 @@
 pub mod amount;
 pub mod arbiter;
 pub mod customer;
+pub mod database;
 pub mod escrow;
 pub mod merchant;
 pub mod protocol;
@@ -9,7 +10,6 @@ pub mod transport;
 
 mod cli;
 mod config;
-mod database;
 mod defaults;
 mod zkchannels;
 

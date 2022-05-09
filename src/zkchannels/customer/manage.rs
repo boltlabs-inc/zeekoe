@@ -11,7 +11,10 @@ use crate::{
         cli::{List, Rename, Show},
         ChannelName, Config,
     },
-    database::customer::{ChannelDetails, ClosingBalances, StateName},
+    database::{
+        customer::{ChannelDetails, StateName},
+        ClosingBalances,
+    },
     escrow::types::ContractId,
 };
 
@@ -65,8 +68,8 @@ impl PublicChannelDetails {
         self.merchant_balance
     }
 
-    pub fn closing_balances(&self) -> ClosingBalances {
-        self.closing_balances
+    pub fn closing_balances(&self) -> &ClosingBalances {
+        &self.closing_balances
     }
 
     pub fn channel_id(&self) -> ChannelId {

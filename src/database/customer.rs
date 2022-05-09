@@ -1,6 +1,5 @@
 use async_trait::async_trait;
 use futures::stream::StreamExt;
-use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use std::any::Any;
 use thiserror::Error;
@@ -21,7 +20,7 @@ mod state;
 use self::state::zkchannels_state::ZkChannelState;
 
 pub use super::connect_sqlite;
-use crate::transport::ZkChannelAddress;
+use crate::{database::ClosingBalances, transport::ZkChannelAddress};
 pub use state::{zkchannels_state, State, StateName, UnexpectedState};
 
 type Result<T> = std::result::Result<T, Error>;
@@ -68,24 +67,6 @@ pub struct ChannelDetails {
     pub address: ZkChannelAddress,
     pub closing_balances: ClosingBalances,
     pub contract_details: ContractDetails,
-}
-
-/// The balances of a channel at closing. These may change during a close flow.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct ClosingBalances {
-    pub merchant_balance: Option<MerchantBalance>,
-    pub customer_balance: Option<CustomerBalance>,
-}
-
-zkabacus_crypto::impl_sqlx_for_bincode_ty!(ClosingBalances);
-
-impl Default for ClosingBalances {
-    fn default() -> Self {
-        Self {
-            merchant_balance: None,
-            customer_balance: None,
-        }
-    }
 }
 
 /// Extension trait augmenting the customer database [`QueryCustomer`] with extra methods.
