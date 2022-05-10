@@ -284,29 +284,29 @@ impl Test {
             }
 
             // evaluate whether there should be a closing balance present in outcome
-            let expected_closing_balances: &ClosingBalances = match &expected_closing_balances {
+            let expected_closing_balances: ClosingBalances = match &expected_closing_balances {
                 None => continue,
-                Some(closing_balances) => closing_balances,
+                Some(closing_balances) => *closing_balances,
             };
 
             // check Customer's version of closing balances
-            if customer_channel.closing_balances() != expected_closing_balances {
+            if *customer_channel.closing_balances() != expected_closing_balances {
                 return Err(TestError::InvalidClosingBalances {
                     op: *op,
                     party: "Customer".to_string(),
-                    expected: expected_closing_balances.clone(),
-                    actual: customer_channel.closing_balances().clone(),
+                    expected: expected_closing_balances,
+                    actual: *customer_channel.closing_balances(),
                 }
                 .into());
             }
 
             // check Merchant's version of closing balances
-            if merchant_channel.closing_balances() != expected_closing_balances {
+            if *merchant_channel.closing_balances() != expected_closing_balances {
                 return Err(TestError::InvalidClosingBalances {
                     op: *op,
                     party: "Merchant".to_string(),
-                    expected: expected_closing_balances.clone(),
-                    actual: merchant_channel.closing_balances().clone(),
+                    expected: expected_closing_balances,
+                    actual: *merchant_channel.closing_balances(),
                 }
                 .into());
             }

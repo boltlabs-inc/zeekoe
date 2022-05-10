@@ -8,7 +8,7 @@ use std::{path::Path, sync::Arc};
 use zkabacus_crypto::{CustomerBalance, MerchantBalance};
 
 /// The balances of a channel at closing. These may change during a close flow.
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq)]
 pub struct ClosingBalances {
     pub merchant_balance: Option<MerchantBalance>,
     pub customer_balance: Option<CustomerBalance>,
