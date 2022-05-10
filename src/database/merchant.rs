@@ -4,7 +4,11 @@ use rand::rngs::StdRng;
 use thiserror::Error;
 
 pub use super::connect_sqlite;
-use crate::{database::SqlitePool, escrow::types::ContractId, protocol::ChannelStatus};
+use crate::{
+    database::{ClosingBalances, SqlitePool},
+    escrow::types::ContractId,
+    protocol::ChannelStatus,
+};
 use serde::{Deserialize, Serialize};
 use zkabacus_crypto::{
     revlock::{RevocationLock, RevocationPair, RevocationSecret},
@@ -176,24 +180,6 @@ pub struct ChannelDetails {
     pub closing_balances: ClosingBalances,
     /// Balances agreed upon in mutual close, but not yet confirmed as paid
     pub mutual_close_balances: Option<MutualCloseBalances>,
-}
-
-/// The balances of a channel at closing. These may change during a close flow.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ClosingBalances {
-    pub merchant_balance: Option<MerchantBalance>,
-    pub customer_balance: Option<CustomerBalance>,
-}
-
-zkabacus_crypto::impl_sqlx_for_bincode_ty!(ClosingBalances);
-
-impl Default for ClosingBalances {
-    fn default() -> Self {
-        Self {
-            merchant_balance: None,
-            customer_balance: None,
-        }
-    }
 }
 
 /// The closing balances agreed on during mutual close.

@@ -11,7 +11,10 @@ use crate::{
         cli::{List, Rename, Show},
         ChannelName, Config,
     },
-    database::customer::{ChannelDetails, StateName},
+    database::{
+        customer::{ChannelDetails, StateName},
+        ClosingBalances,
+    },
     escrow::types::ContractId,
 };
 
@@ -28,6 +31,7 @@ pub struct PublicChannelDetails {
     state: StateName,
     customer_balance: CustomerBalance,
     merchant_balance: MerchantBalance,
+    closing_balances: ClosingBalances,
     #[serde_as(as = "DisplayFromStr")]
     channel_id: ChannelId,
     contract_id: Option<ContractId>,
@@ -40,6 +44,7 @@ impl From<ChannelDetails> for PublicChannelDetails {
             state: details.state.state_name(),
             customer_balance: details.state.customer_balance(),
             merchant_balance: details.state.merchant_balance(),
+            closing_balances: details.closing_balances,
             channel_id: *details.state.channel_id(),
             contract_id: details.contract_details.contract_id,
         }
@@ -61,6 +66,10 @@ impl PublicChannelDetails {
 
     pub fn merchant_balance(&self) -> MerchantBalance {
         self.merchant_balance
+    }
+
+    pub fn closing_balances(&self) -> &ClosingBalances {
+        &self.closing_balances
     }
 
     pub fn channel_id(&self) -> ChannelId {
