@@ -53,6 +53,22 @@ impl fmt::Display for MerchantServices {
     }
 }
 
+/// Options for who is being simulated as the malicious party (for use in DB store/restore)
+#[derive(Debug, Clone, Copy, EnumIter)]
+pub enum MaliciousParty {
+    Customer,
+    Merchant,
+}
+
+impl fmt::Display for MaliciousParty {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            MaliciousParty::Customer => write!(f, "customer"),
+            MaliciousParty::Merchant => write!(f, "merchant"),
+        }
+    }
+}
+
 /// Give a name to the slightly annoying type of the joined server futures
 type ServerFuture =
     Join<JoinHandle<Result<(), anyhow::Error>>, JoinHandle<Result<(), anyhow::Error>>>;
@@ -104,9 +120,35 @@ macro_rules! merchant_cli {
 }
 pub(crate) use merchant_cli;
 
+pub fn store_db_state(party: &MaliciousParty, tag: &str) {
+    let exts = ["db", "db-wal", "db-shm"];
+    for ext in exts {
+        let store_path = format!("integration_tests/gen/store/{}-{}.{}", party, tag, ext);
+        let orig_path = format!("integration_tests/gen/{}.{}", party, ext);
+        if fs::metadata(&orig_path).is_ok() {
+            let _ = fs::copy(orig_path, store_path);
+        } else {
+            panic!("Failed to store DB state");
+        }
+    }
+}
+
+pub fn restore_db_state(party: &MaliciousParty, tag: &str) {
+    let exts = ["db", "db-wal", "db-shm"];
+    for ext in exts {
+        let store_path = format!("integration_tests/gen/store/{}-{}.{}", party, tag, ext);
+        let orig_path = format!("integration_tests/gen/{}.{}", party, ext);
+        if fs::metadata(&store_path).is_ok() && fs::metadata(&orig_path).is_ok() {
+            let _ = fs::copy(store_path, orig_path);
+        } else {
+            panic!("Failed to restore DB state");
+        }
+    }
+}
+
 pub async fn setup(tezos_uri: String) -> ServerFuture {
     let _ = fs::create_dir("integration_tests/gen");
-
+    let _ = fs::create_dir("integration_tests/gen/store");
     // Create self-signed SSL certificate in the generated directory
     Command::new("./dev/generate-certificates")
         .arg("integration_tests/gen")
