@@ -53,22 +53,6 @@ impl fmt::Display for MerchantServices {
     }
 }
 
-/// Options for who is being simulated as the malicious party (for use in DB store/restore)
-#[derive(Debug, Clone, Copy, EnumIter)]
-pub enum MaliciousParty {
-    Customer,
-    Merchant,
-}
-
-impl fmt::Display for MaliciousParty {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            MaliciousParty::Customer => write!(f, "customer"),
-            MaliciousParty::Merchant => write!(f, "merchant"),
-        }
-    }
-}
-
 /// Give a name to the slightly annoying type of the joined server futures
 type ServerFuture =
     Join<JoinHandle<Result<(), anyhow::Error>>, JoinHandle<Result<(), anyhow::Error>>>;
@@ -120,30 +104,29 @@ macro_rules! merchant_cli {
 }
 pub(crate) use merchant_cli;
 
-pub fn store_db_state(party: &MaliciousParty, tag: &str) {
+/// Store the current state of the customer database under a tag
+pub fn store_db_state(tag: &str) -> Result<(), anyhow::Error> {
     let exts = ["db", "db-wal", "db-shm"];
     for ext in exts {
-        let store_path = format!("integration_tests/gen/store/{}-{}.{}", party, tag, ext);
-        let orig_path = format!("integration_tests/gen/{}.{}", party, ext);
-        if fs::metadata(&orig_path).is_ok() {
-            let _ = fs::copy(orig_path, store_path);
-        } else {
-            panic!("Failed to store DB state");
-        }
+        let store_path = format!("integration_tests/gen/store/customer-{}.{}", tag, ext);
+        let orig_path = format!("integration_tests/gen/customer.{}", ext);
+        fs::metadata(&orig_path)?;
+        fs::copy(orig_path, store_path)?;
     }
+    Ok(())
 }
 
-pub fn restore_db_state(party: &MaliciousParty, tag: &str) {
+/// Restore a specific version of the customer database, given a tag
+pub fn restore_db_state(tag: &str) -> Result<(), anyhow::Error> {
     let exts = ["db", "db-wal", "db-shm"];
     for ext in exts {
-        let store_path = format!("integration_tests/gen/store/{}-{}.{}", party, tag, ext);
-        let orig_path = format!("integration_tests/gen/{}.{}", party, ext);
-        if fs::metadata(&store_path).is_ok() && fs::metadata(&orig_path).is_ok() {
-            let _ = fs::copy(store_path, orig_path);
-        } else {
-            panic!("Failed to restore DB state");
-        }
+        let store_path = format!("integration_tests/gen/store/customer-{}.{}", tag, ext);
+        let orig_path = format!("integration_tests/gen/customer.{}", ext);
+        fs::metadata(&store_path)?;
+        fs::metadata(&orig_path)?;
+        fs::copy(store_path, orig_path)?;
     }
+    Ok(())
 }
 
 pub async fn setup(tezos_uri: String) -> ServerFuture {

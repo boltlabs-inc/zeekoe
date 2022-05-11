@@ -12,8 +12,7 @@ use zeekoe::{
 use zkabacus_crypto::{CustomerBalance, MerchantBalance};
 
 use crate::common::{
-    customer_cli, merchant_cli, restore_db_state, store_db_state, MaliciousParty, Party,
-    ERROR_FILENAME,
+    customer_cli, merchant_cli, restore_db_state, store_db_state, Party, ERROR_FILENAME,
 };
 use anyhow::Context;
 use std::{convert::TryInto, fs::File, io::Read, panic, str::FromStr, time::Duration};
@@ -42,8 +41,8 @@ pub enum Operation {
     MutualClose,
     CustomerClose,
     MerchantExpiry,
-    Store(MaliciousParty, &'static str),
-    Restore(MaliciousParty, &'static str),
+    Store(&'static str),
+    Restore(&'static str),
 }
 
 impl Operation {
@@ -57,8 +56,8 @@ impl Operation {
             Self::Establish(_)
             | Self::Pay(_)
             | Self::PayAll
-            | Self::Store(_, _)
-            | Self::Restore(_, _) => 0,
+            | Self::Store(_)
+            | Self::Restore(_) => 0,
 
             // The merchant watcher must notice the contract status change
             Self::MutualClose => 60,
@@ -189,12 +188,12 @@ impl Test {
                     let close = customer_cli!(Close, vec!["close", &self.name]);
                     close.run(customer_config.clone())
                 }
-                Operation::Store(party, tag) => {
-                    store_db_state(party, tag);
+                Operation::Store(tag) => {
+                    store_db_state(tag)?;
                     continue;
                 }
-                Operation::Restore(party, tag) => {
-                    restore_db_state(party, tag);
+                Operation::Restore(tag) => {
+                    restore_db_state(tag)?;
                     continue;
                 }
                 err_op => return Err(TestError::NotImplemented(*err_op).into()),
