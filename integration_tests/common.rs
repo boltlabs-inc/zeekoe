@@ -104,9 +104,34 @@ macro_rules! merchant_cli {
 }
 pub(crate) use merchant_cli;
 
+/// Store the current state of the customer database under a tag
+pub fn store_db_state(tag: &str) -> Result<(), anyhow::Error> {
+    let exts = ["db", "db-wal", "db-shm"];
+    for ext in exts {
+        let store_path = format!("integration_tests/gen/store/customer-{}.{}", tag, ext);
+        let orig_path = format!("integration_tests/gen/customer.{}", ext);
+        fs::metadata(&orig_path)?;
+        fs::copy(orig_path, store_path)?;
+    }
+    Ok(())
+}
+
+/// Restore a specific version of the customer database, given a tag
+pub fn restore_db_state(tag: &str) -> Result<(), anyhow::Error> {
+    let exts = ["db", "db-wal", "db-shm"];
+    for ext in exts {
+        let store_path = format!("integration_tests/gen/store/customer-{}.{}", tag, ext);
+        let orig_path = format!("integration_tests/gen/customer.{}", ext);
+        fs::metadata(&store_path)?;
+        fs::metadata(&orig_path)?;
+        fs::copy(store_path, orig_path)?;
+    }
+    Ok(())
+}
+
 pub async fn setup(tezos_uri: String) -> ServerFuture {
     let _ = fs::create_dir("integration_tests/gen");
-
+    let _ = fs::create_dir("integration_tests/gen/store");
     // Create self-signed SSL certificate in the generated directory
     Command::new("./dev/generate-certificates")
         .arg("integration_tests/gen")
