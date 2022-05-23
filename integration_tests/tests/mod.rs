@@ -1,5 +1,5 @@
-mod mutual_close;
 mod establish;
+mod mutual_close;
 mod pay;
 
 use zeekoe::{
@@ -63,10 +63,10 @@ impl Operation {
             Self::MutualClose => 60,
             // After the initial close tx is posted inline, either:
             // - the merchant notices, posts Dispute, and waits for it to confirm. The customer
-            //   watcher notices and updates status (130)
+            //   watcher notices and updates status (180)
             // - the merchant notices and does nothing. The customer watcher waits for self-delay to
-            //   elapse, then posts claim (130)
-            Self::CustomerClose => 130,
+            //   elapse, then posts claim (180)
+            Self::CustomerClose => 180,
             // Expiry is either:
             // - the same as customer close, but preceded by the customer noticing expiry
             // and posting the corrected balances (+70)
@@ -185,8 +185,12 @@ impl Test {
                     pay.run(customer_config.clone())
                 }
                 Operation::MutualClose => {
-                    let close = customer_cli!(Close, vec!["close", &self.name]);
-                    close.run(customer_config.clone())
+                    let mutual_close = customer_cli!(Close, vec!["close", &self.name]);
+                    mutual_close.run(customer_config.clone())
+                }
+                Operation::CustomerClose => {
+                    let customer_close = customer_cli!(Close, vec!["close", &self.name, "--force"]);
+                    customer_close.run(customer_config.clone())
                 }
                 Operation::Store(tag) => {
                     store_db_state(tag)?;
