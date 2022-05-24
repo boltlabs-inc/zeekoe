@@ -1,3 +1,4 @@
+mod customer_close;
 mod establish;
 mod mutual_close;
 mod pay;
@@ -397,5 +398,11 @@ fn to_merchant_balance(amount: u64) -> MerchantBalance {
 /// Assumption: none of these will cause a fatal error to the long-running processes (merchant
 /// server or customer watcher).
 pub fn all_tests() -> Vec<Test> {
-    [establish::tests(), pay::tests(), mutual_close::tests()].concat()
+    [
+        establish::tests(),
+        pay::tests(),
+        mutual_close::tests(),
+        customer_close::tests(),
+    ]
+    .concat()
 }
