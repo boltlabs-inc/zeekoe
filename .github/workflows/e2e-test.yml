@@ -59,6 +59,16 @@ jobs:
           build-args: BRANCH=${{ github.head_ref }}
           tags: ghcr.io/${{ github.repository_owner }}/${{ steps.tags.outputs.tagged_image }}
 
+      - name: Get branch name
+        id: branch
+        run: |
+          if "${{github.event_name}}" == "schedule"
+          then
+            echo "::set-output name=branch::main"
+          else
+            echo "::set-output name=branch::${{github.head_ref}}"
+          fi
+
       - name: Run tests (configure tezos client, run integration tests)
         uses: docker/build-push-action@v2
         with:
@@ -70,7 +80,7 @@ jobs:
           build-args: |
             zeekoe_base=ghcr.io/${{ github.repository_owner }}/${{ steps.tags.outputs.tagged_image }}
             tezos_uri=http://${{ env.SANDBOX_IP }}:20000
-            branch=${{ github.head_ref }}
+            branch=${{steps.branch.outputs.branch}}
 
       - name: Move cache
         run: |
